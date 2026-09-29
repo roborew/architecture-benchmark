@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { DashboardProjects } from "./dashboard-projects";
 import { dashboardProjects } from "@/lib/seed-data";
+import { DashboardProjects } from "./dashboard-projects";
 
 describe("DashboardProjects", () => {
   it("renders a card per project", () => {
