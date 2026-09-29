@@ -18,3 +18,31 @@ export type Task = {
   commentCount: number;
   updatedAt: string;
 };
+
+export type DashboardStats = {
+  projectCount: number;
+  totalTasks: number;
+  openTasks: number;
+  peopleCount: number;
+  todoTasks: number;
+  inProgressTasks: number;
+  doneTasks: number;
+};
+
+export type DashboardProject = {
+  id: number;
+  name: string;
+  description: string;
+  taskCount: number;
+  openTaskCount: number;
+  peopleCount: number;
+};
+
+export type DashboardTask = {
+  id: number;
+  title: string;
+  projectName: string;
+  status: TaskStatus;
+  assigneeName: string;
+  updatedAt: string;
+};
