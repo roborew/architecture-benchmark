@@ -1,15 +1,49 @@
 import { test, expect } from "@playwright/test";
 
-test("projects list renders seeded projects", async ({ page }) => {
+test.beforeEach(async ({ page }) => {
   await page.goto("/tasks");
+});
 
-  // This testid is carried over from the reference HTML so every
-  // benchmark app can be scored against the same contract.
-  // await expect(page.getByTestId("projects-list-ready")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+test("shows the all tasks heading and page title", async ({ page }) => {
+  await expect(
+    page.getByRole("heading", { name: "All tasks", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByTestId("page-title")).toHaveText("All tasks");
+});
+
+test("renders the filter controls", async ({ page }) => {
+  await expect(
+    page.getByRole("searchbox", { name: "Search tasks" }),
+  ).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Project" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Assignee" })).toBeVisible();
+});
+
+test("lists seeded tasks with their project", async ({ page }) => {
+  const main = page.getByRole("main");
 
   await expect(
-    page.getByRole("cell", { name: "Website redesign" }),
+    main.getByRole("link", { name: "Draft navigation model" }),
   ).toBeVisible();
-  await expect(page.getByText("3 projects")).toBeVisible();
+  await expect(
+    main
+      .getByRole("row", { name: /Review API response shapes/ })
+      .getByText("Mobile application"),
+  ).toBeVisible();
+});
+
+test("shows the result count and pagination", async ({ page }) => {
+  await expect(page.getByText("Showing 1-4 of 6")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
+});
+
+test("a task title links to the task detail", async ({ page }) => {
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Draft navigation model" })
+    .click();
+
+  await expect(page).toHaveURL("/tasks/101");
 });
