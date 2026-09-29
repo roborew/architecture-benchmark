@@ -1,13 +1,32 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import Navigation from "./navigation";
 import { NAV_ITEMS } from "@/lib/nav";
 
+const usePathname = vi.fn(() => "/");
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => usePathname(),
+}));
+
 describe("Navigation", () => {
+  beforeEach(() => {
+    usePathname.mockReturnValue("/");
+  });
+
   it("renders a nav landmark", () => {
     render(<Navigation />);
 
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+  });
+
+  it("links the brand to the dashboard", () => {
+    render(<Navigation />);
+
+    expect(screen.getByRole("link", { name: "Workspace" })).toHaveAttribute(
+      "href",
+      "/",
+    );
   });
 
   it("renders one link per nav item", () => {
@@ -15,7 +34,9 @@ describe("Navigation", () => {
 
     const nav = screen.getByRole("navigation");
 
-    expect(within(nav).getAllByRole("link")).toHaveLength(NAV_ITEMS.length);
+    expect(within(nav).getAllByRole("link")).toHaveLength(
+      NAV_ITEMS.length + 1, // + the brand link
+    );
   });
 
   NAV_ITEMS.forEach((item) => {
@@ -34,10 +55,42 @@ describe("Navigation", () => {
     render(<Navigation />);
 
     const nav = screen.getByRole("navigation");
-    const links = within(nav).getAllByRole("link");
+    const links = within(nav).getAllByRole("link").slice(1);
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual(
       NAV_ITEMS.map((item) => item.href),
+    );
+  });
+
+  it("marks the current page with aria-current", () => {
+    usePathname.mockReturnValue("/projects");
+
+    render(<Navigation />);
+
+    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("marks the dashboard on the root path", () => {
+    usePathname.mockReturnValue("/");
+
+    render(<Navigation />);
+
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("does not mark a page when the path does not match", () => {
+    usePathname.mockReturnValue("/users");
+
+    render(<Navigation />);
+
+    expect(screen.getByRole("link", { name: "Projects" })).not.toHaveAttribute(
+      "aria-current",
     );
   });
 });
