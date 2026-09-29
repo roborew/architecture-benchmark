@@ -26,10 +26,13 @@ describe("RecentTasks", () => {
   it("humanises the status", () => {
     render(<RecentTasks tasks={dashboardRecentTasks} />);
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    const inProgress = screen.getByRole("row", {
+      name: /Draft navigation model/,
+    });
+    const todo = screen.getByRole("row", { name: /Confirm breakpoint rules/ });
 
-    expect(within(row).getByText("In progress")).toBeInTheDocument();
-    expect(within(row).getByText("To do")).toBeInTheDocument();
+    expect(within(inProgress).getByText("In progress")).toBeInTheDocument();
+    expect(within(todo).getByText("To do")).toBeInTheDocument();
   });
 
   it("shows assignee and updated columns", () => {
