@@ -35,8 +35,14 @@ test("lists seeded tasks with their project", async ({ page }) => {
 
 test("shows the result count and pagination", async ({ page }) => {
   await expect(page.getByText("Showing 1-4 of 6")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
+  // exact: the Next.js dev tools button also matches "Next" as a
+  // substring when the suite runs against the dev server.
+  await expect(
+    page.getByRole("button", { name: "Previous", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Next", exact: true }),
+  ).toBeEnabled();
 });
 
 test("a task title links to the task detail", async ({ page }) => {

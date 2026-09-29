@@ -46,3 +46,15 @@ export type DashboardTask = {
   assigneeName: string;
   updatedAt: string;
 };
+
+export type User = {
+  id: number;
+  name: string;
+  email: string;
+  assignedTaskCount: number;
+  openTaskCount: number;
+  commentCount: number;
+};
+
+// A task joined with its project name, for the workspace-wide list.
+export type TaskWithProject = Task & { projectName: string };

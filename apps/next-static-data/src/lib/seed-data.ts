@@ -1,4 +1,12 @@
-import type { DashboardProject, DashboardStats, DashboardTask, Project, Task } from "@/types";
+import type {
+  DashboardProject,
+  DashboardStats,
+  DashboardTask,
+  Project,
+  Task,
+  TaskWithProject,
+  User,
+} from "@/types";
 
 export const projects: Project[] = [
   {
@@ -141,10 +149,47 @@ export const dashboardProjects: DashboardProject[] = [
   {
     id: 2,
     name: "Mobile application",
-    description:
-      "Ship the first mobile experience for existing workspace members.",
+    description: "Ship the first mobile experience for workspace members.",
     taskCount: 2,
     openTaskCount: 2,
     peopleCount: 2,
   },
 ];
+
+export const people: User[] = [
+  {
+    id: 1,
+    name: "Robin Andrew",
+    email: "robin@example.test",
+    assignedTaskCount: 2,
+    openTaskCount: 2,
+    commentCount: 1,
+  },
+  {
+    id: 2,
+    name: "Alex Morgan",
+    email: "alex@example.test",
+    assignedTaskCount: 2,
+    openTaskCount: 2,
+    commentCount: 1,
+  },
+  {
+    id: 3,
+    name: "Sam Taylor",
+    email: "sam@example.test",
+    assignedTaskCount: 2,
+    openTaskCount: 1,
+    commentCount: 0,
+  },
+];
+
+// Derived from projectTasks so the workspace-wide list cannot drift
+// from the per-project seed data.
+export const allTasks: TaskWithProject[] = Object.entries(projectTasks).flatMap(
+  ([projectId, tasks]) => {
+    const projectName =
+      projects.find((project) => project.id === Number(projectId))?.name ?? "";
+
+    return tasks.map((task) => ({ ...task, projectName }));
+  },
+);
