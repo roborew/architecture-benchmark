@@ -34,9 +34,7 @@ describe("Navigation", () => {
 
     const nav = screen.getByRole("navigation");
 
-    expect(within(nav).getAllByRole("link")).toHaveLength(
-      NAV_ITEMS.length + 1, // + the brand link
-    );
+    expect(within(nav).getAllByRole("link")).toHaveLength(NAV_ITEMS.length);
   });
 
   NAV_ITEMS.forEach((item) => {
@@ -55,7 +53,8 @@ describe("Navigation", () => {
     render(<Navigation />);
 
     const nav = screen.getByRole("navigation");
-    const links = within(nav).getAllByRole("link").slice(1);
+    // The brand link sits outside <nav>, so every link in here is a nav item.
+    const links = within(nav).getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual(
       NAV_ITEMS.map((item) => item.href),
