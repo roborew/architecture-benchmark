@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ProjectList } from "./project-list";
 import { makeProject } from "@tests/fixtures/builders";
+
+// The row's delete control is a Client Component importing the action.
+vi.mock("@/lib/actions", () => ({
+  deleteProject: vi.fn(async () => ({})),
+}));
 
 describe("ProjectList", () => {
   it("renders a row for each project plus a header", () => {
@@ -71,5 +76,38 @@ describe("ProjectList", () => {
     render(<ProjectList projects={[]} />);
 
     expect(screen.getByText("No projects yet.")).toBeInTheDocument();
+  });
+
+  it("links each row to its edit page", () => {
+    const project = makeProject({ id: 7, name: "Editable project" });
+
+    render(<ProjectList projects={[project]} />);
+
+    const row = screen.getByRole("row", { name: new RegExp(project.name) });
+
+    expect(
+      within(row).getByRole("link", { name: `Edit ${project.name}` }),
+    ).toHaveAttribute("href", `/projects/${project.id}/edit`);
+  });
+
+  it("offers a delete control naming its project", () => {
+    const project = makeProject({ id: 7, name: "Deletable project" });
+
+    render(<ProjectList projects={[project]} />);
+
+    const row = screen.getByRole("row", { name: new RegExp(project.name) });
+
+    expect(
+      within(row).getByRole("button", { name: `Delete ${project.name}` }),
+    ).toBeInTheDocument();
+  });
+
+  it("submits delete through a form so it works without JavaScript", () => {
+    const project = makeProject({ id: 7, name: "Deletable project" });
+
+    const { container } = render(<ProjectList projects={[project]} />);
+
+    const forms = container.querySelectorAll("form");
+    expect(forms).toHaveLength(1);
   });
 });
