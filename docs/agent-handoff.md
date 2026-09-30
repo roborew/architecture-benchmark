@@ -28,9 +28,9 @@ preserved under `testing-rig/results/` (gitignored, local only).
 ## M1 — Standalone template (scaffolded, validated except copy-out gate)
 
 - **Files:** complete `apps/template-next` (see its README): Next.js 15 App
-  Router, Drizzle + postgres.js, RSC direct-DB reads, Server Action
-  mutations, keyset pagination, deterministic seed/reset/export entry points,
-  golden-digest unit test, copy-out smoke script.
+  Router, raw `node-postgres` + hand-written SQL, RSC direct-DB reads, Server
+  Action mutations, keyset pagination, deterministic seed/reset/export entry
+  points, golden-digest unit test, copy-out smoke script.
 - **Checks actually run and passed:**
   - `pnpm test` — 8/8 (seed determinism, mapping, golden digest).
   - `pnpm typecheck` — clean; `pnpm build` — clean, all routes dynamic.
