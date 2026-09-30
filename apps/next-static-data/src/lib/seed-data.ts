@@ -16,6 +16,7 @@ export const projects: Project[] = [
     description: "Refresh the public website and onboarding experience.",
     taskCount: 3,
     openTaskCount: 2,
+    peopleCount: 3,
     createdAt: "2026-09-27",
   },
   {
@@ -25,6 +26,7 @@ export const projects: Project[] = [
       "Ship the first mobile experience for existing workspace members.",
     taskCount: 2,
     openTaskCount: 2,
+    peopleCount: 2,
     createdAt: "2026-09-21",
   },
   {
@@ -34,6 +36,7 @@ export const projects: Project[] = [
       "Move the service and supporting processes to the new platform.",
     taskCount: 1,
     openTaskCount: 1,
+    peopleCount: 1,
     createdAt: "2026-09-12",
   },
 ];
