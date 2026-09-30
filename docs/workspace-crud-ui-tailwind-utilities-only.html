@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspace — CRUD benchmark UI reference</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 950: '#14233b', 900: '#1e314e', 800: '#2c4569' },
+            brand: { 50: '#f1f5ff', 100: '#e3ebff', 500: '#5576e8', 600: '#4266df', 700: '#3455c5' }
+          },
+          boxShadow: { panel: '0 3px 14px rgba(36, 51, 77, .05)' }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="min-w-[320px] bg-slate-50 font-sans text-slate-800 antialiased">
+  <div class="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
+    <aside class="flex bg-navy-950 px-4 py-3 text-slate-300 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[248px] lg:flex-col lg:px-4 lg:py-7" aria-label="Main navigation">
+      <button class="flex items-center gap-3 px-1 text-left lg:px-3 lg:pb-8" type="button" data-page-target="dashboard"><span class="grid h-8 w-8 place-items-center rounded-[9px] bg-blue-200 text-[17px] font-extrabold text-navy-950">W</span><span class="text-[17px] font-extrabold tracking-[-.035em] text-white">Workspace</span></button>
+      <nav class="ml-auto flex items-center gap-1 lg:ml-0 lg:block">
+        <p class="hidden px-3 pb-2 pt-2 text-[10px] font-bold uppercase tracking-[.14em] text-slate-400 lg:block">Workspace</p>
+        <button class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold text-white bg-[#314c73] transition hover:bg-navy-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 lg:mt-1 lg:w-full lg:text-[13px] nav-link is-active" type="button" data-page-target="dashboard"><span aria-hidden="true">⌂</span><span>Dashboard</span></button>
+        <button class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold text-slate-300 transition hover:bg-navy-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 lg:mt-1 lg:w-full lg:text-[13px] nav-link" type="button" data-page-target="projects"><span aria-hidden="true">▦</span><span>Projects</span></button>
+        <button class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold text-slate-300 transition hover:bg-navy-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 lg:mt-1 lg:w-full lg:text-[13px] nav-link" type="button" data-page-target="tasks"><span aria-hidden="true">☷</span><span>All tasks</span></button>
+        <button class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold text-slate-300 transition hover:bg-navy-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 lg:mt-1 lg:w-full lg:text-[13px] nav-link" type="button" data-page-target="users"><span aria-hidden="true">◉</span><span>People</span></button>
+      </nav>
+      <div class="mt-auto hidden border-t border-slate-600 px-3 pt-4 text-[11px] leading-5 text-slate-300 lg:block"><strong class="block text-[12px] text-white">Style reference</strong>Static Tailwind examples for the CRUD benchmark applications.</div>
+    </aside>
+
+    <main class="min-w-0 lg:col-start-2">
+      <header class="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-8"><div class="flex items-center gap-2 text-[12px] text-slate-500"><span>Demo workspace</span><span aria-hidden="true">/</span><strong id="page-title" class="font-bold text-slate-700">Dashboard</strong></div><div class="flex items-center gap-3"><span class="hidden rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 sm:inline">Static example</span><span class="grid h-7 w-7 place-items-center rounded-full bg-indigo-400 text-[10px] font-bold text-white">RA</span></div></header>
+
+      <div class="mx-auto w-full max-w-[1240px] px-4 py-7 sm:px-8 sm:py-9">
+        <div id="main-content">
+          <!-- Dashboard -->
+          <section data-page="dashboard">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">Dashboard</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">An overview of projects, work in progress, and recent task activity.</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="user-form">＋ New user</button>
+                <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="project-form">＋ New project</button>
+                <button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="task-form">＋ New task</button>
+              </div>
+            </div>
+
+            <section class="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Projects</span><strong class="mt-3 block text-[25px] font-extrabold tracking-[-.045em] text-slate-800">3</strong><p class="mt-1 text-[11px] text-slate-400">Workspace projects</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Total tasks</span><strong class="mt-3 block text-[25px] font-extrabold tracking-[-.045em] text-slate-800">6</strong><p class="mt-1 text-[11px] text-slate-400">Across all projects</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Open tasks</span><strong class="mt-3 block text-[25px] font-extrabold tracking-[-.045em] text-slate-800">5</strong><p class="mt-1 text-[11px] text-slate-400">To do and in progress</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">People</span><strong class="mt-3 block text-[25px] font-extrabold tracking-[-.045em] text-slate-800">3</strong><p class="mt-1 text-[11px] text-slate-400">Workspace members</p></div>
+            </section>
+
+            <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_350px]">
+              <div class="grid gap-5">
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+                    <div>
+                      <h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Recent tasks</h2>
+                      <p class="mt-0.5 text-[11px] text-slate-400">Latest task activity across every project</p>
+                    </div>
+                    <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" type="button" data-page-target="tasks">View all tasks</button>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full min-w-[660px] text-left text-[12px]">
+                      <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                        <tr><th class="px-3 py-3 first:px-5 last:px-5">Task</th><th class="px-3 py-3 first:px-5 last:px-5">Status</th><th class="px-3 py-3 first:px-5 last:px-5">Assignee</th><th class="px-3 py-3 first:px-5 last:px-5">Updated</th></tr>
+                      </thead>
+                      <tbody class="text-slate-500">
+                        <tr class="border-b border-slate-100 transition hover:bg-slate-50">
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Draft navigation model</button><span class="mt-0.5 block text-[10px] text-slate-400">Website redesign</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Robin Andrew</td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Today</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 transition hover:bg-slate-50">
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Confirm breakpoint rules</button><span class="mt-0.5 block text-[10px] text-slate-400">Website redesign</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Alex Morgan</td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Today</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 transition hover:bg-slate-50">
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Review API response shapes</button><span class="mt-0.5 block text-[10px] text-slate-400">Mobile application</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Alex Morgan</td>
+                          <td class="px-3 py-3.5 first:px-5 last:px-5">Yesterday</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+                    <div>
+                      <h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Projects</h2>
+                      <p class="mt-0.5 text-[11px] text-slate-400">Open a project to view and manage its tasks</p>
+                    </div>
+                    <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" type="button" data-page-target="projects">View projects</button>
+                  </div>
+                  <div class="grid gap-3 p-5 sm:grid-cols-2">
+                    <button type="button" data-page-target="project-detail" class="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-panel transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">
+                      <div class="flex items-start justify-between gap-3">
+                        <div><h3 class="font-bold text-slate-700">Website redesign</h3><p class="mt-1 text-[11px] leading-5 text-slate-500">Refresh the public website and onboarding experience.</p></div>
+                        <span class="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">3</span>
+                      </div>
+                      <div class="mt-4 flex gap-3 border-t border-slate-100 pt-3 text-[11px] text-slate-500"><b class="text-slate-700">2</b> open <b class="text-slate-700">3</b> people</div>
+                    </button>
+                    <button type="button" data-page-target="project-detail" class="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-panel transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">
+                      <div class="flex items-start justify-between gap-3">
+                        <div><h3 class="font-bold text-slate-700">Mobile application</h3><p class="mt-1 text-[11px] leading-5 text-slate-500">Ship the first mobile experience for workspace members.</p></div>
+                        <span class="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">2</span>
+                      </div>
+                      <div class="mt-4 flex gap-3 border-t border-slate-100 pt-3 text-[11px] text-slate-500"><b class="text-slate-700">2</b> open <b class="text-slate-700">2</b> people</div>
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="grid gap-5">
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Quick actions</h2></div>
+                  <div class="grid gap-2 p-4">
+                    <button type="button" data-page-target="project-form" class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-left text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50">＋ Create a project</button>
+                    <button type="button" data-page-target="task-form" class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-left text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50">＋ Add a task</button>
+                    <button type="button" data-page-target="user-form" class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-left text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50">＋ Add a workspace member</button>
+                  </div>
+                </section>
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Work summary</h2></div>
+                  <dl class="p-5 text-[12px]">
+                    <div class="flex justify-between border-b border-slate-100 py-2.5 last:border-0"><dt class="text-slate-500">To do</dt><dd class="font-bold text-slate-700">3</dd></div>
+                    <div class="flex justify-between border-b border-slate-100 py-2.5 last:border-0"><dt class="text-slate-500">In progress</dt><dd class="font-bold text-slate-700">2</dd></div>
+                    <div class="flex justify-between py-2.5"><dt class="text-slate-500">Done</dt><dd class="font-bold text-slate-700">1</dd></div>
+                  </dl>
+                </section>
+              </aside>
+            </div>
+          </section>
+
+          <!-- Projects -->
+          <section data-page="projects" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400">Workspace / Projects</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">Projects</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Organise work into projects, then add and assign tasks within them.</p>
+              </div>
+              <button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="project-form">＋ New project</button>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">All projects</h2><span class="text-[11px] text-slate-400">3 projects</span></div>
+              <div class="p-4">
+                <label class="relative block">
+                  <span class="pointer-events-none absolute left-3 top-2.5 text-slate-400">⌕</span>
+                  <input type="search" class="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="Search projects…">
+                </label>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[660px] text-left text-[12px]">
+                  <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                    <tr><th class="px-3 py-3 first:px-5 last:px-5">Project</th><th class="px-3 py-3 first:px-5 last:px-5">Tasks</th><th class="px-3 py-3 first:px-5 last:px-5">Open</th><th class="px-3 py-3 first:px-5 last:px-5">Created</th></tr>
+                  </thead>
+                  <tbody class="text-slate-500">
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="project-detail">Website redesign</button><span class="mt-0.5 block text-[10px] text-slate-400">Refresh the public website and onboarding experience.</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">3</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">27 Sep 2026</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="project-detail">Mobile application</button><span class="mt-0.5 block text-[10px] text-slate-400">Ship the first mobile experience for existing workspace members.</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">21 Sep 2026</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="project-detail">Platform migration</button><span class="mt-0.5 block text-[10px] text-slate-400">Move the service and supporting processes to the new platform.</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td><td class="px-3 py-3.5 first:px-5 last:px-5">12 Sep 2026</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <!-- Project detail -->
+          <section data-page="project-detail" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400"><button type="button" class="hover:text-brand-600" data-page-target="projects">Projects</button> / Website redesign</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">Website redesign</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Refresh the public website and onboarding experience.</p>
+              </div>
+              <div class="flex gap-2">
+                <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" type="button" data-page-target="project-form">Edit project</button>
+                <button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="task-form">＋ New task</button>
+              </div>
+            </div>
+            <section class="mb-5 grid grid-cols-3 gap-3">
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Tasks</span><strong class="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">3</strong><p class="mt-1 text-[11px] text-slate-400">In this project</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Open</span><strong class="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">2</strong><p class="mt-1 text-[11px] text-slate-400">Not done yet</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">People</span><strong class="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">3</strong><p class="mt-1 text-[11px] text-slate-400">Assigned members</p></div>
+            </section>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Project tasks</h2>
+                <div class="flex gap-2">
+                  <label class="relative block">
+                    <span class="pointer-events-none absolute left-3 top-2 text-slate-400">⌕</span>
+                    <input type="search" class="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48" placeholder="Search tasks…">
+                  </label>
+                  <select class="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] outline-none focus:border-brand-500"><option>All statuses</option><option>To do</option><option>In progress</option><option>Done</option></select>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[660px] text-left text-[12px]">
+                  <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                    <tr><th class="px-3 py-3 first:px-5 last:px-5">Task</th><th class="px-3 py-3 first:px-5 last:px-5">Status</th><th class="px-3 py-3 first:px-5 last:px-5">Assignee</th><th class="px-3 py-3 first:px-5 last:px-5">Comments</th><th class="px-3 py-3 first:px-5 last:px-5">Updated</th></tr>
+                  </thead>
+                  <tbody class="text-slate-500">
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Draft navigation model</button><span class="mt-0.5 block text-[10px] text-slate-400">#101</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-indigo-50 align-middle text-[9px] font-extrabold text-indigo-500">RA</span>Robin Andrew</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">Today</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Confirm breakpoint rules</button><span class="mt-0.5 block text-[10px] text-slate-400">#102</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-indigo-50 align-middle text-[9px] font-extrabold text-indigo-500">AM</span>Alex Morgan</td><td class="px-3 py-3.5 first:px-5 last:px-5">0</td><td class="px-3 py-3.5 first:px-5 last:px-5">Today</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Prepare content inventory</button><span class="mt-0.5 block text-[10px] text-slate-400">#103</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">Done</span></td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-indigo-50 align-middle text-[9px] font-extrabold text-indigo-500">ST</span>Sam Taylor</td><td class="px-3 py-3.5 first:px-5 last:px-5">0</td><td class="px-3 py-3.5 first:px-5 last:px-5">Yesterday</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <!-- All tasks -->
+          <section data-page="tasks" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400">Workspace / All tasks</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">All tasks</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">A workspace-wide view of tasks across every project.</p>
+              </div>
+              <button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="task-form">＋ New task</button>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <div class="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 lg:flex-row">
+                <label class="relative block flex-1">
+                  <span class="pointer-events-none absolute left-3 top-2.5 text-slate-400">⌕</span>
+                  <input type="search" class="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="Search tasks…">
+                </label>
+                <select class="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>All projects</option><option>Website redesign</option><option>Mobile application</option></select>
+                <select class="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>All statuses</option><option>To do</option><option>In progress</option><option>Done</option></select>
+                <select class="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>All assignees</option><option>Robin Andrew</option><option>Alex Morgan</option><option>Sam Taylor</option></select>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[660px] text-left text-[12px]">
+                  <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                    <tr><th class="px-3 py-3 first:px-5 last:px-5">Task</th><th class="px-3 py-3 first:px-5 last:px-5">Project</th><th class="px-3 py-3 first:px-5 last:px-5">Status</th><th class="px-3 py-3 first:px-5 last:px-5">Assignee</th><th class="px-3 py-3 first:px-5 last:px-5">Comments</th><th class="px-3 py-3 first:px-5 last:px-5">Updated</th></tr>
+                  </thead>
+                  <tbody class="text-slate-500">
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Draft navigation model</button><span class="mt-0.5 block text-[10px] text-slate-400">#101</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Website redesign</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Robin Andrew</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">Today</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Confirm breakpoint rules</button><span class="mt-0.5 block text-[10px] text-slate-400">#102</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Website redesign</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Alex Morgan</td><td class="px-3 py-3.5 first:px-5 last:px-5">0</td><td class="px-3 py-3.5 first:px-5 last:px-5">Today</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Review API response shapes</button><span class="mt-0.5 block text-[10px] text-slate-400">#104</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Mobile application</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Alex Morgan</td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td><td class="px-3 py-3.5 first:px-5 last:px-5">Yesterday</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Write migration checklist</button><span class="mt-0.5 block text-[10px] text-slate-400">#106</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Platform migration</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">To do</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Sam Taylor</td><td class="px-3 py-3.5 first:px-5 last:px-5">0</td><td class="px-3 py-3.5 first:px-5 last:px-5">3 days ago</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="flex items-center justify-between px-5 py-4 text-[11px] text-slate-400"><span>Showing 1–4 of 6</span><div class="flex gap-2"><button class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40" disabled>Previous</button><button class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div>
+            </section>
+          </section>
+
+          <!-- People -->
+          <section data-page="users" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400">Workspace / People</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">People</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Manage workspace members who are assigned tasks and author comments.</p>
+              </div>
+              <button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button" data-page-target="user-form">＋ New user</button>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Workspace members</h2><span class="text-[11px] text-slate-400">3 people</span></div>
+              <div class="p-4">
+                <label class="relative block">
+                  <span class="pointer-events-none absolute left-3 top-2.5 text-slate-400">⌕</span>
+                  <input type="search" class="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="Search people…">
+                </label>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[660px] text-left text-[12px]">
+                  <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                    <tr><th class="px-3 py-3 first:px-5 last:px-5">Person</th><th class="px-3 py-3 first:px-5 last:px-5">Assigned tasks</th><th class="px-3 py-3 first:px-5 last:px-5">Open tasks</th><th class="px-3 py-3 first:px-5 last:px-5">Comments</th></tr>
+                  </thead>
+                  <tbody class="text-slate-500">
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button type="button" class="flex items-center gap-2 text-left" data-page-target="user-detail"><span class="mr-2 inline-grid h-8 w-8 place-items-center rounded-full bg-indigo-50 align-middle text-[10px] font-extrabold text-indigo-500">RA</span><span><b class="block text-slate-700">Robin Andrew</b><small class="block text-[11px] text-slate-400">robin@example.test</small></span></button></td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button type="button" class="flex items-center gap-2 text-left" data-page-target="user-detail"><span class="mr-2 inline-grid h-8 w-8 place-items-center rounded-full bg-indigo-50 align-middle text-[10px] font-extrabold text-indigo-500">AM</span><span><b class="block text-slate-700">Alex Morgan</b><small class="block text-[11px] text-slate-400">alex@example.test</small></span></button></td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button type="button" class="flex items-center gap-2 text-left" data-page-target="user-detail"><span class="mr-2 inline-grid h-8 w-8 place-items-center rounded-full bg-indigo-50 align-middle text-[10px] font-extrabold text-indigo-500">ST</span><span><b class="block text-slate-700">Sam Taylor</b><small class="block text-[11px] text-slate-400">sam@example.test</small></span></button></td><td class="px-3 py-3.5 first:px-5 last:px-5">2</td><td class="px-3 py-3.5 first:px-5 last:px-5">1</td><td class="px-3 py-3.5 first:px-5 last:px-5">0</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <!-- User detail -->
+          <section data-page="user-detail" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400"><button type="button" class="hover:text-brand-600" data-page-target="users">People</button> / Robin Andrew</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">Robin Andrew</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">robin@example.test</p>
+              </div>
+              <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" type="button" data-page-target="user-form">Edit user</button>
+            </div>
+            <section class="mb-5 grid grid-cols-2 gap-3">
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Assigned tasks</span><strong class="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">2</strong><p class="mt-1 text-[11px] text-slate-400">Across projects</p></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"><span class="block text-[11px] font-semibold text-slate-500">Comments authored</span><strong class="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">1</strong><p class="mt-1 text-[11px] text-slate-400">On assigned tasks</p></div>
+            </section>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Assigned tasks</h2></div>
+              <div class="overflow-x-auto">
+                <table class="w-full min-w-[660px] text-left text-[12px]">
+                  <thead class="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
+                    <tr><th class="px-3 py-3 first:px-5 last:px-5">Task</th><th class="px-3 py-3 first:px-5 last:px-5">Project</th><th class="px-3 py-3 first:px-5 last:px-5">Status</th><th class="px-3 py-3 first:px-5 last:px-5">Updated</th></tr>
+                  </thead>
+                  <tbody class="text-slate-500">
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Draft navigation model</button></td><td class="px-3 py-3.5 first:px-5 last:px-5">Website redesign</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">Today</td></tr>
+                    <tr class="border-b border-slate-100 transition hover:bg-slate-50"><td class="px-3 py-3.5 first:px-5 last:px-5"><button class="font-bold text-slate-700 hover:text-brand-700" type="button" data-page-target="task-detail">Build profile screen</button></td><td class="px-3 py-3.5 first:px-5 last:px-5">Mobile application</td><td class="px-3 py-3.5 first:px-5 last:px-5"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></td><td class="px-3 py-3.5 first:px-5 last:px-5">2 days ago</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <!-- Task detail -->
+          <section data-page="task-detail" class="hidden">
+            <div class="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p class="mb-2 text-[11px] font-medium text-slate-400"><button type="button" class="hover:text-brand-600" data-page-target="projects">Projects</button> / <button type="button" class="hover:text-brand-600" data-page-target="project-detail">Website redesign</button> / Draft navigation model</p>
+                <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">Draft navigation model</h1>
+                <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Project: Website redesign</p>
+              </div>
+              <div class="flex gap-2">
+                <button class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" type="button" data-page-target="task-form">Edit task</button>
+                <button class="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 transition hover:bg-red-100" type="button">Delete task</button>
+              </div>
+            </div>
+            <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div class="grid gap-5">
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel"><div class="p-5"><h2 class="mb-2 text-[15px] font-bold tracking-[-.02em] text-slate-800">Description</h2><p class="text-[13px] leading-7 text-slate-600">Map the navigation structure for the public and authenticated product areas.</p></div></section>
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Comments <span class="text-slate-400">(2)</span></h2></div>
+                  <div class="px-5">
+                    <article class="border-b border-slate-100 py-4 last:border-0"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-full bg-indigo-50 text-[9px] font-extrabold text-indigo-500">AM</span><b class="text-[12px] text-slate-700">Alex Morgan</b><small class="text-[11px] text-slate-400">Today, 09:42</small></div><p class="ml-9 mt-2 text-[12px] leading-6 text-slate-600">I have added the initial content grouping for review.</p></article>
+                    <article class="border-b border-slate-100 py-4 last:border-0"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-full bg-indigo-50 text-[9px] font-extrabold text-indigo-500">RA</span><b class="text-[12px] text-slate-700">Robin Andrew</b><small class="text-[11px] text-slate-400">Today, 10:18</small></div><p class="ml-9 mt-2 text-[12px] leading-6 text-slate-600">Thanks — I will use that to confirm the signed-in navigation.</p></article>
+                  </div>
+                  <form class="border-t border-slate-100 p-5">
+                    <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="comment-body">Add comment</label>
+                    <textarea id="comment-body" class="mb-4 min-h-[92px] w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="Write a comment…"></textarea>
+                    <div class="mt-3 flex items-center justify-between gap-3"><label class="text-[11px] text-slate-500">Author <select class="ml-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"><option>Robin Andrew</option><option>Alex Morgan</option></select></label><button class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" type="button">Add comment</button></div>
+                  </form>
+                </section>
+              </div>
+              <aside>
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+                  <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-[15px] font-bold tracking-[-.02em] text-slate-800">Task details</h2></div>
+                  <dl class="p-5 text-[12px]">
+                    <div class="mb-4 last:mb-0"><dt class="text-[10px] font-bold uppercase tracking-[.08em] text-slate-400">Status</dt><dd class="mt-1 font-semibold text-slate-700"><span class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">In progress</span></dd></div>
+                    <div class="mb-4 last:mb-0"><dt class="text-[10px] font-bold uppercase tracking-[.08em] text-slate-400">Project</dt><dd class="mt-1 font-semibold text-slate-700">Website redesign</dd></div>
+                    <div class="mb-4 last:mb-0"><dt class="text-[10px] font-bold uppercase tracking-[.08em] text-slate-400">Assigned to</dt><dd class="mt-1 font-semibold text-slate-700">Robin Andrew</dd></div>
+                    <div class="mb-4 last:mb-0"><dt class="text-[10px] font-bold uppercase tracking-[.08em] text-slate-400">Updated</dt><dd class="mt-1 text-slate-600">Today</dd></div>
+                  </dl>
+                </section>
+              </aside>
+            </div>
+          </section>
+
+          <!-- Project form -->
+          <section data-page="project-form" class="hidden">
+            <div class="mb-7">
+              <p class="mb-2 text-[11px] font-medium text-slate-400">Projects / New project</p>
+              <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">New project</h1>
+              <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Create a project before adding its tasks.</p>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <form class="max-w-2xl p-5">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="project-name">Project name</label>
+                <input id="project-name" class="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="e.g. Website redesign">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="project-description">Description</label>
+                <textarea id="project-description" class="mb-4 min-h-[92px] w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="What is this project for?"></textarea>
+                <div class="mt-5 flex justify-end gap-2"><button type="button" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" data-page-target="projects">Cancel</button><button type="button" class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">Create project</button></div>
+              </form>
+            </section>
+          </section>
+
+          <!-- User form -->
+          <section data-page="user-form" class="hidden">
+            <div class="mb-7">
+              <p class="mb-2 text-[11px] font-medium text-slate-400">People / New user</p>
+              <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">New user</h1>
+              <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Add a workspace member before assigning them tasks.</p>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <form class="max-w-2xl p-5">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="user-name">Name</label>
+                <input id="user-name" class="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="e.g. Alex Morgan">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="user-email">Email</label>
+                <input id="user-email" type="email" class="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="alex@example.test">
+                <div class="mt-5 flex justify-end gap-2"><button type="button" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" data-page-target="users">Cancel</button><button type="button" class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">Create user</button></div>
+              </form>
+            </section>
+          </section>
+
+          <!-- Task form -->
+          <section data-page="task-form" class="hidden">
+            <div class="mb-7">
+              <p class="mb-2 text-[11px] font-medium text-slate-400">Tasks / New task</p>
+              <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">New task</h1>
+              <p class="mt-1.5 text-[13px] leading-6 text-slate-500">Select the project and user that this task belongs to.</p>
+            </div>
+            <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+              <form class="max-w-3xl p-5">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="task-title">Title</label>
+                <input id="task-title" class="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="What needs to be done?">
+                <label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="task-description">Description</label>
+                <textarea id="task-description" class="mb-4 min-h-[92px] w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100" placeholder="Add context (optional)"></textarea>
+                <div class="grid gap-4 sm:grid-cols-3">
+                  <div><label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="task-project">Project</label><select id="task-project" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>Website redesign</option><option>Mobile application</option></select></div>
+                  <div><label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="task-user">Assigned user</label><select id="task-user" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>Robin Andrew</option><option>Alex Morgan</option></select></div>
+                  <div><label class="mb-1.5 block text-[11px] font-bold text-slate-600" for="task-status">Status</label><select id="task-status" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[12px] outline-none focus:border-brand-500"><option>To do</option><option>In progress</option><option>Done</option></select></div>
+                </div>
+                <div class="mt-5 flex justify-end gap-2"><button type="button" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50" data-page-target="tasks">Cancel</button><button type="button" class="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">Create task</button></div>
+              </form>
+            </section>
+          </section>
+        </div>
+        <p class="mt-6 text-[11px] leading-5 text-slate-400">Static Tailwind styling reference. The small script only hides and reveals pre-rendered page sections; it does not render data, mutate state, or implement CRUD behaviour.</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const pageTitles = {
+      dashboard: 'Dashboard', projects: 'Projects', 'project-detail': 'Website redesign',
+      tasks: 'All tasks', users: 'People', 'user-detail': 'Robin Andrew',
+      'task-detail': 'Draft navigation model', 'project-form': 'New project',
+      'user-form': 'New user', 'task-form': 'New task'
+    };
+
+    function showPage(slug) {
+      const page = document.querySelector(`[data-page="${slug}"]`);
+      if (!page) return;
+      document.querySelectorAll('[data-page]').forEach(section => section.classList.toggle('hidden', section !== page));
+      document.querySelectorAll('.nav-link').forEach(button => {
+        const topLevel = { 'project-detail': 'projects', 'project-form': 'projects', 'task-detail': 'tasks', 'task-form': 'tasks', 'user-detail': 'users', 'user-form': 'users' }[slug] || slug;
+        button.classList.toggle('is-active', button.dataset.pageTarget === topLevel);
+      });
+      document.getElementById('page-title').textContent = pageTitles[slug] || 'Workspace';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.querySelectorAll('[data-page-target]').forEach(button => {
+      button.addEventListener('click', () => showPage(button.dataset.pageTarget));
+    });
+  </script>
+</body>
+</html>
