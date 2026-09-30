@@ -30,7 +30,10 @@ test("clicking Projects shows the projects page", async ({ page }) => {
   await sidebar(page).getByRole("link", { name: "Projects" }).click();
 
   await expect(page).toHaveURL("/projects");
-  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  // level 1: the page also has an "All projects" panel heading.
+  await expect(
+    page.getByRole("heading", { name: "Projects", level: 1 }),
+  ).toBeVisible();
 });
 
 test("clicking All tasks shows the tasks page", async ({ page }) => {
