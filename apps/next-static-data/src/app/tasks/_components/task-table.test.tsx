@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { TaskTable } from "./task-table";
 import { allTasks } from "@/lib/seed-data";
+import { TaskTable } from "./task-table";
 
 describe("TaskTable", () => {
   it("renders a row per task", () => {

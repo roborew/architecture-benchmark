@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { DashboardStats } from "./dashboard-stats";
 import { dashboardStats } from "@/lib/seed-data";
+import { DashboardStats } from "./dashboard-stats";
 
 describe("DashboardStats", () => {
   it("shows a card per workspace metric", () => {
