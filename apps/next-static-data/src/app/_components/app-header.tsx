@@ -13,10 +13,10 @@ export function AppHeader({ title }: { title: string }) {
         </strong>
       </div>
       <div className="flex items-center gap-3">
-        <span className="hidden rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 sm:inline">
+        <span className="hidden rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 sm:inline">
           Static example
         </span>
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-indigo-400 text-[10px] font-bold text-white">
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
           RA
         </span>
       </div>

@@ -1,16 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-// Reports accessibility violations without failing the run.
+// Asserts that no route has axe violations.
 //
-// The app copies its style from a static reference, which uses a
-// slate-400-on-white pairing for small supporting text. That is likely
-// to fail WCAG AA contrast, but whether to match the reference or
-// diverge from it is a product decision, not something a test should
-// silently decide. So these specs log the findings and pass.
-//
-// Once the policy is settled, replace the summary with
-// `expect(violations).toEqual([])`.
+// This previously only reported, while the app inherited three
+// contrast failures from the style reference. Those are fixed, so the
+// assertion is live and a regression will fail the build.
 
 type Route = { name: string; path: string };
 
@@ -29,6 +24,9 @@ const ROUTES: Route[] = [
 
 async function violationsOn(page: Page) {
   const results = await new AxeBuilder({ page }).analyze();
+
+  // Fold each violation into a readable line so a failure says which
+  // rule broke and on which page, rather than dumping the raw payload.
   return results.violations.map((violation) => ({
     id: violation.id,
     impact: violation.impact,
@@ -47,7 +45,7 @@ test.describe("accessibility", () => {
 
       if (violations.length > 0) {
         console.log(
-          `\n${route.name} (${route.path}) — ${violations.length} violation(s):` +
+          `\n${route.name} (${route.path}):` +
             violations
               .map(
                 (violation) =>
@@ -58,8 +56,7 @@ test.describe("accessibility", () => {
         );
       }
 
-      // Reporting only, see the note at the top of this file.
-      expect(Array.isArray(violations)).toBe(true);
+      expect(violations).toEqual([]);
     });
   }
 });

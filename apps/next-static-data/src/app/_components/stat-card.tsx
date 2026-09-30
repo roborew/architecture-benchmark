@@ -15,7 +15,7 @@ export function StatCard({
       <strong className="mt-3 block text-[25px] font-extrabold tracking-[-.045em] text-slate-800">
         {value}
       </strong>
-      <p className="mt-1 text-[11px] text-slate-400">{hint}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{hint}</p>
     </div>
   );
 }

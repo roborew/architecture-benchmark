@@ -25,7 +25,7 @@ export function TaskTable({
 }) {
   if (tasks.length === 0) {
     return (
-      <p className="px-5 py-6 text-[12px] text-slate-400">
+      <p className="px-5 py-6 text-[12px] text-slate-500">
         No tasks match these filters.
       </p>
     );
@@ -57,7 +57,7 @@ export function TaskTable({
                 >
                   {task.title}
                 </Link>
-                <span className="mt-0.5 block text-[10px] text-slate-400">
+                <span className="mt-0.5 block text-[10px] text-slate-500">
                   #{task.id}
                 </span>
               </td>
@@ -68,7 +68,7 @@ export function TaskTable({
               <td className={td}>
                 <span
                   aria-hidden="true"
-                  className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-indigo-50 align-middle text-[9px] font-extrabold text-indigo-500"
+                  className="mr-1.5 inline-grid h-6 w-6 place-items-center rounded-full bg-indigo-50 align-middle text-[9px] font-extrabold text-indigo-600"
                 >
                   {initials(task.assigneeName)}
                 </span>

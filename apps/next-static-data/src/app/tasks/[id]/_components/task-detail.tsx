@@ -4,7 +4,7 @@ import { StatusBadge } from "@/app/_components/status-badge";
 import { initials } from "@/lib/initials";
 
 const fieldLabel =
-  "text-[10px] font-bold uppercase tracking-[.08em] text-slate-400";
+  "text-[10px] font-bold uppercase tracking-[.08em] text-slate-500";
 
 function DetailsRow({
   label,
@@ -29,10 +29,10 @@ export function TaskDetail({
   comments: Comment[];
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-7 sm:px-8 sm:py-9">
+    <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <p className="mb-2 text-[11px] font-medium text-slate-400">
+          <p className="mb-2 text-[11px] font-medium text-slate-500">
             <Link href="/projects" className="hover:text-brand-600">
               Projects
             </Link>{" "}
@@ -76,12 +76,12 @@ export function TaskDetail({
               {/* The count comes from the rendered list so the heading
                   can never disagree with what is on screen. */}
               <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
-                Comments <span className="text-slate-400">({comments.length})</span>
+                Comments <span className="text-slate-500">({comments.length})</span>
               </h2>
             </div>
 
             {comments.length === 0 ? (
-              <p className="px-5 py-6 text-[12px] text-slate-400">
+              <p className="px-5 py-6 text-[12px] text-slate-500">
                 No comments yet.
               </p>
             ) : (
@@ -94,14 +94,14 @@ export function TaskDetail({
                     <div className="flex items-center gap-2">
                       <span
                         aria-hidden="true"
-                        className="grid h-7 w-7 place-items-center rounded-full bg-indigo-50 text-[9px] font-extrabold text-indigo-500"
+                        className="grid h-7 w-7 place-items-center rounded-full bg-indigo-50 text-[9px] font-extrabold text-indigo-600"
                       >
                         {initials(comment.authorName)}
                       </span>
                       <b className="text-[12px] text-slate-700">
                         {comment.authorName}
                       </b>
-                      <small className="text-[11px] text-slate-400">
+                      <small className="text-[11px] text-slate-500">
                         {comment.createdAt}
                       </small>
                     </div>
@@ -125,7 +125,7 @@ export function TaskDetail({
               <textarea
                 id="comment-body"
                 placeholder="Write a comment…"
-                className="mb-4 min-h-[92px] w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                className="mb-4 min-h-23 w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               />
               <div className="mt-3 flex items-center justify-between gap-3">
                 <label

@@ -1,10 +1,10 @@
 export const labelClass = "mb-1.5 block text-[11px] font-bold text-slate-600";
 
 export const inputClass =
-  "w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
 export const textareaClass =
-  "mb-4 min-h-[92px] w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+  "mb-4 min-h-23 w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
 
 export const selectClass =
   "w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[12px] outline-none focus:border-brand-500";

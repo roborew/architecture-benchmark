@@ -9,9 +9,9 @@ import {
 
 export function ProjectForm() {
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-7 sm:px-8 sm:py-9">
+    <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7">
-        <p className="mb-2 text-[11px] font-medium text-slate-400">
+        <p className="mb-2 text-[11px] font-medium text-slate-500">
           Projects / New project
         </p>
         <h1 className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">

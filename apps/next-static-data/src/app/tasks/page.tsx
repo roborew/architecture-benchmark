@@ -12,7 +12,7 @@ export default function TasksPage() {
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <p className="mb-2 text-[11px] font-medium text-slate-400">
+          <p className="mb-2 text-[11px] font-medium text-slate-500">
             Workspace / All tasks
           </p>
           <h1 className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
@@ -35,7 +35,7 @@ export default function TasksPage() {
 
         <TaskTable tasks={page} showProject showComments />
 
-        <div className="flex items-center justify-between px-5 py-4 text-[11px] text-slate-400">
+        <div className="flex items-center justify-between px-5 py-4 text-[11px] text-slate-500">
           <span>
             Showing 1-{page.length} of {allTasks.length}
           </span>

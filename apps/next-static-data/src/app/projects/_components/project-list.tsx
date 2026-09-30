@@ -8,13 +8,13 @@ const td = "px-3 py-3.5 first:px-5 last:px-5";
 export function ProjectList({ projects }: { projects: Project[] }) {
   if (projects.length === 0) {
     return (
-      <p className="px-5 py-6 text-[12px] text-slate-400">No projects yet.</p>
+      <p className="px-5 py-6 text-[12px] text-slate-500">No projects yet.</p>
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[660px] text-left text-[12px]">
+      <table className="w-full min-w-165 text-left text-[12px]">
         <thead className="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
           <tr>
             <th className={th}>Project</th>
@@ -36,7 +36,7 @@ export function ProjectList({ projects }: { projects: Project[] }) {
                 >
                   {project.name}
                 </Link>
-                <span className="mt-0.5 block text-[10px] text-slate-400">
+                <span className="mt-0.5 block text-[10px] text-slate-500">
                   {project.description}
                 </span>
               </td>

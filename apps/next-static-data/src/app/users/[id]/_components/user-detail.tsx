@@ -20,7 +20,7 @@ function StatCard({
       <strong className="mt-2 block text-[24px] font-extrabold tracking-[-.045em] text-slate-800">
         {value}
       </strong>
-      <p className="mt-1 text-[11px] text-slate-400">{hint}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{hint}</p>
     </div>
   );
 }
@@ -33,10 +33,10 @@ export function UserDetail({
   tasks: TaskWithProject[];
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-7 sm:px-8 sm:py-9">
+    <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <p className="mb-2 text-[11px] font-medium text-slate-400">
+          <p className="mb-2 text-[11px] font-medium text-slate-500">
             <Link href="/users" className="hover:text-brand-600">
               People
             </Link>{" "}
@@ -80,7 +80,7 @@ export function UserDetail({
             when there is something to show. The reference shows
             Project here but not Comments. */}
         {tasks.length === 0 ? (
-          <p className="px-5 py-6 text-[12px] text-slate-400">
+          <p className="px-5 py-6 text-[12px] text-slate-500">
             No tasks are assigned to this person.
           </p>
         ) : (

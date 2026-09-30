@@ -13,7 +13,7 @@ export function DashboardProjects({
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Projects
           </h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-slate-500">
             Open a project to view and manage its tasks
           </p>
         </div>

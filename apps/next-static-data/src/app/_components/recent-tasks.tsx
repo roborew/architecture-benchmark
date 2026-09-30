@@ -13,7 +13,7 @@ export function RecentTasks({ tasks }: { tasks: DashboardTask[] }) {
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Recent tasks
           </h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-slate-500">
             Latest task activity across every project
           </p>
         </div>
@@ -26,12 +26,12 @@ export function RecentTasks({ tasks }: { tasks: DashboardTask[] }) {
       </div>
 
       {tasks.length === 0 ? (
-        <p className="px-5 py-6 text-[12px] text-slate-400">
+        <p className="px-5 py-6 text-[12px] text-slate-500">
           No recent task activity.
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[660px] text-left text-[12px]">
+          <table className="w-full min-w-165 text-left text-[12px]">
             <thead className="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
               <tr>
                 <th className={th}>Task</th>
@@ -53,7 +53,7 @@ export function RecentTasks({ tasks }: { tasks: DashboardTask[] }) {
                     >
                       {task.title}
                     </Link>
-                    <span className="mt-0.5 block text-[10px] text-slate-400">
+                    <span className="mt-0.5 block text-[10px] text-slate-500">
                       {task.projectName}
                     </span>
                   </td>

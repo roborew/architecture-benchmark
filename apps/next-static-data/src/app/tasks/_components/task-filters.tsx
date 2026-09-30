@@ -16,14 +16,14 @@ export function TaskFilters({
         <span className="sr-only">Search tasks</span>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-3 top-2.5 text-slate-400"
+          className="pointer-events-none absolute left-3 top-2.5 text-slate-500"
         >
           ⌕
         </span>
         <input
           type="search"
           placeholder="Search tasks…"
-          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
       </label>
 
