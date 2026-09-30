@@ -2,11 +2,18 @@
   "name": "next-actions",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:seed:small": "tsx src/db/seed.ts small",
+    "db:seed:medium": "tsx src/db/seed.ts medium",
+    "db:seed:large": "tsx src/db/seed.ts large",
+    "db:reset": "pnpm db:migrate && pnpm db:seed",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
@@ -36,6 +43,7 @@
     "eslint-config-next": "16.3.6",
     "jsdom": "^30.1.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.2"
   }
