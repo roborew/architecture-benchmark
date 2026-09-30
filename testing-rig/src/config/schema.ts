@@ -8,7 +8,13 @@
 
 import { z } from "zod";
 
-export const OPERATION_KINDS = ["list", "detail", "create", "update", "delete"] as const;
+export const OPERATION_KINDS = [
+  "list",
+  "detail",
+  "create",
+  "update",
+  "delete",
+] as const;
 export type OperationKind = (typeof OPERATION_KINDS)[number];
 
 const positiveInt = z.number().int().positive();
@@ -27,7 +33,8 @@ const operationCounts = z
 const baseTimestamp = z
   .string()
   .refine((s) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(s), {
-    message: "baseTimestamp must be ISO 8601 UTC at whole-second precision (YYYY-MM-DDTHH:MM:SSZ)",
+    message:
+      "baseTimestamp must be ISO 8601 UTC at whole-second precision (YYYY-MM-DDTHH:MM:SSZ)",
   });
 
 export const fixtureSchema = z
@@ -40,9 +47,13 @@ export const fixtureSchema = z
     commentCount: nonnegativeInt,
     baseTimestamp,
     statusPercent: z
-      .object({ todo: positiveInt, doing: positiveInt, done: positiveInt })
+      .object({
+        todo: positiveInt,
+        "in progress": positiveInt,
+        done: positiveInt,
+      })
       .strict()
-      .refine((sp) => sp.todo + sp.doing + sp.done === 100, {
+      .refine((sp) => sp.todo + sp["in progress"] + sp.done === 100, {
         message: "statusPercent must sum to exactly 100",
       }),
     workingSetFraction: z.number().gt(0).lte(1),
@@ -63,9 +74,7 @@ export const browserSchema = z
     workers: positiveInt,
     warmupSamples: nonnegativeInt,
     measuredSamples: positiveInt,
-    viewport: z
-      .object({ width: positiveInt, height: positiveInt })
-      .strict(),
+    viewport: z.object({ width: positiveInt, height: positiveInt }).strict(),
     cacheProfile: z.enum(["cold-browser-context"]),
     prefetch: z.enum(["disabled"]),
     operations: z.array(z.enum(OPERATION_KINDS)).min(1),
@@ -76,10 +85,9 @@ export const volumeScenarioSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("volume"),
-    counts: operationCounts.refine(
-      (c) => Object.values(c).some((v) => v > 0),
-      { message: "volume scenario must request at least one operation" },
-    ),
+    counts: operationCounts.refine((c) => Object.values(c).some((v) => v > 0), {
+      message: "volume scenario must request at least one operation",
+    }),
     concurrency: positiveInt,
     maxAttemptsPerOperation: positiveInt,
     maxDurationSeconds: positiveInt,
@@ -180,12 +188,25 @@ export const variantManifestSchema = z
     healthPath: z.string().startsWith("/"),
     appHostPortEnv: z.string().min(1),
     composeServices: z
-      .object({ app: z.string().min(1), db: z.string().min(1), seeder: z.string().min(1) })
+      .object({
+        app: z.string().min(1),
+        db: z.string().min(1),
+        seeder: z.string().min(1),
+      })
       .strict(),
     seedCommand: z.array(z.string()).min(1),
     resetCommand: z.array(z.string()).min(1),
     capabilities: z
-      .array(z.enum(["list", "detail", "create", "update", "delete", "create-with-comment"]))
+      .array(
+        z.enum([
+          "list",
+          "detail",
+          "create",
+          "update",
+          "delete",
+          "create-with-comment",
+        ]),
+      )
       .min(1),
     readMode: z.string().min(1),
     mutationMode: z.string().min(1),

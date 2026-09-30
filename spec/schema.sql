@@ -32,7 +32,7 @@ CREATE TABLE tasks (
   assignee_id bigint REFERENCES users(id) ON DELETE SET NULL,
   title text NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
   description text NOT NULL DEFAULT '',
-  status text NOT NULL CHECK (status IN ('todo', 'doing', 'done')),
+  status text NOT NULL CHECK (status IN ('todo', 'in progress', 'done')),
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );

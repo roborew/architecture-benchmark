@@ -8,19 +8,27 @@ verify exact SHA-256 digests against `spec/snapshots/<profile>/`.
 
 ## Parameters
 
-| Name                     | Type        | Constraints                                                        |
-| ------------------------ | ----------- | ------------------------------------------------------------------ |
-| `seedVersion`            | int         | must be `1`                                                        |
-| `seed`                   | int         | reserved; v1 draws no pseudorandom numbers (pure arithmetic)       |
-| `projectCount` (P)       | int         | ≥ 1                                                                |
-| `userCount` (U)          | int         | ≥ 1                                                                |
-| `taskCount` (N)          | int         | ≥ 1                                                                |
-| `commentCount` (C)       | int         | ≥ 0                                                                |
-| `baseTimestamp`          | UTC instant | whole seconds; all fixture timestamps derive from it               |
-| `statusPercent`          | map         | keys `todo`, `doing`, `done`; positive ints summing to exactly 100 |
-| `workingSetFraction` (f) | number      | 0 < f ≤ 1; controls the hot set (see pools below)                  |
+| Name                     | Type        | Constraints                                                              |
+| ------------------------ | ----------- | ------------------------------------------------------------------------ |
+| `seedVersion`            | int         | must be `1`                                                              |
+| `seed`                   | int         | reserved; v1 draws no pseudorandom numbers (pure arithmetic)             |
+| `projectCount` (P)       | int         | ≥ 1                                                                      |
+| `userCount` (U)          | int         | ≥ 1                                                                      |
+| `taskCount` (N)          | int         | ≥ 1                                                                      |
+| `commentCount` (C)       | int         | ≥ 0                                                                      |
+| `baseTimestamp`          | UTC instant | whole seconds; all fixture timestamps derive from it                     |
+| `statusPercent`          | map         | keys `todo`, `in progress`, `done`; positive ints summing to exactly 100 |
+| `workingSetFraction` (f) | number      | 0 < f ≤ 1; controls the hot set (see pools below)                        |
 
 No database `random()`, wall-clock time, unordered row scans, or Faker defaults.
+
+## Stored status values
+
+The stored `status` values are `todo`, `in progress`, `done` — identical to the
+values the reference app's `TaskStatus` type and components use. There is no
+separate display mapping: the UI renders the stored value, capitalised by CSS.
+This keeps the database, the seed, and the reference app in agreement, so a value
+read from Postgres can be handed to a component without translation.
 
 ## Row generation (v1)
 
@@ -42,8 +50,8 @@ ordering query depends on them.
 - `title = "Task <i>"`
 - `description = "Description for task <i>"`
 - `status = cycle[(i - 1) mod 100]` where `cycle` is built by repeating each
-  status, in the fixed order **todo, doing, done**, `statusPercent` times
-  (e.g. 50/30/20 → `todo`×50, `doing`×30, `done`×20 concatenated)
+  status, in the fixed order **todo, in progress, done**, `statusPercent` times
+  (e.g. 50/30/20 → `todo`×50, `in progress`×30, `done`×20 concatenated)
 - `created_at = baseTimestamp + (i - 1) seconds`
 - `updated_at = created_at + 60 seconds`
 

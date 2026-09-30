@@ -26,7 +26,7 @@ const PROFILES = {
     taskCount: 1000,
     commentCount: 1000,
     baseTimestamp: "2025-01-01T00:00:00Z",
-    statusPercent: { todo: 50, doing: 30, done: 20 },
+    statusPercent: { todo: 50, "in progress": 30, done: 20 },
     workingSetFraction: 0.2,
   },
   medium: {
@@ -37,7 +37,7 @@ const PROFILES = {
     taskCount: 50000,
     commentCount: 100000,
     baseTimestamp: "2025-01-01T00:00:00Z",
-    statusPercent: { todo: 50, doing: 30, done: 20 },
+    statusPercent: { todo: 50, "in progress": 30, done: 20 },
     workingSetFraction: 0.2,
   },
   large: {
@@ -48,12 +48,12 @@ const PROFILES = {
     taskCount: 500000,
     commentCount: 1000000,
     baseTimestamp: "2025-01-01T00:00:00Z",
-    statusPercent: { todo: 50, doing: 30, done: 20 },
+    statusPercent: { todo: 50, "in progress": 30, done: 20 },
     workingSetFraction: 0.2,
   },
 };
 
-const STATUS_ORDER = ["todo", "doing", "done"];
+const STATUS_ORDER = ["todo", "in progress", "done"];
 
 function parseArgs(args) {
   const out = { profile: null, out: null, params: null };

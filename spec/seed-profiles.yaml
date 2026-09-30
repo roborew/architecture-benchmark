@@ -14,8 +14,8 @@ profiles:
     userCount: 20
     taskCount: 1000
     commentCount: 1000
-    baseTimestamp: '2025-01-01T00:00:00Z'
-    statusPercent: { todo: 50, doing: 30, done: 20 }
+    baseTimestamp: "2025-01-01T00:00:00Z"
+    statusPercent: { todo: 50, "in progress": 30, done: 20 }
     workingSetFraction: 0.20
   medium:
     seedVersion: 1
@@ -24,8 +24,8 @@ profiles:
     userCount: 200
     taskCount: 50000
     commentCount: 100000
-    baseTimestamp: '2025-01-01T00:00:00Z'
-    statusPercent: { todo: 50, doing: 30, done: 20 }
+    baseTimestamp: "2025-01-01T00:00:00Z"
+    statusPercent: { todo: 50, "in progress": 30, done: 20 }
     workingSetFraction: 0.20
   large:
     seedVersion: 1
@@ -34,6 +34,6 @@ profiles:
     userCount: 1000
     taskCount: 500000
     commentCount: 1000000
-    baseTimestamp: '2025-01-01T00:00:00Z'
-    statusPercent: { todo: 50, doing: 30, done: 20 }
+    baseTimestamp: "2025-01-01T00:00:00Z"
+    statusPercent: { todo: 50, "in progress": 30, done: 20 }
     workingSetFraction: 0.20

@@ -12,7 +12,7 @@
     "baseTimestamp": "2025-01-01T00:00:00Z",
     "statusPercent": {
       "todo": 50,
-      "doing": 30,
+      "in progress": 30,
       "done": 20
     },
     "workingSetFraction": 0.2
@@ -37,7 +37,7 @@
     {
       "name": "tasks.csv",
       "rows": 1000,
-      "sha256": "15ae8419d27e002ab10fea0769d5e385356b57e5b9c12cef72dc914ac76ae967"
+      "sha256": "bcd4fb61669e9f4466931853ee059f447a53eb16a6fcd4daad0185f85abd56a0"
     },
     {
       "name": "comments.csv",
@@ -45,7 +45,7 @@
       "sha256": "a97e401ae9a78a4149829e165674a5c6cff8bd0a782ef996d3886381e7a82ab3"
     }
   ],
-  "combinedSha256": "83391583eab5563a7c13dd490902b72d4c84d0ae9cdc4cd7c9c8a6278c6415d0",
+  "combinedSha256": "11145bf81a9c2c89e08fa73119c924575cf8e3fadd661802f2d4648661781078",
   "eligibility": {
     "readPool": {
       "from": 1,

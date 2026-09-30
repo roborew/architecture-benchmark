@@ -2,12 +2,14 @@
 
 Normative for every app variant. The rig's black-box Playwright correctness
 suite tests exactly this contract — no implementation-specific action
-selectors. Apps may differ in *how* they satisfy it (Server Action, tRPC,
+selectors. Apps may differ in _how_ they satisfy it (Server Action, tRPC,
 REST), never in observable behavior.
 
 ## Entities and rules
 
-- `status` is one of `todo`, `doing`, `done` (constrained text; no lookup table).
+- `status` is one of `todo`, `in progress`, `done` (constrained text; no lookup
+  table). These are the stored values — identical to the reference app's
+  `TaskStatus` type, so no display mapping is required.
 - `title`: 1–200 chars. `comment body`: 1–1000 chars. Validation failures are
   user-visible (see `error-message`) and change nothing.
 - `assignee` is nullable: clearing the assignee sets `assignee_id = NULL`
@@ -28,7 +30,7 @@ Lists all projects as links (`data-testid="project-link"`) with project name.
 - First page of up to **25 tasks**, newest first: `(created_at DESC, id DESC)`.
 - Each task row (`data-testid="task-row"`) shows: `task-title`, `task-status`
   (raw status text), `task-assignee` (display name, or `Unassigned`).
-- Optional status filter via `?status=todo|doing|done`; filter tabs render as
+- Optional status filter via `?status=todo|in progress|done`; filter tabs render as
   `data-testid="status-filter" data-status="<status>"` plus an "all" tab
   (`data-status="all"`).
 - Keyset pagination: an "older" link (`data-testid="next-page"`) carrying an
@@ -40,7 +42,7 @@ Lists all projects as links (`data-testid="project-link"`) with project name.
   task (redirect to its detail page) — a persisted id must have been allocated.
 - Create-with-comment form (`data-testid="create-with-comment-form"`): the
   create-task fields plus `commentBody` and `commentAuthor`. Atomic: either
-  the task *and* its first comment both exist, or neither does (transaction;
+  the task _and_ its first comment both exist, or neither does (transaction;
   no partial state is ever visible).
 
 ### 3. Task detail — `/tasks/[id]`

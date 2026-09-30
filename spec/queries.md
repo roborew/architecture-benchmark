@@ -11,7 +11,7 @@ Returns up to 25 rows for a project, newest first, with assignee display names.
 
 - Order: `created_at DESC, id DESC` (id is the stable tiebreaker; fixture
   timestamps are unique so ties are rare but must be handled).
-- Optional filter: `status IN ('todo','doing','done')` (single value).
+- Optional filter: `status IN ('todo','in progress','done')` (single value).
 - **Keyset pagination**: cursor encodes `(created_at, id)` of the last row of
   the previous page; the next page selects
   `(created_at, id) < (cursor.created_at, cursor.id)` under the same order.
