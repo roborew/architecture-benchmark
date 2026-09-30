@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProjectDetail } from "@/app/projects/_components/project-detail";
-import { allTasks, projects } from "@/lib/seed-data";
+import { allTasks, projects } from "@/lib/data";
 
 export default async function ProjectDetailPage({
   params,

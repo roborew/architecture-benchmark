@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { dashboardStats } from "@/lib/seed-data";
+import { dashboardStats } from "@/lib/data";
 import { DashboardStats } from "./dashboard-stats";
 
 describe("DashboardStats", () => {

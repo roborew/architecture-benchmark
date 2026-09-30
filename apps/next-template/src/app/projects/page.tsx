@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProjectList } from "./_components/project-list";
-import { projects } from "@/lib/seed-data";
+import { projects } from "@/lib/data";
 
 export default function ProjectsPage() {
   return (
