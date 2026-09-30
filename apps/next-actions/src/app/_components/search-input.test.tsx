@@ -5,20 +5,27 @@ import { SearchInput } from "./search-input";
 
 const replace = vi.fn();
 
-// Mutable so a test can simulate the URL changing underneath the
-// component — the back/forward button, or an arriving shared link.
+// Mutable so a test can change the URL underneath the component, which is
+// how back/forward and shared links arrive.
 let params = new URLSearchParams();
+let pathname = "/projects";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
+  usePathname: () => pathname,
   useSearchParams: () => params,
 }));
 
-/** Advance past the debounce inside act so effects flush. */
+// The debounce lives in a real timer, and startTransition needs a React
+// commit to flip isPending, so time only advances inside act().
 async function settle(ms = 300) {
   await act(async () => {
     vi.advanceTimersByTime(ms);
   });
+}
+
+function setupUser() {
+  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 }
 
 describe("SearchInput", () => {
@@ -26,6 +33,7 @@ describe("SearchInput", () => {
     vi.useFakeTimers();
     replace.mockClear();
     params = new URLSearchParams();
+    pathname = "/projects";
   });
 
   afterEach(() => {
@@ -34,17 +42,23 @@ describe("SearchInput", () => {
 
   const input = () => screen.getByRole("searchbox");
 
+  it("labels the field for screen readers", () => {
+    render(<SearchInput label="Search projects" />);
+
+    expect(input()).toHaveAccessibleName("Search projects");
+  });
+
   it("seeds the field from the q param already in the URL", () => {
     params = new URLSearchParams("q=alpha");
 
-    render(<SearchInput placeholder={""} label={""} />);
+    render(<SearchInput />);
 
     expect(input()).toHaveValue("alpha");
   });
 
   it("does not navigate before the debounce elapses", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha");
     await settle(299);
@@ -53,8 +67,8 @@ describe("SearchInput", () => {
   });
 
   it("writes the query to the URL once the debounce elapses", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha");
     await settle();
@@ -65,38 +79,27 @@ describe("SearchInput", () => {
   });
 
   it("collapses a burst of typing into a single navigation", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha");
     await settle();
 
-    // The whole point of debouncing: one query, not one per keystroke.
+    // The point of debouncing: one query, not one per keystroke.
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
-  it("navigates to the bare path when the field is cleared", async () => {
-    params = new URLSearchParams("q=alpha");
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
-
-    await user.clear(input());
-    await settle();
-
-    expect(replace).toHaveBeenCalledWith("/projects", { scroll: false });
-  });
-
   it("keeps the trailing space while typing a second word", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha ");
     await settle();
     await user.type(input(), "beta");
     await settle();
 
-    // The URL is trimmed, but the visible field must not be — otherwise
-    // "alpha beta" collapses to "alphabeta" as you type.
+    // The URL is trimmed but the visible field must not be, otherwise
+    // "alpha beta" collapses to "alphabeta" while it is being typed.
     expect(input()).toHaveValue("alpha beta");
     expect(replace).toHaveBeenLastCalledWith("/projects?q=alpha+beta", {
       scroll: false,
@@ -104,8 +107,8 @@ describe("SearchInput", () => {
   });
 
   it("holds off until the query is long enough to be worth a round trip", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "a");
     await settle();
@@ -113,10 +116,21 @@ describe("SearchInput", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it("navigates to the bare path when the field is cleared", async () => {
+    params = new URLSearchParams("q=alpha");
+    const user = setupUser();
+    render(<SearchInput />);
+
+    await user.clear(input());
+    await settle();
+
+    expect(replace).toHaveBeenCalledWith("/projects", { scroll: false });
+  });
+
   it("preserves unrelated params already in the URL", async () => {
     params = new URLSearchParams("status=done");
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha");
     await settle();
@@ -127,28 +141,33 @@ describe("SearchInput", () => {
   });
 
   it("adopts a query that arrives from outside, as on back/forward", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    const { rerender } = render(<SearchInput placeholder={""} label={""} />);
+    const { rerender } = render(<SearchInput />);
 
     params = new URLSearchParams("q=beta");
-    rerender(<SearchInput placeholder={""} label={""} />);
+    rerender(<SearchInput />);
 
     expect(input()).toHaveValue("beta");
-
-    await user.clear(input());
-    await settle();
-
-    expect(replace).toHaveBeenCalledWith("/projects", { scroll: false });
   });
 
   it("targets its own route rather than a hardcoded one", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<SearchInput placeholder={""} label={""} />);
+    pathname = "/tasks";
+    const user = setupUser();
+    render(<SearchInput />);
 
     await user.type(input(), "alpha");
     await settle();
 
-    expect(replace).toHaveBeenCalledWith(expect.stringContaining("/tasks"), {
+    expect(replace).toHaveBeenCalledWith("/tasks?q=alpha", { scroll: false });
+  });
+
+  it("drives the param name it is given", async () => {
+    const user = setupUser();
+    render(<SearchInput param="name" />);
+
+    await user.type(input(), "alpha");
+    await settle();
+
+    expect(replace).toHaveBeenCalledWith("/projects?name=alpha", {
       scroll: false,
     });
   });
