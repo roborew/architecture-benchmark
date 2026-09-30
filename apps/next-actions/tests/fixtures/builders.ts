@@ -5,7 +5,7 @@ import type {
   Task,
   TaskWithProject,
   User,
-} from "@/types";
+} from "@/lib/types";
 
 // Deterministic fixtures for unit tests.
 //
