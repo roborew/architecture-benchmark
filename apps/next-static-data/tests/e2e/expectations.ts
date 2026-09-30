@@ -22,6 +22,7 @@ export const E2E_FIXTURE = {
     name: "Robin Andrew",
     email: "robin@example.test",
     href: "/users/1",
+    assignedTaskTitles: ["Draft navigation model", "Build profile screen"],
   },
   counts: {
     people: 3,
