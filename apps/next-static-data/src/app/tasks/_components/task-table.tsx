@@ -33,7 +33,7 @@ export function TaskTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[660px] text-left text-[12px]">
+      <table className="w-full min-w-165 text-left text-[12px]">
         <thead className="border-y border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-[.075em] text-slate-500">
           <tr>
             <th className={th}>Task</th>

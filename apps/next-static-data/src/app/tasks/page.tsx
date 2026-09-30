@@ -9,7 +9,7 @@ export default function TasksPage() {
   const page = allTasks.slice(0, PAGE_SIZE);
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-7 sm:px-8 sm:py-9">
+    <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <p className="mb-2 text-[11px] font-medium text-slate-400">
