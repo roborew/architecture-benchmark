@@ -14,8 +14,11 @@
     "db:seed:medium": "tsx src/db/seed.ts medium",
     "db:seed:large": "tsx src/db/seed.ts large",
     "db:reset": "pnpm db:migrate && pnpm db:seed",
+    "test:data": "tsx scripts/generate-test-data.ts",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"

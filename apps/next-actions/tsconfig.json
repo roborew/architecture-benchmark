@@ -18,7 +18,14 @@
         "name": "next",
       },
     ],
-    "paths": { "@/*": ["./src/*"] },
+    // `@/*` is app code; `@tests/*` is test code. The split exists so a test
+    // helper can never be mistaken for something the app ships, and so it is
+    // obvious at a glance which page is still reading mock data during the
+    // migration to the database layer.
+    "paths": {
+      "@/*": ["./src/*"],
+      "@tests/*": ["./tests/*"],
+    },
   },
   "include": [
     "next-env.d.ts",
@@ -27,6 +34,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
+    ".next-e2e/types/**/*.ts",
+    ".next-e2e/dev/types/**/*.ts",
   ],
   "exclude": ["node_modules"],
 }

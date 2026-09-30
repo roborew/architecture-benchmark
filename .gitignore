@@ -1,0 +1,4 @@
+# e2e build output. The Playwright config starts its own dev server with
+# NEXT_DIST_DIR=.next-e2e so it does not contend with a developer's `pnpm dev`
+# over the lock on .next.
+apps/next-actions/.next-e2e/
