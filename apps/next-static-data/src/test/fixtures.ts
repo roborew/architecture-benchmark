@@ -26,6 +26,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     description: "A project used only by unit tests.",
     taskCount: 2,
     openTaskCount: 1,
+    peopleCount: 1,
     createdAt: "2026-01-01",
     ...overrides,
   };

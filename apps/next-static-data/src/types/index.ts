@@ -4,6 +4,7 @@ export type Project = {
   description: string;
   taskCount: number;
   openTaskCount: number;
+  peopleCount: number;
   createdAt: string;
 };
 
