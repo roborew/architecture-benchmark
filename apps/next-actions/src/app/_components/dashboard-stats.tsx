@@ -1,4 +1,4 @@
-import type { DashboardStats as Stats } from "@/types";
+import type { DashboardStats as Stats } from "@/lib/types";
 import { StatCard } from "./stat-card";
 
 export function DashboardStats({ stats }: { stats: Stats }) {

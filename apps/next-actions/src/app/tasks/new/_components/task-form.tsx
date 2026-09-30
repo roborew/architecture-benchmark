@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Project, User } from "@/types";
+import type { Project, User } from "@/lib/types";
 import {
   cancelClass,
   createClass,

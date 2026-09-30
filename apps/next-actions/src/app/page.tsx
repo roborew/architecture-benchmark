@@ -6,7 +6,7 @@ import {
   dashboardStats,
   dashboardRecentTasks,
   dashboardProjects,
-} from "@/test/data";
+} from "@tests/fixtures/data";
 
 const outlineAction =
   "inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50";

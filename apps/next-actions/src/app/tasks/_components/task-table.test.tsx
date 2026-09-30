@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { TaskTable } from "./task-table";
-import { makeTaskWithProject } from "@/test/fixtures";
+import { makeTaskWithProject } from "@tests/fixtures/builders";
 
 describe("TaskTable", () => {
   it("renders a row per task", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ProjectDetail } from "./project-detail";
-import { makeProject, makeTaskWithProject } from "@/test/fixtures";
+import { makeProject, makeTaskWithProject } from "@tests/fixtures/builders";
 
 const project = makeProject({
   id: 3,

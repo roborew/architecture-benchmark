@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { User } from "@/types";
+import type { User } from "@/lib/types";
 import { initials } from "@/lib/initials";
 
 const th = "px-3 py-3 first:px-5 last:px-5";

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UserTable } from "./_components/user-table";
-import { people } from "@/test/data";
+import { people } from "@tests/fixtures/data";
 
 export default function UsersPage() {
   return (

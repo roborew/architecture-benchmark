@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Project } from "@/types";
+import type { Project } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 
 const th = "px-3 py-3 first:px-5 last:px-5";

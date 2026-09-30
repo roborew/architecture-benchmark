@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TaskDetail } from "./_components/task-detail";
-import { allTasks, taskComments } from "@/test/data";
+import { allTasks, taskComments } from "@tests/fixtures/data";
 
 export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]">) {
   const { id } = await params;

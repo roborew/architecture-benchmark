@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { TaskWithProject } from "@/types";
+import type { TaskWithProject } from "@/lib/types";
 import { StatusBadge } from "@/app/_components/status-badge";
 
 const th = "px-3 py-3 first:px-5 last:px-5";

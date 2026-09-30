@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { DashboardProjects } from "./dashboard-projects";
-import type { DashboardProject } from "@/types";
+import type { DashboardProject } from "@/lib/types";
 
 function makeDashboardProject(
   overrides: Partial<DashboardProject> = {},

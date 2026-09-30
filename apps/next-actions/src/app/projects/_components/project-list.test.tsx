@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ProjectList } from "./project-list";
-import { makeProject } from "@/test/fixtures";
+import { makeProject } from "@tests/fixtures/builders";
 
 describe("ProjectList", () => {
   it("renders a row for each project plus a header", () => {

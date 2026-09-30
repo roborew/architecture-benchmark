@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DashboardTask } from "@/types";
+import type { DashboardTask } from "@/lib/types";
 import { StatusBadge } from "./status-badge";
 
 const th = "px-3 py-3 first:px-5 last:px-5";

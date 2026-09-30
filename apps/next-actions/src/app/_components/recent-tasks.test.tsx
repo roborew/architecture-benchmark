@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { RecentTasks } from "./recent-tasks";
-import { makeRecentTask } from "@/test/fixtures";
+import { makeRecentTask } from "@tests/fixtures/builders";
 
 describe("RecentTasks", () => {
   it("renders a row per task", () => {

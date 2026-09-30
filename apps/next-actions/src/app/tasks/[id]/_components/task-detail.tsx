@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Comment, TaskWithProject } from "@/types";
+import type { Comment, TaskWithProject } from "@/lib/types";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { initials } from "@/lib/initials";
 

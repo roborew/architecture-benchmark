@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { UserDetail } from "./user-detail";
-import { makeUser, makeTaskWithProject } from "@/test/fixtures";
+import { makeUser, makeTaskWithProject } from "@tests/fixtures/builders";
 
 describe("UserDetail", () => {
   it("shows the person's name and email", () => {

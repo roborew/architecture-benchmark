@@ -1,4 +1,4 @@
-import type { Project, User } from "@/types";
+import type { Project, User } from "@/lib/types";
 
 const selectClass =
   "rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] text-slate-700 outline-none focus:border-brand-500";

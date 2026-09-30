@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { TaskFilters } from "./_components/task-filters";
 import { TaskTable } from "./_components/task-table";
-import { allTasks, projects, people } from "@/test/data";
+import { allTasks, projects, people } from "@tests/fixtures/data";
 
 const PAGE_SIZE = 4;
 

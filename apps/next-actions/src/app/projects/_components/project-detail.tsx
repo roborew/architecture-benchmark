@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { Project } from "@/types";
+import type { Project } from "@/lib/types";
 import { TaskTable } from "@/app/tasks/_components/task-table";
-import type { TaskWithProject } from "@/types";
+import type { TaskWithProject } from "@/lib/types";
 
 function StatCard({
   label,

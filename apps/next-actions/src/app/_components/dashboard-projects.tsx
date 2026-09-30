@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { DashboardProject } from "@/types";
+import type { DashboardProject } from "@/lib/types";
 
 export function DashboardProjects({
   projects,

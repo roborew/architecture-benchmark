@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { TaskDetail } from "./task-detail";
-import { makeTaskWithProject, makeComment } from "@/test/fixtures";
+import { makeTaskWithProject, makeComment } from "@tests/fixtures/builders";
 
 describe("TaskDetail", () => {
   it("shows the title and its project", () => {

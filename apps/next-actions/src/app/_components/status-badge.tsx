@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@/types";
+import type { TaskStatus } from "@/lib/types";
 
 const tones: Record<TaskStatus, string> = {
   todo: "bg-violet-50 text-violet-700",

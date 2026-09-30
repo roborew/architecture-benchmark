@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TaskForm } from "./task-form";
-import { fixtureProjects, fixturePeople } from "@/test/fixtures";
+import { fixtureProjects, fixturePeople } from "@tests/fixtures/builders";
 
 describe("TaskForm", () => {
   it("renders labelled title and description fields", () => {

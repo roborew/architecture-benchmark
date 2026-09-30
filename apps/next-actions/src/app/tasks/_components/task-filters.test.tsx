@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TaskFilters } from "./task-filters";
-import { fixtureProjects, fixturePeople } from "@/test/fixtures";
+import { fixtureProjects, fixturePeople } from "@tests/fixtures/builders";
 
 describe("TaskFilters", () => {
   it("renders a labelled search field", () => {

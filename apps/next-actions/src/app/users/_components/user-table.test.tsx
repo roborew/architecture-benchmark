@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { makeUser } from "@/test/fixtures";
+import { makeUser } from "@tests/fixtures/builders";
 import { UserTable } from "./user-table";
 
 describe("UserTable", () => {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UserDetail } from "./_components/user-detail";
-import { allTasks, people } from "@/test/data";
+import { allTasks, people } from "@tests/fixtures/data";
 
 export default async function UserDetailPage({ params }: PageProps<"/users/[id]">) {
   const { id } = await params;
