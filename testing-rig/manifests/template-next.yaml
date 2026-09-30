@@ -1,0 +1,17 @@
+# Variant manifest for apps/template-next (the M1 reference app).
+# Command arrays are a design shape: the controller resolves app-relative
+# paths, the unique Compose project name, and APP_PORT itself.
+
+schemaVersion: 1
+id: template-next
+appDirectory: ../apps/template-next
+composeFile: ../apps/template-next/compose.yaml
+projectPrefix: bench-template-next
+healthPath: /healthz
+appHostPortEnv: APP_PORT
+composeServices: { app: app, db: db, seeder: seeder }
+seedCommand: [docker, compose, run, --rm, seeder, pnpm, db:seed]
+resetCommand: [docker, compose, run, --rm, seeder, pnpm, db:reset]
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: rsc-direct-db
+mutationMode: server-action

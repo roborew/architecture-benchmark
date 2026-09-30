@@ -1,0 +1,60 @@
+# Volume experiment: the same workload allocation as default.yaml but with
+# 1000 successful creates/updates/deletes each (plan §4: a requested `1000`
+# means 1000 successful state changes against predetermined distinct records,
+# not 1000 attempts). The controller's eligibility check verifies the
+# delete/update pools have >= 1000 distinct targets before any timed work.
+
+schemaVersion: 1
+name: medium-crud-volume-1000
+variants: [template-next]
+trials: 3
+variantOrder: rotate
+
+fixture:
+  seedVersion: 1
+  seed: 42
+  projectCount: 50
+  userCount: 200
+  taskCount: 50000
+  commentCount: 100000
+  baseTimestamp: '2025-01-01T00:00:00Z'
+  statusPercent: { todo: 50, doing: 30, done: 20 }
+  workingSetFraction: 0.20
+
+reset:
+  betweenPhases: true
+  betweenTrials: true
+  method: database-recreate
+
+browser:
+  engine: chromium
+  workers: 1
+  warmupSamples: 10
+  measuredSamples: 30
+  viewport: { width: 1365, height: 768 }
+  cacheProfile: cold-browser-context
+  prefetch: disabled
+  operations: [list, detail, create, update, delete]
+
+scenarios:
+  - id: volume-1000-writes
+    kind: volume
+    counts: { list: 400, detail: 200, create: 1000, update: 1000, delete: 1000 }
+    concurrency: 5
+    maxAttemptsPerOperation: 1100
+    maxDurationSeconds: 3600
+    resetBefore: true
+
+network:
+  browserToAppAddedRttMs: 0
+  appToApiAddedRttMs: 0
+
+resources:
+  appCpus: 2
+  appMemoryMb: 2048
+  dbCpus: 2
+  dbMemoryMb: 2048
+
+report:
+  keepRawSamples: true
+  outputFormats: [json, csv, html]

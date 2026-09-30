@@ -1,0 +1,39 @@
+# Canonical fixture profiles (version 1)
+
+# These are the checked-in profile settings. The canonical generator
+# (testing-rig/src/fixtures/generate-fixture.mjs) embeds the same values and
+# must stay in sync with this file; the rig verifies generated digests against
+# spec/snapshots/<profile>/manifest.json.
+
+schemaVersion: 1
+profiles:
+  small:
+    seedVersion: 1
+    seed: 42
+    projectCount: 5
+    userCount: 20
+    taskCount: 1000
+    commentCount: 1000
+    baseTimestamp: '2025-01-01T00:00:00Z'
+    statusPercent: { todo: 50, doing: 30, done: 20 }
+    workingSetFraction: 0.20
+  medium:
+    seedVersion: 1
+    seed: 42
+    projectCount: 50
+    userCount: 200
+    taskCount: 50000
+    commentCount: 100000
+    baseTimestamp: '2025-01-01T00:00:00Z'
+    statusPercent: { todo: 50, doing: 30, done: 20 }
+    workingSetFraction: 0.20
+  large:
+    seedVersion: 1
+    seed: 42
+    projectCount: 200
+    userCount: 1000
+    taskCount: 500000
+    commentCount: 1000000
+    baseTimestamp: '2025-01-01T00:00:00Z'
+    statusPercent: { todo: 50, doing: 30, done: 20 }
+    workingSetFraction: 0.20

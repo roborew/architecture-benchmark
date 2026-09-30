@@ -1,0 +1,17 @@
+# Example manifest for the planned M4 `next-actions` variant. The app does not
+# exist yet (do not scaffold before M0–M3 gates pass — plan §8); this file is a
+# checked-in example of the required manifest shape.
+
+schemaVersion: 1
+id: next-actions
+appDirectory: ../apps/next-actions
+composeFile: ../apps/next-actions/compose.yaml
+projectPrefix: bench-next-actions
+healthPath: /healthz
+appHostPortEnv: APP_PORT
+composeServices: { app: app, db: db, seeder: seeder }
+seedCommand: [docker, compose, run, --rm, seeder, pnpm, db:seed]
+resetCommand: [docker, compose, run, --rm, seeder, pnpm, db:reset]
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: rsc-direct-db
+mutationMode: server-action

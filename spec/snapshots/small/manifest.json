@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "seedSpecVersion": 1,
+  "profile": "small",
+  "params": {
+    "seedVersion": 1,
+    "seed": 42,
+    "projectCount": 5,
+    "userCount": 20,
+    "taskCount": 1000,
+    "commentCount": 1000,
+    "baseTimestamp": "2025-01-01T00:00:00Z",
+    "statusPercent": {
+      "todo": 50,
+      "doing": 30,
+      "done": 20
+    },
+    "workingSetFraction": 0.2
+  },
+  "rowCounts": {
+    "users": 20,
+    "projects": 5,
+    "tasks": 1000,
+    "comments": 1000
+  },
+  "files": [
+    {
+      "name": "users.csv",
+      "rows": 20,
+      "sha256": "29c569381cb63cc63f1f97235d2b0cb2ec300af615844797c02c5266c58cb007"
+    },
+    {
+      "name": "projects.csv",
+      "rows": 5,
+      "sha256": "e640fbedf08624325483ae4633b94acf0a11ad5a20ba56fca53f6905feff17d4"
+    },
+    {
+      "name": "tasks.csv",
+      "rows": 1000,
+      "sha256": "15ae8419d27e002ab10fea0769d5e385356b57e5b9c12cef72dc914ac76ae967"
+    },
+    {
+      "name": "comments.csv",
+      "rows": 1000,
+      "sha256": "a97e401ae9a78a4149829e165674a5c6cff8bd0a782ef996d3886381e7a82ab3"
+    }
+  ],
+  "combinedSha256": "83391583eab5563a7c13dd490902b72d4c84d0ae9cdc4cd7c9c8a6278c6415d0",
+  "eligibility": {
+    "readPool": {
+      "from": 1,
+      "to": 500
+    },
+    "hotSet": {
+      "from": 1,
+      "to": 100
+    },
+    "updatePool": {
+      "from": 501,
+      "to": 800
+    },
+    "deletePool": {
+      "from": 801,
+      "to": 1000
+    }
+  }
+}
