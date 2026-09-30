@@ -1,4 +1,4 @@
-import type { Project } from "@/types";
+import type { Project } from "@/lib/types";
 import { sql } from "./db";
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
@@ -13,7 +13,10 @@ export async function getProjects(value = "") {
   try {
     return await sql<Project[]>`
       SELECT
-        p.id,
+        -- bigint comes back from postgres.js as a string unless cast, which
+        -- would silently violate the Project['id']: number contract. Every
+        -- other numeric column is cast for the same reason.
+        p.id::int AS id,
         p.name,
         p.description,
         COUNT(t.id)::int AS "taskCount",
@@ -24,7 +27,10 @@ export async function getProjects(value = "") {
       LEFT JOIN tasks t ON p.id = t.project_id
       ${where}
       GROUP BY p.id, p.name, p.description, p.created_at
-      ORDER BY p.created_at DESC
+      -- created_at is the documented order. The fixture spaces project
+      -- timestamps apart, but id is added as a tiebreaker so equal timestamps
+      -- cannot make the result order non-deterministic.
+      ORDER BY p.created_at DESC, p.id DESC
     `;
   } catch (error) {
     console.error("Database Error:", error);
