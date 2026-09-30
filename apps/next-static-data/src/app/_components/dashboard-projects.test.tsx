@@ -1,39 +1,76 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { dashboardProjects } from "@/lib/seed-data";
 import { DashboardProjects } from "./dashboard-projects";
+import type { DashboardProject } from "@/types";
+
+function makeDashboardProject(
+  overrides: Partial<DashboardProject> = {},
+): DashboardProject {
+  return {
+    id: 9401,
+    name: "Fixture card project",
+    description: "A card used only by unit tests.",
+    taskCount: 5,
+    openTaskCount: 4,
+    peopleCount: 3,
+    ...overrides,
+  };
+}
 
 describe("DashboardProjects", () => {
   it("renders a card per project", () => {
-    render(<DashboardProjects projects={dashboardProjects} />);
+    const projects = [
+      makeDashboardProject({ id: 1 }),
+      makeDashboardProject({ id: 2 }),
+    ];
 
-    expect(screen.getAllByRole("listitem")).toHaveLength(
-      dashboardProjects.length,
-    );
+    render(<DashboardProjects projects={projects} />);
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(projects.length);
   });
 
   it("links each card to its project", () => {
-    render(<DashboardProjects projects={dashboardProjects} />);
+    const project = makeDashboardProject({ id: 12 });
+
+    render(<DashboardProjects projects={[project]} />);
 
     expect(
-      screen.getByRole("link", { name: /Website redesign/ }),
-    ).toHaveAttribute("href", "/projects/1");
+      screen.getByRole("link", { name: new RegExp(project.name) }),
+    ).toHaveAttribute("href", `/projects/${project.id}`);
   });
 
-  it("shows description and counts", () => {
-    render(<DashboardProjects projects={dashboardProjects} />);
+  it("shows the description in the accessible name", () => {
+    const project = makeDashboardProject({
+      description: "Distinct description",
+    });
 
-    // listitem is not a name-from-content role, so the card is scoped
-    // through its link instead.
-    const card = screen.getByRole("link", { name: /Website redesign/ });
+    render(<DashboardProjects projects={[project]} />);
 
-    expect(card).toHaveAccessibleName(
-      /Refresh the public website and onboarding experience\./,
-    );
+    expect(
+      screen.getByRole("link", { name: new RegExp(project.name) }),
+    ).toHaveAccessibleName(new RegExp(project.description));
+  });
 
-    // "3" is both the task count and the people count for this project,
-    // so the badge and the footer figure are asserted together.
-    expect(within(card).getAllByText("3")).toHaveLength(2);
-    expect(within(card).getByText("2")).toBeInTheDocument();
+  it("shows the task, open and people counts", () => {
+    // Distinct values so each figure is individually assertable.
+    const project = makeDashboardProject({
+      taskCount: 7,
+      openTaskCount: 5,
+      peopleCount: 3,
+    });
+
+    render(<DashboardProjects projects={[project]} />);
+
+    const card = screen.getByRole("link", { name: new RegExp(project.name) });
+
+    expect(
+      within(card).getByText(String(project.taskCount)),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(String(project.openTaskCount)),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(String(project.peopleCount)),
+    ).toBeInTheDocument();
   });
 });

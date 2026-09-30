@@ -1,14 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { projects, projectTasks } from "@/lib/seed-data";
 import { ProjectDetail } from "./project-detail";
-
-const project = projects[0];
-const tasks = projectTasks[1];
+import { makeProject, makeTask } from "@/test/fixtures";
 
 describe("ProjectDetail", () => {
   it("shows the project name and description", () => {
-    render(<ProjectDetail project={project} tasks={tasks} />);
+    const project = makeProject({
+      name: "Detail project",
+      description: "Detail description",
+    });
+
+    render(<ProjectDetail project={project} tasks={[]} />);
 
     expect(
       screen.getByRole("heading", { name: project.name }),
@@ -17,7 +19,7 @@ describe("ProjectDetail", () => {
   });
 
   it("renders summary counts", () => {
-    render(<ProjectDetail project={project} tasks={tasks} />);
+    render(<ProjectDetail project={makeProject()} tasks={[]} />);
 
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
@@ -25,17 +27,24 @@ describe("ProjectDetail", () => {
   });
 
   it("renders a row per task", () => {
-    render(<ProjectDetail project={project} tasks={tasks} />);
+    const task = makeTask({
+      id: 4242,
+      title: "Detail task",
+      status: "in progress",
+      assigneeName: "Detail Person",
+    });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<ProjectDetail project={makeProject()} tasks={[task]} />);
+
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
 
     expect(within(row).getByText("In progress")).toBeInTheDocument();
-    expect(within(row).getByText("Robin Andrew")).toBeInTheDocument();
-    expect(within(row).getByText("101")).toBeInTheDocument();
+    expect(within(row).getByText(task.assigneeName)).toBeInTheDocument();
+    expect(within(row).getByText(String(task.id))).toBeInTheDocument();
   });
 
   it("shows an empty state when the project has no tasks", () => {
-    render(<ProjectDetail project={project} tasks={[]} />);
+    render(<ProjectDetail project={makeProject()} tasks={[]} />);
 
     expect(
       screen.getByText("No tasks in this project yet."),

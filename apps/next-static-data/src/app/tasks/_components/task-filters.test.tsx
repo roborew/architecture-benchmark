@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { projects, people } from "@/lib/seed-data";
 import { TaskFilters } from "./task-filters";
+import { fixtureProjects, fixturePeople } from "@/test/fixtures";
 
 describe("TaskFilters", () => {
   it("renders a labelled search field", () => {
-    render(<TaskFilters projects={projects} people={people} />);
+    render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
 
     expect(
       screen.getByRole("searchbox", { name: "Search tasks" }),
@@ -13,42 +13,47 @@ describe("TaskFilters", () => {
   });
 
   it("offers a project filter seeded with the projects", () => {
-    render(<TaskFilters projects={projects} people={people} />);
+    render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
 
-    const select = screen.getByRole("combobox", { name: "Project" });
-
-    expect(select).toHaveDisplayValue("All projects");
     expect(
-      screen.getByRole("option", { name: "Website redesign" }),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Project" }),
+    ).toHaveDisplayValue("All projects");
+
+    fixtureProjects.forEach((project) => {
+      expect(
+        screen.getByRole("option", { name: project.name }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("offers every task status", () => {
-    render(<TaskFilters projects={projects} people={people} />);
+    render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
 
-    const select = screen.getByRole("combobox", { name: "Status" });
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveDisplayValue(
+      "All statuses",
+    );
 
-    expect(select).toHaveDisplayValue("All statuses");
-    expect(screen.getByRole("option", { name: "To do" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "In progress" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Done" })).toBeInTheDocument();
+    ["To do", "In progress", "Done"].forEach((status) => {
+      expect(screen.getByRole("option", { name: status })).toBeInTheDocument();
+    });
   });
 
   it("offers an assignee filter seeded with the people", () => {
-    render(<TaskFilters projects={projects} people={people} />);
+    render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
 
-    const select = screen.getByRole("combobox", { name: "Assignee" });
-
-    expect(select).toHaveDisplayValue("All assignees");
     expect(
-      screen.getByRole("option", { name: "Robin Andrew" }),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Assignee" }),
+    ).toHaveDisplayValue("All assignees");
+
+    fixturePeople.forEach((person) => {
+      expect(
+        screen.getByRole("option", { name: person.name }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("has exactly three filter selects", () => {
-    render(<TaskFilters projects={projects} people={people} />);
+    render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
 
     expect(screen.getAllByRole("combobox")).toHaveLength(3);
   });

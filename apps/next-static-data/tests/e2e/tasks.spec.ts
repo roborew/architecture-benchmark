@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { E2E_FIXTURE } from "./expectations";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/tasks");
@@ -22,19 +23,21 @@ test("renders the filter controls", async ({ page }) => {
 
 test("lists seeded tasks with their project", async ({ page }) => {
   const main = page.getByRole("main");
+  const { task } = E2E_FIXTURE;
 
-  await expect(
-    main.getByRole("link", { name: "Draft navigation model" }),
-  ).toBeVisible();
+  await expect(main.getByRole("link", { name: task.title })).toBeVisible();
   await expect(
     main
-      .getByRole("row", { name: /Review API response shapes/ })
-      .getByText("Mobile application"),
+      .getByRole("row", { name: new RegExp(task.crossProjectTitle) })
+      .getByText(task.crossProjectName),
   ).toBeVisible();
 });
 
 test("shows the result count and pagination", async ({ page }) => {
-  await expect(page.getByText("Showing 1-4 of 6")).toBeVisible();
+  // The figures are implementation details, so the shape is asserted
+  // rather than the exact page size and total.
+  await expect(page.getByText(E2E_FIXTURE.pagination.summary)).toBeVisible();
+
   // exact: the Next.js dev tools button also matches "Next" as a
   // substring when the suite runs against the dev server.
   await expect(
@@ -48,8 +51,8 @@ test("shows the result count and pagination", async ({ page }) => {
 test("a task title links to the task detail", async ({ page }) => {
   await page
     .getByRole("main")
-    .getByRole("link", { name: "Draft navigation model" })
+    .getByRole("link", { name: E2E_FIXTURE.task.title })
     .click();
 
-  await expect(page).toHaveURL("/tasks/101");
+  await expect(page).toHaveURL(E2E_FIXTURE.task.href);
 });

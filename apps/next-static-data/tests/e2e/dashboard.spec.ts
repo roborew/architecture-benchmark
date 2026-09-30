@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { E2E_FIXTURE } from "./expectations";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -22,25 +23,26 @@ test("shows the workspace stat cards", async ({ page }) => {
 });
 
 test("lists recent tasks with their project", async ({ page }) => {
+  const main = page.getByRole("main");
+  const { task } = E2E_FIXTURE;
+
+  await expect(main.getByRole("link", { name: task.title })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Draft navigation model" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("row", { name: /Draft navigation model/ })
-      .getByText("Website redesign"),
+    main
+      .getByRole("row", { name: new RegExp(task.title) })
+      .getByText(task.projectName),
   ).toBeVisible();
 });
 
 test("shows quick actions and the work summary", async ({ page }) => {
+  // Quick actions are Links in the Next app, not the reference's
+  // data-page-target buttons, so they carry the link role.
   await expect(
     page.getByRole("heading", { name: "Quick actions" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Work summary" }),
   ).toBeVisible();
-  // Quick actions are Links in the Next app, not the reference's
-  // data-page-target buttons, so they carry the link role.
   await expect(
     page.getByRole("link", { name: "Create a project" }),
   ).toBeVisible();
@@ -48,9 +50,10 @@ test("shows quick actions and the work summary", async ({ page }) => {
 
 test("linking a project card opens the project", async ({ page }) => {
   await page
-    .getByRole("link", { name: /Website redesign/ })
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(E2E_FIXTURE.project.name) })
     .first()
     .click();
 
-  await expect(page).toHaveURL("/projects/1");
+  await expect(page).toHaveURL(E2E_FIXTURE.project.href);
 });

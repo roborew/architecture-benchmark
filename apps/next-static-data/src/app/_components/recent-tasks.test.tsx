@@ -1,47 +1,75 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { dashboardRecentTasks } from "@/lib/seed-data";
 import { RecentTasks } from "./recent-tasks";
+import { makeRecentTask } from "@/test/fixtures";
 
 describe("RecentTasks", () => {
   it("renders a row per task", () => {
-    render(<RecentTasks tasks={dashboardRecentTasks} />);
+    const tasks = [
+      makeRecentTask({ id: 1, title: "A" }),
+      makeRecentTask({ id: 2, title: "B" }),
+      makeRecentTask({ id: 3, title: "C" }),
+    ];
 
-    expect(screen.getAllByRole("row")).toHaveLength(
-      dashboardRecentTasks.length + 1, // + header row
-    );
+    render(<RecentTasks tasks={tasks} />);
+
+    expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
   });
 
   it("links each task by title and shows its project", () => {
-    render(<RecentTasks tasks={dashboardRecentTasks} />);
+    const task = makeRecentTask({
+      id: 88,
+      title: "Link me",
+      projectName: "Alpha",
+    });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<RecentTasks tasks={[task]} />);
 
-    expect(
-      within(row).getByRole("link", { name: "Draft navigation model" }),
-    ).toHaveAttribute("href", "/tasks/101");
-    expect(within(row).getByText("Website redesign")).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(within(row).getByRole("link", { name: task.title })).toHaveAttribute(
+      "href",
+      `/tasks/${task.id}`,
+    );
+    expect(within(row).getByText(task.projectName)).toBeInTheDocument();
   });
 
   it("humanises the status", () => {
-    render(<RecentTasks tasks={dashboardRecentTasks} />);
+    const tasks = [
+      makeRecentTask({ id: 1, title: "Todo task", status: "in progress" }),
+      makeRecentTask({ id: 2, title: "To do task", status: "todo" }),
+      makeRecentTask({ id: 3, title: "Done task", status: "done" }),
+    ];
 
-    const inProgress = screen.getByRole("row", {
-      name: /Draft navigation model/,
-    });
-    const todo = screen.getByRole("row", { name: /Confirm breakpoint rules/ });
+    render(<RecentTasks tasks={tasks} />);
 
-    expect(within(inProgress).getByText("In progress")).toBeInTheDocument();
-    expect(within(todo).getByText("To do")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("row", { name: /Todo task/ })).getByText(
+        "In progress",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("row", { name: /To do task/ })).getByText(
+        "To do",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("row", { name: /Done task/ })).getByText("Done"),
+    ).toBeInTheDocument();
   });
 
   it("shows assignee and updated columns", () => {
-    render(<RecentTasks tasks={dashboardRecentTasks} />);
+    const task = makeRecentTask({
+      assigneeName: "Assignee Person",
+      updatedAt: "Some day",
+    });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<RecentTasks tasks={[task]} />);
 
-    expect(within(row).getByText("Robin Andrew")).toBeInTheDocument();
-    expect(within(row).getByText("Today")).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(within(row).getByText(task.assigneeName)).toBeInTheDocument();
+    expect(within(row).getByText(task.updatedAt)).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no recent tasks", () => {

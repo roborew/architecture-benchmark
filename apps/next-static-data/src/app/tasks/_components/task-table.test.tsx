@@ -1,43 +1,56 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { allTasks } from "@/lib/seed-data";
 import { TaskTable } from "./task-table";
+import { makeTaskWithProject } from "@/test/fixtures";
 
 describe("TaskTable", () => {
   it("renders a row per task", () => {
-    render(<TaskTable tasks={allTasks} showProject showComments />);
+    const tasks = [
+      makeTaskWithProject({ id: 1 }),
+      makeTaskWithProject({ id: 2 }),
+      makeTaskWithProject({ id: 3 }),
+    ];
 
-    expect(screen.getAllByRole("row")).toHaveLength(allTasks.length + 1);
+    render(<TaskTable tasks={tasks} showProject showComments />);
+
+    expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
   });
 
   it("links each task to its detail page", () => {
-    render(<TaskTable tasks={allTasks} showProject showComments />);
+    const task = makeTaskWithProject({ id: 77, title: "Write the thing" });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<TaskTable tasks={[task]} showProject showComments />);
 
-    expect(
-      within(row).getByRole("link", { name: "Draft navigation model" }),
-    ).toHaveAttribute("href", "/tasks/101");
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(within(row).getByRole("link", { name: task.title })).toHaveAttribute(
+      "href",
+      `/tasks/${task.id}`,
+    );
   });
 
   it("shows the task id under the title", () => {
-    render(<TaskTable tasks={allTasks} showProject showComments />);
+    const task = makeTaskWithProject({ id: 55 });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<TaskTable tasks={[task]} showProject showComments />);
 
-    expect(within(row).getByText("#101")).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(within(row).getByText(`#${task.id}`)).toBeInTheDocument();
   });
 
   it("renders the project column when requested", () => {
-    render(<TaskTable tasks={allTasks} showProject showComments />);
+    const task = makeTaskWithProject({ projectName: "Alpha" });
 
-    const row = screen.getByRole("row", { name: /Review API response shapes/ });
+    render(<TaskTable tasks={[task]} showProject showComments />);
 
-    expect(within(row).getByText("Mobile application")).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(within(row).getByText(task.projectName)).toBeInTheDocument();
   });
 
   it("omits the project column when not requested", () => {
-    render(<TaskTable tasks={allTasks} showComments />);
+    render(<TaskTable tasks={[makeTaskWithProject()]} showComments />);
 
     expect(
       screen.queryByRole("columnheader", { name: "Project" }),
@@ -45,7 +58,7 @@ describe("TaskTable", () => {
   });
 
   it("omits the comments column when not requested", () => {
-    render(<TaskTable tasks={allTasks} showProject />);
+    render(<TaskTable tasks={[makeTaskWithProject()]} showProject />);
 
     expect(
       screen.queryByRole("columnheader", { name: "Comments" }),
@@ -53,11 +66,43 @@ describe("TaskTable", () => {
   });
 
   it("shows comment counts when requested", () => {
-    render(<TaskTable tasks={allTasks} showProject showComments />);
+    const task = makeTaskWithProject({ commentCount: 4 });
 
-    const row = screen.getByRole("row", { name: /Draft navigation model/ });
+    render(<TaskTable tasks={[task]} showProject showComments />);
 
-    expect(within(row).getByText("2")).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: new RegExp(task.title) });
+
+    expect(
+      within(row).getByText(String(task.commentCount)),
+    ).toBeInTheDocument();
+  });
+
+  it("humanises each status", () => {
+    const tasks = [
+      makeTaskWithProject({ id: 1, title: "Todo task", status: "todo" }),
+      makeTaskWithProject({
+        id: 2,
+        title: "In flight task",
+        status: "in progress",
+      }),
+      makeTaskWithProject({ id: 3, title: "Finished task", status: "done" }),
+    ];
+
+    render(<TaskTable tasks={tasks} showProject showComments />);
+
+    expect(
+      within(screen.getByRole("row", { name: /Todo task/ })).getByText("To do"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("row", { name: /In flight task/ })).getByText(
+        "In progress",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("row", { name: /Finished task/ })).getByText(
+        "Done",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no tasks", () => {
