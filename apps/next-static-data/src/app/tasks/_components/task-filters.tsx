@@ -1,7 +1,7 @@
 import type { Project, User } from "@/types";
 
 const selectClass =
-  "rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-brand-500";
+  "rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[12px] text-slate-700 outline-none focus:border-brand-500";
 
 export function TaskFilters({
   projects,

@@ -108,7 +108,7 @@ export function ProjectDetail({
             <select
               aria-label="Status"
               defaultValue=""
-              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] outline-none focus:border-brand-500"
+              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
             >
               <option value="">All statuses</option>
               <option value="todo">To do</option>

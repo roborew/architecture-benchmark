@@ -76,7 +76,8 @@ export function TaskDetail({
               {/* The count comes from the rendered list so the heading
                   can never disagree with what is on screen. */}
               <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
-                Comments <span className="text-slate-500">({comments.length})</span>
+                Comments{" "}
+                <span className="text-slate-500">({comments.length})</span>
               </h2>
             </div>
 
@@ -135,7 +136,7 @@ export function TaskDetail({
                   Author
                   <select
                     id="comment-author"
-                    className="ml-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"
+                    className="ml-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700"
                   >
                     <option>Robin Andrew</option>
                     <option>Alex Morgan</option>
