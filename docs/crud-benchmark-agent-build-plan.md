@@ -3,32 +3,44 @@
 **Status:** implementation specification. **Date:** 30 September 2026.
 **Supersedes:** revision 1 (`crud-benchmark-agent-build-plan.md` @ 27 Sep 2026).
 **Audience:** coding agent implementing the repository.
+**Session handoff:** see [`live.md`](./live.md) for current position and next step.
 
 ---
 
 ## TODO
 
-### Phase 0 — Reconcile the spec with the real UI (blocks everything)
+> Status as of 30 Sep 2026. Checked = done and verified. **Next task is Phase 4.**
 
-- [ ] Add `projects.description`, `projects.created_at` to `schema.sql`
-- [ ] Add `users.email` to `schema.sql`
-- [ ] Rewrite `contract.md` against the actual IA (dashboard, `/tasks`, `/users`, three `new` routes)
-- [ ] Rewrite `queries.md` to match, including dashboard aggregates
-- [ ] Update `seed-spec.md` for the new column set
-- [ ] Regenerate `spec/snapshots/small/` and record the new `combinedSha256`
-- [ ] Re-run the determinism gate (two fresh reset→seed→export cycles)
-- [ ] Add `dev-realistic` seed profile alongside `bench-generated`
+### Phase 0 — Reconcile the spec with the real UI — DONE
+
+- [x] Add `projects.description`, `projects.created_at` to `schema.sql`
+- [x] Add `users.email` to `schema.sql`
+- [x] Update `seed-spec.md` for the new column set
+- [x] Regenerate `spec/snapshots/small/` and record the new `combinedSha256`
+- [x] Align stored status to `'in progress'` (was `'doing'`) across schema, seed spec,
+      profiles, generator, rig validator, and rig configs
+- [x] Determinism re-verified: two runs byte-identical
+- [ ] Rewrite `contract.md` against the actual IA (dashboard, `/tasks`, `/users`, three `new` routes) — _still describes the old 3-route blueprint_
+- [ ] Rewrite `queries.md` to include dashboard aggregates and `/users` reads
+- [ ] Re-run determinism gate through a live Postgres round-trip (generator-level only so far)
+- [ ] Add `dev-realistic` seed profile alongside `bench-generated` (deferred — not blocking)
+
+**Current golden digest: `11145bf81a9c2c89e08fa73119c924575cf8e3fadd661802f2d4648661781078`**
 
 ### Phase 1 — Freeze the template app
 
-- [ ] Rename `apps/next-static-data` → `apps/template-next`
-- [ ] Add comments UI (task detail: 10 most recent; create-with-comment form)
+- [x] Rename `apps/next-static-data` → `apps/next-template`
+- [x] Comments UI exists (task detail renders the list, count, and add-comment form)
 - [ ] Adopt the `contract.md` `data-testid` set
 - [ ] Freeze the UI contract; no further component changes after this point
-- [ ] Pass the copy-out gate (blocked in blueprint by Docker disk — verify)
+- [ ] Pass the copy-out gate
+- [ ] Fix `package.json` name (still says `next-actions`)
 
-### Phase 2 — Rig foundation (reuse blueprint, extend)
+### Phase 2 — Rig foundation
 
+- [x] Salvage Zod config schema + canonical fixture generator from blueprint
+- [x] Update status keys in the Zod validator and rig YAML configs
+- [x] Remove all ORM references from the repo (no Drizzle/Prisma/SQLAlchemy in code)
 - [ ] Extend config schema: `cachingProfile`, `coldWarmProfile`, `cohort`, `measured`
 - [ ] Add `kind: build` scenario
 - [ ] Controller lifecycle: Compose project/port management, try/finally cleanup
@@ -43,11 +55,14 @@
 - [ ] k6 read-only smoke load
 - [ ] Deliberately-stale-UI test proves the harness detects drift
 
-### Phase 4 — First measured variant
+### Phase 4 — First measured variant — **NEXT**
 
 - [ ] `apps/next-sql` — raw SQL (`node-postgres`), RSC reads, Server Action mutations
-- [ ] Own Compose, schema, seed, reset, README, tests
-- [ ] Pass the unchanged Phase 3 correctness suite
+- [ ] Copy `spec/schema.sql` → `apps/next-template/db/schema.sql`
+- [ ] `COPY` the `spec/snapshots/small/*.csv` fixtures; reproduce digest `11145bf8…`
+- [ ] Explicit `setval` on all four identity sequences after bulk insert
+- [ ] Own Compose, README, tests
+- [ ] Pass the Phase 3 correctness suite unchanged
 
 ### Phase 5 — Data-access cohort
 
@@ -76,7 +91,7 @@
 ### Phase 9 — Infrastructure
 
 - [ ] Provision the Ubuntu rig host
-- [ ] Verify local Docker disk headroom
+- [ ] Verify local Docker disk headroom (previously caused initdb failure)
 - [ ] Automate variant bring-up from manifest alone
 
 ---
@@ -102,13 +117,22 @@ No result supports a claim of the form "X is N% faster than Y" across cohorts.
 
 ## 2. Reference app
 
-`apps/template-next` is the frozen UI contract: routes, roles, `data-testid`s,
-form semantics, expected outcomes. It renders from an in-memory module and is
-**never measured** — it has no database, no write path, and no `database-recreate`
-reset, so fixture and resource parity cannot hold.
+`apps/next-template` is the frozen UI contract: routes, roles, `data-testid`s,
+form semantics, expected outcomes. It renders from an in-memory module (`src/lib/seed-data.ts`)
+and is **never measured** — it has no database, no write path, and no
+`database-recreate` reset, so fixture and resource parity cannot hold.
+
+It currently renders all ten routes (dashboard, projects, project detail, project
+new, tasks, task detail, task new, users, user detail, user new) plus the comments
+list and add-comment form on task detail.
 
 Its job is to (a) define the contract, (b) validate the parity harness before any
 database-backed variant exists, and (c) serve as the copy-source for every variant.
+
+**The template app defines the naming and shape of the schema.** Where the template's
+types and `spec/schema.sql` disagree, the template wins and the spec is corrected —
+for example `TaskStatus` is stored verbatim as `'todo' | 'in progress' | 'done'` with
+no display-mapping layer.
 
 ## 3. Variant taxonomy
 
