@@ -1,8 +1,17 @@
 import Link from "next/link";
 import { UserTable } from "./_components/user-table";
-import { people } from "@tests/fixtures/data";
+import { getUsers } from "@/lib/data";
+import { Suspense } from "react";
+import { SearchInput } from "../_components/search-input";
 
-export default function UsersPage() {
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const raw = Array.isArray(params.q) ? params.q[0] : params.q;
+  const people = await getUsers(raw ?? "");
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -14,8 +23,7 @@ export default function UsersPage() {
             People
           </h1>
           <p className="mt-1.5 text-[13px] leading-6 text-slate-500">
-            Manage workspace members who are assigned tasks and author
-            comments.
+            Manage workspace members who are assigned tasks and author comments.
           </p>
         </div>
         <Link
@@ -31,26 +39,17 @@ export default function UsersPage() {
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Workspace members
           </h2>
-          <span className="text-[11px] text-slate-500">{people.length} people</span>
+          <span className="text-[11px] text-slate-500">
+            {people.length} people
+          </span>
         </div>
-
         <div className="p-4">
-          <label className="relative block">
-            <span className="sr-only">Search people</span>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-2.5 text-slate-500"
-            >
-              ⌕
-            </span>
-            <input
-              type="search"
-              placeholder="Search people…"
-              className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-            />
-          </label>
+          {/* useSearchParams opts this subtree out of static rendering,
+                  so Next requires a Suspense boundary around it. */}
+          <Suspense fallback={<div className="h-10" />}>
+            <SearchInput placeholder="Search people…" label="Search people" />
+          </Suspense>
         </div>
-
         <UserTable people={people} />
       </section>
     </div>

@@ -1,4 +1,4 @@
-import type { Project } from "@/lib/types";
+import type { Project, User } from "@/lib/types";
 import { sql } from "./db";
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
@@ -13,9 +13,6 @@ export async function getProjects(value = "") {
   try {
     return await sql<Project[]>`
       SELECT
-        -- bigint comes back from postgres.js as a string unless cast, which
-        -- would silently violate the Project['id']: number contract. Every
-        -- other numeric column is cast for the same reason.
         p.id::int AS id,
         p.name,
         p.description,
@@ -27,13 +24,39 @@ export async function getProjects(value = "") {
       LEFT JOIN tasks t ON p.id = t.project_id
       ${where}
       GROUP BY p.id, p.name, p.description, p.created_at
-      -- created_at is the documented order. The fixture spaces project
-      -- timestamps apart, but id is added as a tiebreaker so equal timestamps
-      -- cannot make the result order non-deterministic.
       ORDER BY p.created_at DESC, p.id DESC
     `;
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch projects.");
+  }
+}
+
+export async function getUsers(value = "") {
+  const term = value.trim();
+  const where = term
+    ? sql`WHERE u.display_name ILIKE ${`%${escapeLike(term)}%`}
+          OR u.email ILIKE ${`%${escapeLike(term)}%`}`
+    : sql``;
+
+  try {
+    return await sql<User[]>`
+      SELECT
+        u.id::int AS id,
+        u.display_name AS name,
+        u.email,
+        COUNT(DISTINCT t.id)::int AS "assignedTaskCount",
+        COUNT(DISTINCT t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
+        COUNT(DISTINCT c.id)::int AS "commentCount"
+      FROM users u
+      LEFT JOIN tasks t ON u.id = t.assignee_id
+      LEFT JOIN comments c ON u.id = c.author_id
+      ${where}
+      GROUP BY u.id, u.display_name, u.email
+      ORDER BY u.display_name DESC, u.id DESC
+    `;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to fetch users.");
   }
 }
