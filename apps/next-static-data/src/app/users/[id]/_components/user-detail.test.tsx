@@ -24,14 +24,14 @@ describe("UserDetail", () => {
 
     render(<UserDetail person={person} tasks={[]} />);
 
-    expect(screen.getByText("Assigned tasks")).toBeInTheDocument();
+    // "Assigned tasks" appears twice by design, as the stat card label
+    // and as the table heading, so the counts are asserted instead.
+    expect(screen.getAllByText("Assigned tasks")).toHaveLength(2);
     expect(screen.getByText("Comments authored")).toBeInTheDocument();
     expect(
       screen.getByText(String(person.assignedTaskCount)),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(String(person.commentCount)),
-    ).toBeInTheDocument();
+    expect(screen.getByText(String(person.commentCount))).toBeInTheDocument();
   });
 
   it("reuses the shared task table with the project column only", () => {
@@ -64,9 +64,10 @@ describe("UserDetail", () => {
 
     const row = screen.getByRole("row", { name: new RegExp(task.title) });
 
-    expect(
-      within(row).getByRole("link", { name: task.title }),
-    ).toHaveAttribute("href", `/tasks/${task.id}`);
+    expect(within(row).getByRole("link", { name: task.title })).toHaveAttribute(
+      "href",
+      `/tasks/${task.id}`,
+    );
   });
 
   it("shows an empty state when the person has no assigned tasks", () => {

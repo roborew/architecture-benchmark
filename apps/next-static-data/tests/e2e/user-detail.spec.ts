@@ -16,8 +16,13 @@ test.describe("user detail", () => {
     const main = page.getByRole("main");
 
     await expect(main.getByText(E2E_FIXTURE.person.email)).toBeVisible();
-    await expect(main.getByText("Assigned tasks", { exact: true })).toBeVisible();
-    await expect(main.getByText("Comments authored", { exact: true })).toBeVisible();
+    // "Assigned tasks" is both a stat card label and a table heading.
+    await expect(
+      main.getByRole("heading", { name: "Assigned tasks" }),
+    ).toBeVisible();
+    await expect(
+      main.getByText("Comments authored", { exact: true }),
+    ).toBeVisible();
   });
 
   test("lists the tasks assigned to the person", async ({ page }) => {

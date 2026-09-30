@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import { UserTable } from "./user-table";
 import { makeUser } from "@/test/fixtures";
+import { UserTable } from "./user-table";
 
 describe("UserTable", () => {
   it("renders a row per person", () => {
@@ -63,6 +63,8 @@ describe("UserTable", () => {
   it("shows an empty state when there are no people", () => {
     render(<UserTable people={[]} />);
 
-    expect(screen.getByText("No people in this workspace.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No people in this workspace."),
+    ).toBeInTheDocument();
   });
 });
