@@ -1,4 +1,5 @@
 import type {
+  Comment,
   DashboardTask,
   Project,
   Task,
@@ -35,10 +36,22 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     id: 9101,
     projectId: 9001,
     title: "Fixture task",
+    description: "A description used only by unit tests.",
     status: "todo",
     assigneeName: "Fixture Person",
     commentCount: 0,
     updatedAt: "Fixture day",
+    ...overrides,
+  };
+}
+
+export function makeComment(overrides: Partial<Comment> = {}): Comment {
+  return {
+    id: 9501,
+    taskId: 9101,
+    authorName: "Fixture Commenter",
+    body: "A comment used only by unit tests.",
+    createdAt: "Fixture moment",
     ...overrides,
   };
 }

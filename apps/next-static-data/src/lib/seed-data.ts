@@ -1,4 +1,5 @@
 import type {
+  Comment,
   DashboardProject,
   DashboardStats,
   DashboardTask,
@@ -43,6 +44,8 @@ export const projectTasks: Record<number, Task[]> = {
       id: 101,
       projectId: 1,
       title: "Draft navigation model",
+      description:
+        "Map the navigation structure for the public and authenticated product areas.",
       status: "in progress",
       assigneeName: "Robin Andrew",
       commentCount: 2,
@@ -52,6 +55,8 @@ export const projectTasks: Record<number, Task[]> = {
       id: 102,
       projectId: 1,
       title: "Confirm breakpoint rules",
+      description:
+        "Agree the breakpoints the shared layout tokens are generated from.",
       status: "todo",
       assigneeName: "Alex Morgan",
       commentCount: 0,
@@ -61,6 +66,8 @@ export const projectTasks: Record<number, Task[]> = {
       id: 103,
       projectId: 1,
       title: "Prepare content inventory",
+      description:
+        "Collect the copy and imagery currently live across the public pages.",
       status: "done",
       assigneeName: "Sam Taylor",
       commentCount: 0,
@@ -72,6 +79,8 @@ export const projectTasks: Record<number, Task[]> = {
       id: 104,
       projectId: 2,
       title: "Review API response shapes",
+      description:
+        "Check the client expectations against the shapes the service returns.",
       status: "todo",
       assigneeName: "Alex Morgan",
       commentCount: 1,
@@ -81,6 +90,8 @@ export const projectTasks: Record<number, Task[]> = {
       id: 105,
       projectId: 2,
       title: "Build profile screen",
+      description:
+        "Implement the profile screen for existing workspace members.",
       status: "in progress",
       assigneeName: "Robin Andrew",
       commentCount: 0,
@@ -92,6 +103,7 @@ export const projectTasks: Record<number, Task[]> = {
       id: 106,
       projectId: 3,
       title: "Write migration checklist",
+      description: "List the steps and owners for moving to the new platform.",
       status: "todo",
       assigneeName: "Sam Taylor",
       commentCount: 0,
@@ -99,6 +111,30 @@ export const projectTasks: Record<number, Task[]> = {
     },
   ],
 };
+
+export const taskComments: Comment[] = [
+  {
+    id: 1,
+    taskId: 101,
+    authorName: "Alex Morgan",
+    body: "I have added the initial content grouping for review.",
+    createdAt: "Today, 09:42",
+  },
+  {
+    id: 2,
+    taskId: 101,
+    authorName: "Robin Andrew",
+    body: "Thanks — I will use that to confirm the signed-in navigation.",
+    createdAt: "Today, 10:18",
+  },
+  {
+    id: 3,
+    taskId: 104,
+    authorName: "Alex Morgan",
+    body: "The list endpoint drops the total count, worth confirming.",
+    createdAt: "Yesterday, 15:05",
+  },
+];
 
 export const dashboardStats: DashboardStats = {
   projectCount: 3,
