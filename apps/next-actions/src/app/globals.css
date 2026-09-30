@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/*
+ * The app is light-only by design: every surface is an explicit slate
+ * or white utility class, copied from the static style reference.
+ *
+ * This file therefore defines no :root foreground/background colours
+ * and no prefers-color-scheme block. A previous version did, and
+ * applied them with an unlayered `body { color: ... }` rule. Tailwind
+ * v4 puts its utilities in a cascade layer, and unlayered rules beat
+ * layered ones regardless of specificity, so that rule silently
+ * overrode the text-slate-800 and bg-slate-50 classes on <body>.
+ *
+ * In dark mode the override forced near-white text onto a near-black
+ * page while the select kept bg-white, so the dropdown options
+ * rendered at roughly 1.05:1 and were unreadable. Colour and
+ * background are left entirely to the utilities on <body>.
+ *
+ * The bare `body { font-family: Arial }` rule was removed for the same
+ * reason: it overrode the --font-sans theme variable. layout.tsx puts
+ * font-sans on <body> instead.
+ *
+ * tests/e2e/color-scheme.spec.ts guards this in both schemes.
+ */
+
+@theme {
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+
+    --color-navy-950: #14233b;
+    --color-navy-900: #1e314e;
+    --color-navy-800: #2c4569;
+
+    --color-brand-50: #f1f5ff;
+    --color-brand-100: #e3ebff;
+    --color-brand-500: #5576e8;
+    --color-brand-600: #4266df;
+    --color-brand-700: #3455c5;
+
+    --shadow-panel: 0 3px 14px rgba(36, 51, 77, 0.05);
+}
