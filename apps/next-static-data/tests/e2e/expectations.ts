@@ -17,6 +17,9 @@ export const E2E_FIXTURE = {
     projectName: "Website redesign",
     crossProjectTitle: "Review API response shapes",
     crossProjectName: "Mobile application",
+    description:
+      "Map the navigation structure for the public and authenticated product areas.",
+    commentCount: 2,
   },
   person: {
     name: "Robin Andrew",
