@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ProjectDetail } from "./project-detail";
-import { makeProject, makeTask } from "@/test/fixtures";
+import { makeProject, makeTaskWithProject } from "@/test/fixtures";
 
 const project = makeProject({
   id: 3,
@@ -13,8 +13,8 @@ const project = makeProject({
 });
 
 const tasks = [
-  makeTask({ id: 11, title: "First task", status: "in progress" }),
-  makeTask({ id: 12, title: "Second task", status: "done" }),
+  makeTaskWithProject({ id: 11, title: "First task", status: "in progress" }),
+  makeTaskWithProject({ id: 12, title: "Second task", status: "done" }),
 ];
 
 describe("ProjectDetail", () => {
