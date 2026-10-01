@@ -2,3 +2,5 @@
 # NEXT_DIST_DIR=.next-e2e so it does not contend with a developer's `pnpm dev`
 # over the lock on .next.
 apps/next-actions/.next-e2e/
+apps/next-prisma/.next-e2e/dev/
+apps/next-drizzle/.next-e2e/dev/
