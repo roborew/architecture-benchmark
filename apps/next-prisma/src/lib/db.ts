@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import postgres from "postgres";
+import pg from "pg";
 
 // Next.js loads `.env` automatically, but standalone scripts (migrate, seed)
 // do not. Load it here so both paths resolve the same connection string.
@@ -24,4 +24,4 @@ if (!connectionString) {
   );
 }
 
-export const sql = postgres(connectionString, { ssl: false });
+export const sql = pg(connectionString, { ssl: false });

@@ -23,7 +23,6 @@ import {
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 
-import postgres from "postgres";
 
 import { sql } from "@/lib/db";
 
