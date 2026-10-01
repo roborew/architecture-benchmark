@@ -1,27 +1,13 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// src/lib/db.ts
+//
+// The postgres.js client, kept for the standalone scripts that read or write
+// whole files (`migrate`, `seed`). The query layer in `data.ts` and the server
+// actions in `actions.ts` use Drizzle — see `drizzle.ts` — rather than this.
 
 import postgres from "postgres";
 
-// Next.js loads `.env` automatically, but standalone scripts (migrate, seed)
-// do not. Load it here so both paths resolve the same connection string.
-const envPath = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  ".env",
-);
-if (existsSync(envPath) && !process.env.POSTGRES_URL) {
-  process.loadEnvFile(envPath);
-}
+import { connectionString } from "./connection";
 
-export const connectionString = process.env.POSTGRES_URL;
-
-if (!connectionString) {
-  throw new Error(
-    "Missing database connection string: set POSTGRES_URL in .env",
-  );
-}
+export { connectionString };
 
 export const sql = postgres(connectionString, { ssl: false });

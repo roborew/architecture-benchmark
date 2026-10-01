@@ -19,6 +19,7 @@ import { pipeline } from "node:stream/promises";
 import postgres from "postgres";
 
 import { schemaPath } from "../../src/db/spec-dir";
+import { e2eDatabaseUrl } from "../../src/lib/connection-string";
 import { fixtureDirectory } from "../fixtures/load";
 
 export const E2E_DATABASE = "architecture_next_actions_e2e";
@@ -49,10 +50,10 @@ export function e2eConnectionString(): string {
     );
   }
 
-  const url = new URL(base);
-  url.pathname = `/${E2E_DATABASE}`;
-
-  return url.toString();
+  // Normalised before the database name is swapped, so the Prisma-only
+  // `?schema=public` cannot reach postgres.js and abort the CREATE/DROP
+  // connection with `unrecognized configuration parameter`.
+  return e2eDatabaseUrl(base, E2E_DATABASE);
 }
 
 /** Connection string for the maintenance database, used to CREATE/DROP DATABASE. */
