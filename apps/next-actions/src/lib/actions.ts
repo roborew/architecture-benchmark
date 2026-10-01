@@ -67,6 +67,25 @@ const TaskSchema = z.object({
   }),
 });
 
+/**
+ * A comment submitted on its own, or as the first comment of a new task.
+ *
+ * The 1000-character bound matches the CHECK on `comments.body` in
+ * spec/schema.sql, so the form and the database enforce the same limit. The
+ * author is coerced because it arrives from a `<select>` as a string.
+ */
+const CommentSchema = z.object({
+  commentBody: z.preprocess(
+    (value) => (value === null || value === undefined ? "" : value),
+    z
+      .string()
+      .trim()
+      .min(1, "Comment is required.")
+      .max(1000, "Comment must be 1000 characters or fewer."),
+  ),
+  commentAuthorId: z.coerce.number().int().positive(),
+});
+
 /** Selects that must resolve to a real row before a task can reference them. */
 async function resolveRefs(fields: {
   projectId?: FormDataEntryValue | null;
@@ -120,6 +139,7 @@ export type State = {
     assigneeId?: string[];
     status?: string[];
     commentBody?: string[];
+    commentAuthorId?: string[];
   };
   message?: string | null;
 };
@@ -584,19 +604,7 @@ export async function createTaskWithComment(
 
   // The comment has its own bound (char_length BETWEEN 1 AND 1000), enforced by
   // its own schema so the message lands on the comment field.
-  const commentSchema = z.object({
-    commentBody: z.preprocess(
-      (value) => (value === null || value === undefined ? "" : value),
-      z
-        .string()
-        .trim()
-        .min(1, "Comment is required.")
-        .max(1000, "Comment must be 1000 characters or fewer."),
-    ),
-    commentAuthorId: z.coerce.number().int().positive(),
-  });
-
-  const commentFields = commentSchema.safeParse({
+  const commentFields = CommentSchema.safeParse({
     commentBody: formData.get("commentBody"),
     commentAuthorId: formData.get("commentAuthorId"),
   });
@@ -672,4 +680,80 @@ export async function createTaskWithComment(
   revalidatePath("/tasks");
   revalidatePath(`/projects/${projectId}`);
   redirect("/tasks");
+}
+
+/**
+ * Adds a comment to an existing task.
+ *
+ * Separate from `createTaskWithComment` because a comment on an existing task
+ * is a single insert — the atomicity that form needs comes from being one
+ * transaction with the task insert, which this path has no part in.
+ */
+export async function createComment(
+  taskId: number,
+  prevState: State,
+  formData: FormData,
+): Promise<State> {
+  const parsed = CommentSchema.safeParse({
+    commentBody: formData.get("commentBody"),
+    commentAuthorId: formData.get("commentAuthorId"),
+  });
+
+  if (!parsed.success) {
+    return {
+      errors: parsed.error.flatten().fieldErrors,
+      message: "Missing fields. Failed to add the comment.",
+    };
+  }
+
+  const commentBody = parsed.data.commentBody;
+  const commentAuthorId = parsed.data.commentAuthorId;
+
+  // The task and the author are both foreign keys. Checking first turns an
+  // unknown id into a field error the user can act on, rather than a thrown
+  // Postgres error.
+  const [[task], [author]] = await Promise.all([
+    sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
+    sql<
+      { id: number }[]
+    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+  ]);
+
+  if (!task) {
+    return { message: "That task no longer exists." };
+  }
+
+  if (!author) {
+    return {
+      errors: { commentAuthorId: ["That comment author no longer exists."] },
+      message: "Missing fields. Failed to add the comment.",
+    };
+  }
+
+  try {
+    await sql`
+      INSERT INTO comments (task_id, author_id, body, created_at)
+      VALUES (${taskId}, ${commentAuthorId}, ${commentBody}, now())
+    `;
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { message: "Database Error: Failed to add the comment." };
+  }
+
+  // The count on the task list changed, so both the detail page and the list
+  // are now stale.
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/tasks");
+
+  const [row] = await sql<{ project_id: number }[]>`
+    SELECT project_id::int FROM tasks WHERE id = ${taskId}
+  `;
+
+  if (row) {
+    revalidatePath(`/projects/${row.project_id}`);
+  }
+
+  // No redirect: the user stays on the task detail page and sees the comment
+  // they just wrote in the list above the form.
+  return {};
 }

@@ -1,4 +1,8 @@
 import type {
+  Comment,
+  DashboardProject,
+  DashboardStats,
+  DashboardTask,
   Project,
   ProjectTaskRow,
   TaskStatus,
@@ -18,6 +22,13 @@ const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 const PAGE_SIZE = 25;
 
 const TASK_STATUSES: readonly TaskStatus[] = ["todo", "in progress", "done"];
+
+/** spec/queries.md — a task detail shows the 10 most recent comments. */
+const COMMENTS_PER_TASK = 10;
+
+/** How many rows each dashboard section shows. */
+const DASHBOARD_RECENT_TASKS = 3;
+const DASHBOARD_PROJECTS = 2;
 
 /**
  * Rendering notes for every timestamp below.
@@ -70,6 +81,16 @@ const TASK_PROJECTION_FIELDS = sql`
     COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
     COUNT(c.id)::int AS "commentCount",
     to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
+`;
+
+/**
+ * The raw `(updated_at, id)` components a keyset cursor is built from.
+ *
+ * Appended only by the paged queries. `getTask` fetches a single row by
+ * primary key and has no cursor to build, so it must not carry this.
+ */
+const CURSOR_FIELD = sql`
+    to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z' AS "updatedAtRaw"
 `;
 
 /** The `FROM`/`JOIN` clause every task read shares, so the joins cannot drift. */
@@ -234,12 +255,21 @@ export async function getProjectTasks(
   }
 }
 
+export type TaskRow = TaskWithProject & {
+  /** Raw `updated_at` at microsecond precision, the cursor's time component. */
+  updatedAtRaw: string;
+  /** The `(updated_at, id)` tuple the next page starts after. */
+  cursorFor: string;
+};
+
 export type TaskFilters = {
   projectId?: number;
   status?: string;
   assigneeId?: number;
   search?: string;
   limit?: number;
+  /** Opaque keyset cursor for `(updated_at, id)`; absent means the first page. */
+  cursor?: string | null;
 };
 
 /**
@@ -255,7 +285,8 @@ export async function getTasks({
   assigneeId,
   search = "",
   limit = PAGE_SIZE,
-}: TaskFilters = {}): Promise<TaskWithProject[]> {
+  cursor = null,
+}: TaskFilters = {}): Promise<TaskRow[]> {
   const statusTerm = status.trim();
 
   if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
@@ -272,18 +303,37 @@ export async function getTasks({
           OR t.description ILIKE ${`%${escapeLike(term)}%`})`
     : sql``;
 
+  const decoded = decodeCursor(cursor);
+
+  // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
+  // costs 50x page 1, and a row inserted mid-walk shifts the window. Bound as
+  // text and cast in SQL so an unusable cursor matches nothing instead of
+  // failing in the driver.
+  const cursorFilter = decoded
+    ? sql`AND (t.updated_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
+    : sql``;
+
   try {
-    return await sql<TaskWithProject[]>`
-      ${TASK_PROJECTION}
+    const rows = await sql<TaskRow[]>`
+      SELECT
+        ${TASK_PROJECTION_FIELDS},
+        ${CURSOR_FIELD}
+      ${TASK_PROJECTION_FROM}
       WHERE 1 = 1
       ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
       ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
       ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
       ${searchFilter}
-      GROUP BY t.id, p.name, u.display_name
+      ${cursorFilter}
+      GROUP BY t.id, p.name, u.display_name, t.updated_at
       ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, PAGE_SIZE))}
+      LIMIT ${Math.max(1, Math.min(limit, PAGE_SIZE + 1))}
     `;
+
+    return rows.map((row) => ({
+      ...row,
+      cursorFor: encodeCursor(row.updatedAtRaw, row.id),
+    }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch tasks.");
@@ -306,6 +356,171 @@ export async function getTask(id: number): Promise<TaskWithProject | null> {
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the task.");
+  }
+}
+
+/**
+ * The most recent comments on one task, newest first.
+ *
+ * spec/queries.md caps this at 10: a task detail page must never load every
+ * comment it has accumulated. `COMMENTS_PER_TASK` is that bound.
+ */
+export async function getComments(
+  taskId: number,
+  limit = COMMENTS_PER_TASK,
+): Promise<Comment[]> {
+  try {
+    return await sql<Comment[]>`
+      SELECT
+        c.id::int AS id,
+        c.task_id::int AS "taskId",
+        u.display_name AS "authorName",
+        c.body,
+        to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
+      FROM comments c
+      JOIN users u ON u.id = c.author_id
+      WHERE c.task_id = ${taskId}
+      ORDER BY c.created_at DESC, c.id DESC
+      LIMIT ${Math.max(1, Math.min(limit, COMMENTS_PER_TASK))}
+    `;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to fetch the task comments.");
+  }
+}
+
+/**
+ * Counts the tasks matching the workspace list's filters.
+ *
+ * A second statement rather than a window function, deliberately: the list is
+ * `LIMIT`ed, and `COUNT(*) OVER ()` would force Postgres to materialise every
+ * matching row before discarding all but the first page. This way the page's
+ * cost is one bounded read plus one aggregate.
+ */
+export async function countTasks({
+  search = "",
+  status = "",
+  projectId,
+  assigneeId,
+}: TaskFilters = {}): Promise<number> {
+  const statusTerm = status.trim();
+
+  if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
+    throw new Error(`Unknown task status: ${statusTerm}`);
+  }
+
+  const term = search.trim();
+
+  const searchFilter = term
+    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
+          OR t.description ILIKE ${`%${escapeLike(term)}%`})`
+    : sql``;
+
+  try {
+    const [row] = await sql<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count
+      FROM tasks t
+      WHERE 1 = 1
+      ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
+      ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
+      ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
+      ${searchFilter}
+    `;
+
+    return row?.count ?? 0;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to count tasks.");
+  }
+}
+
+/**
+ * Workspace totals for the dashboard's stat cards.
+ *
+ * One statement rather than three, because the cards are rendered together and
+ * separate COUNT queries would each scan a different table for the same row.
+ */
+export async function getDashboardStats(): Promise<DashboardStats> {
+  try {
+    const [stats] = await sql<DashboardStats[]>`
+      SELECT
+        (SELECT COUNT(*) FROM projects)::int AS "projectCount",
+        (SELECT COUNT(*) FROM tasks)::int AS "totalTasks",
+        (
+          SELECT COUNT(*) FROM tasks WHERE status <> 'done'
+        )::int AS "openTasks",
+        (SELECT COUNT(*) FROM users)::int AS "peopleCount",
+        (SELECT COUNT(*) FROM tasks WHERE status = 'todo')::int AS "todoTasks",
+        (
+          SELECT COUNT(*) FROM tasks WHERE status = 'in progress'
+        )::int AS "inProgressTasks",
+        (SELECT COUNT(*) FROM tasks WHERE status = 'done')::int AS "doneTasks"
+    `;
+
+    return stats;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to fetch the dashboard stats.");
+  }
+}
+
+/**
+ * The most recently updated tasks, for the dashboard's recent table.
+ *
+ * Ordered by `updated_at` rather than `created_at`: "recent activity" means
+ * when the work last moved, which is also what `updateTask` advances.
+ */
+export async function getRecentTasks(
+  limit = DASHBOARD_RECENT_TASKS,
+): Promise<DashboardTask[]> {
+  try {
+    return await sql<DashboardTask[]>`
+      SELECT
+        t.id::int AS id,
+        t.title,
+        p.name AS "projectName",
+        t.status,
+        COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
+        to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
+      FROM tasks t
+      JOIN projects p ON p.id = t.project_id
+      LEFT JOIN users u ON u.id = t.assignee_id
+      ORDER BY t.updated_at DESC, t.id DESC
+      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS))}
+    `;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to fetch recent tasks.");
+  }
+}
+
+/**
+ * The busiest projects, for the dashboard's project cards.
+ *
+ * Ordered by task count so the cards answer "where is the work?" rather than
+ * repeating the newest-first ordering of every other list.
+ */
+export async function getDashboardProjects(
+  limit = DASHBOARD_PROJECTS,
+): Promise<DashboardProject[]> {
+  try {
+    return await sql<DashboardProject[]>`
+      SELECT
+        p.id::int AS id,
+        p.name,
+        p.description,
+        COUNT(t.id)::int AS "taskCount",
+        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
+        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount"
+      FROM projects p
+      LEFT JOIN tasks t ON p.id = t.project_id
+      GROUP BY p.id, p.name, p.description
+      ORDER BY COUNT(t.id) DESC, p.id ASC
+      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_PROJECTS))}
+    `;
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to fetch dashboard projects.");
   }
 }
 
