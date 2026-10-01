@@ -27,6 +27,20 @@ export type Task = {
 // A task joined with its project name, for the workspace-wide list.
 export type TaskWithProject = Task & { projectName: string };
 
+/**
+ * A row from the project task board.
+ *
+ * Carries `cursorFor` — the `(created_at, id)` tuple the next page starts after —
+ * so the page can build the "older" link without re-querying or guessing the
+ * sort order. `createdAtRaw` keeps full precision (microseconds) for exactly
+ * that purpose; it is not display state, which is why the cursor is a separate
+ * field rather than something the components render.
+ */
+export type ProjectTaskRow = TaskWithProject & {
+  createdAtRaw: string;
+  cursorFor: string;
+};
+
 // The recent-tasks table lists a task without its project id, description or
 // comment count, but with its project name.
 export type DashboardTask = Omit<
