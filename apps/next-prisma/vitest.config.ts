@@ -43,7 +43,7 @@ export default defineConfig({
           // Loads the isolated database before any test module imports the
           // query layer, which reads POSTGRES_URL at import time.
           setupFiles: ["./tests/integration/database.ts", "./vitest.setup.ts"],
-          include: ["src/**/*.integration.test.ts"],
+          include: ["tests/integration/**/*.integration.test.ts"],
           // The database is per-process state; parallel workers would contend
           // for the same rows.
           fileParallelism: false,
