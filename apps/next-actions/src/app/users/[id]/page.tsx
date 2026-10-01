@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { UserDetail } from "./_components/user-detail";
-import { allTasks, people } from "@tests/fixtures/data";
+import { getUser, getUserTasks } from "@/lib/data";
 
-export default async function UserDetailPage({ params }: PageProps<"/users/[id]">) {
+export default async function UserDetailPage({
+  params,
+}: PageProps<"/users/[id]">) {
   const { id } = await params;
+  const personId = Number(id);
 
-  const person = people.find((candidate) => candidate.id === Number(id));
+  // Scoped by id rather than by display name: the fixture page filtered the
+  // in-memory rows on `assigneeName`, which would give two members sharing a
+  // name each other's tasks.
+  const person = Number.isInteger(personId) ? await getUser(personId) : null;
 
   if (!person) {
     return (
@@ -26,7 +32,7 @@ export default async function UserDetailPage({ params }: PageProps<"/users/[id]"
     );
   }
 
-  const tasks = allTasks.filter((task) => task.assigneeName === person.name);
+  const tasks = await getUserTasks(person.id);
 
   return <UserDetail person={person} tasks={tasks} />;
 }

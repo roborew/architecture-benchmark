@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { User } from "@/lib/types";
 import { TaskTable } from "@/app/tasks/_components/task-table";
 import type { TaskWithProject } from "@/lib/types";
+import { DeleteUserButton } from "@/app/users/_components/delete-user-button";
 
 function StatCard({
   label,
@@ -49,12 +50,15 @@ export function UserDetail({
             {person.email}
           </p>
         </div>
-        <Link
-          href="/users/new"
-          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
-        >
-          Edit user
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/users/${person.id}/edit`}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            Edit user
+          </Link>
+          <DeleteUserButton person={person} />
+        </div>
       </div>
 
       <section className="mb-5 grid grid-cols-2 gap-3">

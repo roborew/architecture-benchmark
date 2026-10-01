@@ -1,7 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { UserDetail } from "./user-detail";
 import { makeUser, makeTaskWithProject } from "@tests/fixtures/builders";
+
+// The delete control is a Client Component with its own form, so it is stubbed
+// here and asserted on in delete-user-button.test.tsx.
+vi.mock("@/lib/actions", () => ({
+  deleteUser: vi.fn(async () => ({})),
+}));
 
 describe("UserDetail", () => {
   it("shows the person's name and email", () => {
@@ -75,6 +81,30 @@ describe("UserDetail", () => {
 
     expect(
       screen.getByText("No tasks are assigned to this person."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers an edit link to this member's own edit page", () => {
+    // Not /users/new: that would create a second member instead of editing
+    // the one on screen.
+    render(<UserDetail person={makeUser({ id: 12 })} tasks={[]} />);
+
+    expect(screen.getByRole("link", { name: "Edit user" })).toHaveAttribute(
+      "href",
+      "/users/12/edit",
+    );
+  });
+
+  it("offers a delete control naming the member", () => {
+    render(
+      <UserDetail
+        person={makeUser({ id: 12, name: "Ada Lovelace" })}
+        tasks={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Delete Ada Lovelace/ }),
     ).toBeInTheDocument();
   });
 });
