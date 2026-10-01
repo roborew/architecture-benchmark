@@ -77,7 +77,13 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: {
     command: `pnpm dev --port ${E2E_PORT}`,
-    url: `http://localhost:${E2E_PORT}`,
+    // Wait on /healthz rather than the site root. Playwright starts the web
+    // server *before* globalSetup creates and seeds the database, so probing a
+    // page that reads the database would time out on a clean machine — the
+    // server cannot serve it until the database exists. /healthz does not
+    // touch the database, and spec/contract.md names it as the readiness
+    // endpoint for exactly this purpose.
+    url: `http://localhost:${E2E_PORT}/healthz`,
     // Never reuse an already-running dev server: it would be serving the
     // developer's database rather than the isolated e2e one.
     reuseExistingServer: false,
