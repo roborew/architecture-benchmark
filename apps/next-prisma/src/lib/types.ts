@@ -74,3 +74,10 @@ export type User = {
   openTaskCount: number;
   commentCount: number;
 };
+
+export type UserRow = {
+  id: bigint;
+  display_name: string;
+  email: string;
+  _count: { tasks: number; comments: number };
+};

@@ -8,9 +8,11 @@ import type {
   TaskStatus,
   TaskWithProject,
   User,
+  UserRow,
 } from "@/lib/types";
 import { decodeCursor, encodeCursor } from "./cursor";
 import { sql } from "./db";
+import prisma from "./prisma";
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
@@ -45,25 +47,63 @@ const DASHBOARD_PROJECTS = 2;
  * a value the fixture never claimed to carry.
  */
 
+// src/lib/data.ts, replacing the commented USER_AGGREGATES at L57-68
+
 /**
- * The aggregate projection shared by `getUsers` and `getUser`.
+ * Renders a `timestamptz` the way the fixtures store it, for the reasons set
+ * out above: whole seconds, UTC, an ISO-Z string rather than a `Date`.
  *
- * Every count is DISTINCT on its own side's key because the two LEFT JOINs
- * multiply: a member with 2 tasks and 2 comments produces 4 rows, and a plain
- * COUNT over that join would report 4 tasks.
+ * This is what replaces the `to_char(… AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
+ * the SQL projections used to pin. Prisma returns a `Date`, so the zone and the
+ * precision both have to be re-applied here.
  */
-const USER_AGGREGATES = sql`
-  SELECT
-    u.id::int AS id,
-    u.display_name AS name,
-    u.email,
-    COUNT(DISTINCT t.id)::int AS "assignedTaskCount",
-    COUNT(DISTINCT t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-    COUNT(DISTINCT c.id)::int AS "commentCount"
-  FROM users u
-  LEFT JOIN tasks t ON u.id = t.assignee_id
-  LEFT JOIN comments c ON u.id = c.author_id
-`;
+function toUtcSecond(value: Date): string {
+  return value.toISOString().slice(0, 19) + "Z";
+}
+
+/**
+ * The open-task count shared by `getUsers` and `getUser`.
+ *
+ * Prisma's `_count` counts each relation once, so the open count — the old
+ * `COUNT(DISTINCT t.id) FILTER (WHERE t.status <> 'done')` — cannot be a second
+ * entry in the same `select`. It comes from a separate query grouped by assignee
+ * and merged by key, which is also why the DISTINCT is no longer needed: grouping
+ * already collapses the join multiplication the SQL had to guard against.
+ *
+ * `scope` narrows the grouping to one member, so `getUser` does not aggregate
+ * the whole task table to read a single row.
+ */
+async function openTaskCounts(
+  scope: { assignee_id?: bigint } = {},
+): Promise<Map<bigint, number>> {
+  const grouped = await prisma.tasks.groupBy({
+    by: ["assignee_id"],
+    where: { status: { not: "done" }, ...scope },
+    _count: { _all: true },
+  });
+
+  // `assignee_id` is nullable, so the key is `bigint | null` until filtered.
+  return new Map(
+    grouped
+      .filter((g) => g.assignee_id !== null)
+      .map((g) => [g.assignee_id as bigint, g._count._all]),
+  );
+}
+
+function toUser(row: UserRow, openCounts: Map<bigint, number>): User {
+  return {
+    // Every pk is a BigInt in the schema, but the UI does arithmetic and
+    // comparisons on `id`, so it crosses the boundary as a number.
+    id: Number(row.id),
+    name: row.display_name,
+    email: row.email,
+    assignedTaskCount: row._count.tasks,
+    // Keyed by the raw BigInt — that is what the groupBy returned. Keying by
+    // the mapped `id` would never match.
+    openTaskCount: openCounts.get(row.id) ?? 0,
+    commentCount: row._count.comments,
+  };
+}
 
 /**
  * The task columns every read returns.
@@ -524,20 +564,37 @@ export async function getDashboardProjects(
   }
 }
 
-export async function getUsers(value = "") {
+export async function getUsers(value = ""): Promise<User[]> {
   const term = value.trim();
-  const where = term
-    ? sql`WHERE u.display_name ILIKE ${`%${escapeLike(term)}%`}
-          OR u.email ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+  // `contains` compiles to a LIKE, so the term has to be escaped or a search for
+  // `%` would match every member. Prisma does not escape it for us.
+  const search = escapeLike(term);
 
   try {
-    return await sql<User[]>`
-      ${USER_AGGREGATES}
-      ${where}
-      GROUP BY u.id, u.display_name, u.email
-      ORDER BY u.display_name DESC, u.id DESC
-    `;
+    // Independent queries, so they run concurrently. The member rows and the
+    // open-task groups never depend on each other.
+    const [rows, openCounts] = await Promise.all([
+      prisma.users.findMany({
+        where: term
+          ? {
+              OR: [
+                { display_name: { contains: search, mode: "insensitive" } },
+                { email: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : undefined,
+        orderBy: [{ display_name: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          display_name: true,
+          email: true,
+          _count: { select: { tasks: true, comments: true } },
+        },
+      }),
+      openTaskCounts(),
+    ]);
+
+    return rows.map((row) => toUser(row, openCounts));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch users.");
@@ -551,13 +608,26 @@ export async function getUsers(value = "") {
  */
 export async function getUser(id: number): Promise<User | null> {
   try {
-    const [user] = await sql<User[]>`
-      ${USER_AGGREGATES}
-      WHERE u.id = ${id}
-      GROUP BY u.id, u.display_name, u.email
-    `;
+    const [row] = await prisma.users.findMany({
+      where: { id },
+      select: {
+        id: true,
+        display_name: true,
+        email: true,
+        _count: { select: { tasks: true, comments: true } },
+      },
+    });
 
-    return user ?? null;
+    if (!row) {
+      return null;
+    }
+
+    // Scoped to this member rather than grouping the whole task table, and
+    // sequential rather than concurrent: without a row there is nothing to
+    // merge the count into, so the second query would be wasted.
+    const openCounts = await openTaskCounts({ assignee_id: BigInt(id) });
+
+    return toUser(row, openCounts);
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user.");
@@ -573,12 +643,40 @@ export async function getUser(id: number): Promise<User | null> {
  */
 export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
   try {
-    return await sql<TaskWithProject[]>`
-      ${TASK_PROJECTION}
-      WHERE t.assignee_id = ${id}
-      GROUP BY t.id, p.name, u.display_name
-      ORDER BY t.updated_at DESC, t.id DESC
-    `;
+    const tasks = await prisma.tasks.findMany({
+      where: { assignee_id: id },
+      // The id tie-break is not decoration: the integration test sorts its
+      // expectation by `updatedAt` alone, so two tasks sharing an instant have
+      // to come back in a stable order for that assertion to hold.
+      orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        project_id: true,
+        title: true,
+        description: true,
+        status: true,
+        updated_at: true,
+        projects: { select: { name: true } },
+        users: { select: { display_name: true } },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    return tasks.map((task) => ({
+      id: Number(task.id),
+      projectId: Number(task.project_id),
+      projectName: task.projects.name,
+      title: task.title,
+      description: task.description,
+      // The column is plain text in the database; the union lives in
+      // `types.ts`, and the CHECK constraint on the table is what keeps a
+      // value outside it from ever arriving here.
+      status: task.status as TaskStatus,
+      // `assignee_id` is nullable, which the SQL covered with a COALESCE.
+      assigneeName: task.users?.display_name ?? "Unassigned",
+      commentCount: task._count.comments,
+      updatedAt: toUtcSecond(task.updated_at),
+    }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user's tasks.");
