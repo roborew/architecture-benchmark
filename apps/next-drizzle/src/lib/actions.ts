@@ -2,9 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { sql } from "./db";
+import { comments, projects, tasks, users } from "../../drizzle/schema";
+import { db } from "./drizzle";
+
+/**
+ * The Postgres error code behind a failed statement.
+ *
+ * Drizzle wraps driver errors in a `DrizzleQueryError` that carries the failing
+ * statement for logging, and puts the original — the one with `code` on it — on
+ * `cause`. The distinction matters because two actions branch on a specific code
+ * to turn a constraint violation into a message the user can act on.
+ */
+function postgresErrorCode(error: unknown): string | undefined {
+  const wrapped = error as { code?: string; cause?: { code?: string } };
+
+  return wrapped?.cause?.code ?? wrapped?.code;
+}
 
 const ProjectSchema = z.object({
   name: z
@@ -103,9 +119,11 @@ async function resolveRefs(fields: {
   if (!Number.isInteger(projectId)) {
     errors.projectId = ["Choose a project."];
   } else {
-    const [row] = await sql<{ id: number }[]>`
-      SELECT id::int FROM projects WHERE id = ${projectId}
-    `;
+    const [row] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
 
     if (!row) {
       errors.projectId = ["That project no longer exists."];
@@ -116,9 +134,11 @@ async function resolveRefs(fields: {
     if (!Number.isInteger(assigneeId)) {
       errors.assigneeId = ["Choose a valid assignee."];
     } else {
-      const [row] = await sql<{ id: number }[]>`
-        SELECT id::int FROM users WHERE id = ${assigneeId}
-      `;
+      const [row] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, assigneeId))
+        .limit(1);
 
       if (!row) {
         errors.assigneeId = ["That assignee no longer exists."];
@@ -164,10 +184,11 @@ export async function createProject(
 
   try {
     // created_at is NOT NULL with no default, so the server sets it.
-    await sql`
-      INSERT INTO projects (name, description, created_at)
-      VALUES (${name}, ${description}, now())
-    `;
+    await db.insert(projects).values({
+      name,
+      description,
+      createdAt: new Date(),
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create project." };
@@ -200,12 +221,11 @@ export async function updateProject(
   try {
     // RETURNING distinguishes "no such row" from "row updated", so a stale
     // form cannot report success for a project that is already gone.
-    const updated = await sql<{ id: number }[]>`
-      UPDATE projects
-      SET name = ${name}, description = ${description}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    const updated = await db
+      .update(projects)
+      .set({ name, description })
+      .where(eq(projects.id, id))
+      .returning({ id: projects.id });
 
     if (updated.length === 0) {
       return { message: "That project no longer exists." };
@@ -226,9 +246,10 @@ export async function deleteProject(
   _formData: FormData,
 ): Promise<State> {
   try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM projects WHERE id = ${id} RETURNING id
-    `;
+    const deleted = await db
+      .delete(projects)
+      .where(eq(projects.id, id))
+      .returning({ id: projects.id });
 
     if (deleted.length === 0) {
       return { message: "That project no longer exists." };
@@ -238,12 +259,13 @@ export async function deleteProject(
     // tasks cannot be removed. 23001 is restrict_violation; 23503 is what
     // NO ACTION raises, and both mean the same thing here. This is a rule the
     // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
+    const code = postgresErrorCode(error);
 
     if (code === "23001" || code === "23503") {
-      const [row] = await sql<{ count: number }[]>`
-        SELECT COUNT(*)::int AS count FROM tasks WHERE project_id = ${id}
-      `;
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tasks)
+        .where(eq(tasks.projectId, id));
 
       const count = row?.count ?? 0;
 
@@ -283,10 +305,7 @@ export async function createUser(
   const { name, email } = validatedFields.data;
 
   try {
-    await sql`
-      INSERT INTO users (display_name, email)
-      VALUES (${name}, ${email})
-    `;
+    await db.insert(users).values({ displayName: name, email });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create user." };
@@ -319,12 +338,11 @@ export async function updateUser(
   try {
     // RETURNING distinguishes "no such row" from "row updated", so a stale form
     // cannot report success for a member who is already gone.
-    const updated = await sql<{ id: number }[]>`
-      UPDATE users
-      SET display_name = ${name}, email = ${email}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    const updated = await db
+      .update(users)
+      .set({ displayName: name, email })
+      .where(eq(users.id, id))
+      .returning({ id: users.id });
 
     if (updated.length === 0) {
       return { message: "That user no longer exists." };
@@ -347,9 +365,10 @@ export async function deleteUser(
   _formData: FormData,
 ): Promise<State> {
   try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM users WHERE id = ${id} RETURNING id
-    `;
+    const deleted = await db
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning({ id: users.id });
 
     if (deleted.length === 0) {
       return { message: "That user no longer exists." };
@@ -366,20 +385,22 @@ export async function deleteUser(
     // So a failure here is always the comments restriction: 23001 is
     // restrict_violation and 23503 is what NO ACTION raises. This is a rule the
     // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
+    const code = postgresErrorCode(error);
 
     if (code === "23001" || code === "23503") {
-      const [commentRows, taskRows] = await Promise.all([
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
-        `,
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
-        `,
+      const [commentRow, taskRow] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(comments)
+          .where(eq(comments.authorId, id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(tasks)
+          .where(eq(tasks.assigneeId, id)),
       ]);
 
-      const commentCount = commentRows[0]?.count ?? 0;
-      const taskCount = taskRows[0]?.count ?? 0;
+      const commentCount = commentRow[0]?.count ?? 0;
+      const taskCount = taskRow[0]?.count ?? 0;
 
       return {
         message:
@@ -435,14 +456,17 @@ export async function createTask(
   const { title, description, status } = validatedFields.data;
 
   try {
-    await sql`
-      INSERT INTO tasks (
-        project_id, assignee_id, title, description, status, created_at, updated_at
-      )
-      VALUES (
-        ${projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
-      )
-    `;
+    // Both timestamps are set here rather than by a DB default, which also
+    // keeps them identical — what the contract means by "both equal at insert".
+    await db.insert(tasks).values({
+      projectId,
+      assigneeId,
+      title,
+      description,
+      status,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create task." };
@@ -492,9 +516,11 @@ export async function updateTask(
       : Number(assigneeRaw);
 
   if (assigneeId !== null) {
-    const [assignee] = await sql<{ id: number }[]>`
-      SELECT id::int FROM users WHERE id = ${assigneeId}
-    `;
+    const [assignee] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, assigneeId))
+      .limit(1);
 
     if (!assignee) {
       return {
@@ -506,26 +532,28 @@ export async function updateTask(
 
   // Read the project first so the redirect can revalidate the board the task
   // is leaving, or joining.
-  const [existing] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${id}
-  `;
+  const [existing] = await db
+    .select({ projectId: tasks.projectId })
+    .from(tasks)
+    .where(eq(tasks.id, id))
+    .limit(1);
 
   if (!existing) {
     return { message: "That task no longer exists." };
   }
 
   try {
-    const updated = await sql<{ id: number }[]>`
-      UPDATE tasks
-      SET
-        title = ${title},
-        description = ${description},
-        status = ${status},
-        assignee_id = ${assigneeId},
-        updated_at = now()
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    const updated = await db
+      .update(tasks)
+      .set({
+        title,
+        description,
+        status,
+        assigneeId,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, id))
+      .returning({ id: tasks.id });
 
     if (updated.length === 0) {
       return { message: "That task no longer exists." };
@@ -538,7 +566,7 @@ export async function updateTask(
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${id}`);
-  revalidatePath(`/projects/${existing.project_id}`);
+  revalidatePath(`/projects/${existing.projectId}`);
 
   redirect(`/tasks/${id}`);
 }
@@ -554,18 +582,21 @@ export async function deleteTask(
 ): Promise<State> {
   // Read the project first, both to revalidate its board and because the
   // contract redirects there after a delete.
-  const [existing] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${id}
-  `;
+  const [existing] = await db
+    .select({ projectId: tasks.projectId })
+    .from(tasks)
+    .where(eq(tasks.id, id))
+    .limit(1);
 
   if (!existing) {
     return { message: "That task no longer exists." };
   }
 
   try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM tasks WHERE id = ${id} RETURNING id
-    `;
+    const deleted = await db
+      .delete(tasks)
+      .where(eq(tasks.id, id))
+      .returning({ id: tasks.id });
 
     if (deleted.length === 0) {
       return { message: "That task no longer exists." };
@@ -577,11 +608,11 @@ export async function deleteTask(
 
   revalidatePath("/");
   revalidatePath("/tasks");
-  revalidatePath(`/projects/${existing.project_id}`);
+  revalidatePath(`/projects/${existing.projectId}`);
 
   // Straight to the board: the detail page for this id is now not-found, so
   // redirecting there would land the user on a dead URL.
-  redirect(`/projects/${existing.project_id}`);
+  redirect(`/projects/${existing.projectId}`);
 }
 
 /**
@@ -641,9 +672,11 @@ export async function createTaskWithComment(
   // The author is a FK like the assignee, so an id that matches no row fails the
   // insert. Checking first turns that into a field error rather than a thrown
   // Postgres error the user cannot act on.
-  const [author] = await sql<{ id: number }[]>`
-    SELECT id::int FROM users WHERE id = ${commentAuthorId}
-  `;
+  const [author] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, commentAuthorId))
+    .limit(1);
 
   if (!author) {
     return {
@@ -653,23 +686,29 @@ export async function createTaskWithComment(
   }
 
   try {
-    await sql.begin(async (tx) => {
-      const [row] = await tx<{ id: number }[]>`
-        INSERT INTO tasks (
-          project_id, assignee_id, title, description, status, created_at, updated_at
-        )
-        VALUES (
-          ${projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
-        )
-        RETURNING id::int AS id
-      `;
+    // Both writes share one transaction, so a failure in either leaves neither.
+    // A throw inside the callback — including the FK violation the author check
+    // above is guarding against racing — rolls the task insert back with it.
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(tasks)
+        .values({
+          projectId,
+          assigneeId,
+          title,
+          description,
+          status,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning({ id: tasks.id });
 
-      // Inside the same transaction, so a failure here throws and the task
-      // insert above is rolled back with it.
-      await tx`
-        INSERT INTO comments (task_id, author_id, body, created_at)
-        VALUES (${row.id}, ${commentAuthorId}, ${commentBody}, now())
-      `;
+      await tx.insert(comments).values({
+        taskId: row.id,
+        authorId: commentAuthorId,
+        body: commentBody,
+        createdAt: new Date(),
+      });
     });
   } catch (error) {
     console.error("Database Error:", error);
@@ -713,10 +752,16 @@ export async function createComment(
   // unknown id into a field error the user can act on, rather than a thrown
   // Postgres error.
   const [[task], [author]] = await Promise.all([
-    sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
-    sql<
-      { id: number }[]
-    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+    db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1),
+    db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, commentAuthorId))
+      .limit(1),
   ]);
 
   if (!task) {
@@ -731,10 +776,12 @@ export async function createComment(
   }
 
   try {
-    await sql`
-      INSERT INTO comments (task_id, author_id, body, created_at)
-      VALUES (${taskId}, ${commentAuthorId}, ${commentBody}, now())
-    `;
+    await db.insert(comments).values({
+      taskId,
+      authorId: commentAuthorId,
+      body: commentBody,
+      createdAt: new Date(),
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to add the comment." };
@@ -745,12 +792,14 @@ export async function createComment(
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/tasks");
 
-  const [row] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${taskId}
-  `;
+  const [row] = await db
+    .select({ projectId: tasks.projectId })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
 
   if (row) {
-    revalidatePath(`/projects/${row.project_id}`);
+    revalidatePath(`/projects/${row.projectId}`);
   }
 
   // No redirect: the user stays on the task detail page and sees the comment
