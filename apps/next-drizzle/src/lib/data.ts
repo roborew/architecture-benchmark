@@ -1,3 +1,15 @@
+// src/lib/data.ts
+//
+// The query layer. Every read the app performs goes through Drizzle — the
+// typed schema in `drizzle/schema.ts` is the single description of the tables,
+// and `db` is the only connection the app makes.
+//
+// A few projections still reach for `sql` fragments, and deliberately so. The
+// aggregates the dashboard cards render (`COUNT … FILTER`, `COUNT(DISTINCT …)`)
+// have no helper in drizzle-orm 1.0.0-rc.4, and every timestamp is rendered to a
+// pinned UTC string in SQL for the reason set out in `utcSecond` below. Those
+// are expressions *within* a Drizzle query, not a fallback to raw SQL.
+
 import type {
   Comment,
   DashboardProject,
@@ -9,20 +21,30 @@ import type {
   TaskWithProject,
   User,
 } from "@/lib/types";
-import { comments, tasks, users } from "../../drizzle/schema";
 import {
+  and,
+  count,
   countDistinct,
   desc,
   eq,
   ilike,
   ne,
   or,
-  sql as tsql,
+  sql,
+  type SQL,
 } from "drizzle-orm";
+
+import { comments, projects, tasks, users } from "../../drizzle/schema";
 import { decodeCursor, encodeCursor } from "./cursor";
-import { sql } from "./db";
 import { db } from "./drizzle";
 
+/**
+ * Escapes the LIKE metacharacters so a search box treats them as literals.
+ *
+ * `ilike` compiles to a LIKE, and it escapes the *parameter* but not the
+ * wildcards inside it. Without this, a single `%` matches every row and hides a
+ * real filtering bug.
+ */
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
 /**
@@ -44,8 +66,8 @@ const DASHBOARD_PROJECTS = 2;
 /**
  * Rendering notes for every timestamp below.
  *
- * Left alone, postgres.js renders a `timestamptz` in the *server's* zone, so
- * one row reads `2026-09-29 09:00:00+01` on a machine west of UTC. Every
+ * Left to itself, node-postgres renders a `timestamptz` in the *server's* zone,
+ * so one row reads `2026-09-29 09:00:00+01` on a machine west of UTC. Every
  * timestamp in the schema is UTC (spec/schema.sql) and the fixtures store the
  * ISO-Z form, so a screen rendering a local-time string would show a different
  * instant than the database holds — and a different one per machine. Each
@@ -56,16 +78,42 @@ const DASHBOARD_PROJECTS = 2;
  * a value the fixture never claimed to carry.
  */
 
+/** A `timestamptz` as the ISO-Z instant the fixtures store: whole seconds, UTC. */
+const utcSecond = (column: SQL | unknown) =>
+  sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`;
+
+/**
+ * The same instant at microsecond precision, for building a keyset cursor.
+ *
+ * The display stamps above are truncated to whole seconds; a cursor cannot be,
+ * because two rows sharing a second must still produce different cursors.
+ */
+const utcMicrosecond = (column: SQL | unknown) =>
+  sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z'`;
+
+/** A `timestamptz` as the bare UTC calendar date the projects list shows. */
+const utcDate = (column: SQL | unknown) =>
+  sql<string>`(${column} at time zone 'UTC')::date::text`;
+
+/**
+ * The open-task count shared by every rollup that reports one.
+ *
+ * `COUNT(tasks.id) FILTER (WHERE status <> 'done')` is the one aggregate Drizzle
+ * has no helper for — `countDistinct` cannot express a FILTER in 1.0.0-rc.4 —
+ * so it is hand-written and `.mapWith(Number)`d to match the helpers' decoding,
+ * which returns a bigint as a string otherwise.
+ */
+const openTaskCount = () =>
+  sql<number>`count(${tasks.id}) filter (where ${ne(tasks.status, "done")})`.mapWith(
+    Number,
+  );
+
 /**
  * The aggregate projection shared by `getUsers` and `getUser`.
  *
  * Every count is DISTINCT on its own side's key because the two LEFT JOINs
  * multiply: a member with 2 tasks and 2 comments produces 4 rows, and a plain
  * COUNT over that join would report 4 tasks.
- *
- * `openTaskCount` is the one aggregate Drizzle cannot express as a helper
- * (`countDistinct` has no FILTER support in 1.0.0-rc.4), so it is hand-written
- * and `.mapWith(Number)`d to match the helpers' decoding.
  */
 const USER_AGGREGATE_COLUMNS = {
   id: users.id,
@@ -73,99 +121,41 @@ const USER_AGGREGATE_COLUMNS = {
   email: users.email,
   assignedTaskCount: countDistinct(tasks.id),
   openTaskCount:
-    tsql<number>`count(distinct ${tasks.id}) filter (where ${ne(tasks.status, "done")})`.mapWith(
+    sql<number>`count(distinct ${tasks.id}) filter (where ${ne(tasks.status, "done")})`.mapWith(
       Number,
     ),
   commentCount: countDistinct(comments.id),
 };
 
-const USER_AGGREGATES = sql`
-  SELECT
-    u.id::int AS id,
-    u.display_name AS name,
-    u.email,
-    COUNT(DISTINCT t.id)::int AS "assignedTaskCount",
-    COUNT(DISTINCT t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-    COUNT(DISTINCT c.id)::int AS "commentCount"
-  FROM users u
-  LEFT JOIN tasks t ON u.id = t.assignee_id
-  LEFT JOIN comments c ON u.id = c.author_id
-`;
-
-/**
- * The task columns every read returns.
- *
- * Split from the `FROM` clause so a query that needs one extra column — the
- * keyset cursor — can add it without restating the shared ones.
- */
-const TASK_PROJECTION_FIELDS = sql`
-    t.id::int AS id,
-    t.project_id::int AS "projectId",
-    p.name AS "projectName",
-    t.title,
-    t.description,
-    t.status,
-    COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
-    COUNT(c.id)::int AS "commentCount",
-    to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
-`;
-
-/**
- * The raw `(updated_at, id)` components a keyset cursor is built from.
- *
- * Appended only by the paged queries. `getTask` fetches a single row by
- * primary key and has no cursor to build, so it must not carry this.
- */
-const CURSOR_FIELD = sql`
-    to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z' AS "updatedAtRaw"
-`;
-
-/** The `FROM`/`JOIN` clause every task read shares, so the joins cannot drift. */
-const TASK_PROJECTION_FROM = sql`
-  FROM tasks t
-  JOIN projects p ON p.id = t.project_id
-  LEFT JOIN users u ON u.id = t.assignee_id
-  LEFT JOIN comments c ON c.task_id = t.id
-`;
-
-/**
- * The task row projection shared by every task read.
- *
- * Declared once because the same task is rendered by three pages; a projection
- * that drifted between them would show one task with two different statuses.
- * `COALESCE` covers the nullable `assignee_id`, and `commentCount` uses COUNT
- * over the LEFT JOIN rather than a subquery so it costs nothing extra on the
- * bounded page.
- */
-const TASK_PROJECTION = sql`
-  SELECT
-    ${TASK_PROJECTION_FIELDS}
-  ${TASK_PROJECTION_FROM}
-`;
-
-export async function getProjects(value = "") {
+export async function getProjects(value = ""): Promise<Project[]> {
   const term = value.trim();
-  const where = term
-    ? sql`WHERE p.name ILIKE ${`%${escapeLike(term)}%`}
-          OR p.description ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+  const pattern = `%${escapeLike(term)}%`;
 
   try {
-    return await sql<Project[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount",
-        (p.created_at AT TIME ZONE 'UTC')::date::text AS "createdAt"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      ${where}
-      GROUP BY p.id, p.name, p.description, p.created_at
-      ORDER BY p.created_at DESC, p.id DESC
-    `;
+    return await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        taskCount: count(tasks.id),
+        openTaskCount: openTaskCount(),
+        peopleCount: countDistinct(tasks.assigneeId),
+        createdAt: utcDate(projects.createdAt),
+      })
+      .from(projects)
+      .leftJoin(tasks, eq(tasks.projectId, projects.id))
+      .where(
+        term
+          ? or(
+              ilike(projects.name, pattern),
+              ilike(projects.description, pattern),
+            )
+          : undefined,
+      )
+      // Grouping by the primary key is enough for Postgres to accept the other
+      // `projects` columns, since they are functionally dependent on it.
+      .groupBy(projects.id)
+      .orderBy(desc(projects.createdAt), desc(projects.id));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch projects.");
@@ -179,20 +169,20 @@ export async function getProjects(value = "") {
  */
 export async function getProject(id: number): Promise<Project | null> {
   try {
-    const [project] = await sql<Project[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount",
-        (p.created_at AT TIME ZONE 'UTC')::date::text AS "createdAt"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      WHERE p.id = ${id}
-      GROUP BY p.id, p.name, p.description, p.created_at
-    `;
+    const [project] = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        taskCount: count(tasks.id),
+        openTaskCount: openTaskCount(),
+        peopleCount: countDistinct(tasks.assigneeId),
+        createdAt: utcDate(projects.createdAt),
+      })
+      .from(projects)
+      .leftJoin(tasks, eq(tasks.projectId, projects.id))
+      .where(eq(projects.id, id))
+      .groupBy(projects.id);
 
     return project ?? null;
   } catch (error) {
@@ -232,8 +222,6 @@ export async function getProjectTasks(
     throw new Error(`Unknown task status: ${term}`);
   }
 
-  const statusFilter = term ? sql`AND t.status = ${term}` : sql``;
-
   const decoded = decodeCursor(cursor);
 
   // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
@@ -246,8 +234,8 @@ export async function getProjectTasks(
   // stale or hand-edited cursor into a driver-level error instead of simply
   // not matching a row.
   const cursorFilter = decoded
-    ? sql`AND (t.created_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
+    ? sql`(${tasks.createdAt}, ${tasks.id}) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
+    : undefined;
 
   // Clamped so a caller cannot ask for an unbounded page. One row above the page
   // size is allowed deliberately: fetching PAGE + 1 and dropping the last is
@@ -255,25 +243,46 @@ export async function getProjectTasks(
   const bound = Math.max(1, Math.min(limit, PAGE_SIZE + 1));
 
   try {
-    const rows = await sql<ProjectTaskRow[]>`
-      SELECT
-        ${TASK_PROJECTION_FIELDS},
-        -- The cursor needs microsecond precision, and a Z suffix since the
-        -- value is already in UTC.
-        to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z' AS "createdAtRaw"
-      ${TASK_PROJECTION_FROM}
-      WHERE t.project_id = ${projectId}
-      ${statusFilter}
-      ${cursorFilter}
-      GROUP BY t.id, p.name, u.display_name, t.created_at
-      ORDER BY t.created_at DESC, t.id DESC
-      LIMIT ${bound}
-    `;
+    const rows = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        projectName: projects.name,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        // COALESCE covers the nullable `assignee_id`, which the old SQL did the
+        // same way.
+        assigneeName: sql<string>`coalesce(${users.displayName}, 'Unassigned')`,
+        commentCount: count(comments.id),
+        updatedAt: utcSecond(tasks.updatedAt),
+        // The cursor needs microsecond precision, and a Z suffix since the
+        // value is already in UTC.
+        createdAtRaw: utcMicrosecond(tasks.createdAt),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(comments.taskId, tasks.id))
+      .where(
+        and(
+          eq(tasks.projectId, projectId),
+          term ? eq(tasks.status, term) : undefined,
+          cursorFilter,
+        ),
+      )
+      .groupBy(tasks.id, projects.name, users.displayName, tasks.createdAt)
+      .orderBy(desc(tasks.createdAt), desc(tasks.id))
+      .limit(bound);
 
     // Derived here rather than in SQL so cursor packing has one implementation,
     // shared with the decoder this query uses to read a page back.
     return rows.map((row) => ({
       ...row,
+      // The column is plain text in the database; the union lives in
+      // `types.ts`, and the CHECK constraint is what keeps a value outside it
+      // from ever arriving here.
+      status: row.status as TaskStatus,
       cursorFor: encodeCursor(row.createdAtRaw, row.id),
     }));
   } catch (error) {
@@ -321,44 +330,60 @@ export async function getTasks({
   }
 
   const term = search.trim();
+  const pattern = `%${escapeLike(term)}%`;
 
   // LIKE wildcards in a search box are almost always a literal character the
   // user typed, not a pattern. Without escaping, a single `%` matches every
   // row and hides a real filtering bug.
   const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
-          OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
+    ? or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))
+    : undefined;
 
   const decoded = decodeCursor(cursor);
 
   // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
-  // costs 50x page 1, and a row inserted mid-walk shifts the window. Bound as
-  // text and cast in SQL so an unusable cursor matches nothing instead of
-  // failing in the driver.
+  // costs 50x page 1. Bound as text and cast in SQL so an unusable cursor
+  // matches nothing instead of failing in the driver.
   const cursorFilter = decoded
-    ? sql`AND (t.updated_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
+    ? sql`(${tasks.updatedAt}, ${tasks.id}) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
+    : undefined;
 
   try {
-    const rows = await sql<TaskRow[]>`
-      SELECT
-        ${TASK_PROJECTION_FIELDS},
-        ${CURSOR_FIELD}
-      ${TASK_PROJECTION_FROM}
-      WHERE 1 = 1
-      ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
-      ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
-      ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
-      ${searchFilter}
-      ${cursorFilter}
-      GROUP BY t.id, p.name, u.display_name, t.updated_at
-      ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, PAGE_SIZE + 1))}
-    `;
+    const rows = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        projectName: projects.name,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        assigneeName: sql<string>`coalesce(${users.displayName}, 'Unassigned')`,
+        commentCount: count(comments.id),
+        updatedAt: utcSecond(tasks.updatedAt),
+        updatedAtRaw: utcMicrosecond(tasks.updatedAt),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(comments.taskId, tasks.id))
+      .where(
+        and(
+          projectId === undefined ? undefined : eq(tasks.projectId, projectId),
+          statusTerm ? eq(tasks.status, statusTerm) : undefined,
+          assigneeId === undefined
+            ? undefined
+            : eq(tasks.assigneeId, assigneeId),
+          searchFilter,
+          cursorFilter,
+        ),
+      )
+      .groupBy(tasks.id, projects.name, users.displayName, tasks.updatedAt)
+      .orderBy(desc(tasks.updatedAt), desc(tasks.id))
+      .limit(Math.max(1, Math.min(limit, PAGE_SIZE + 1)));
 
     return rows.map((row) => ({
       ...row,
+      status: row.status as TaskStatus,
       cursorFor: encodeCursor(row.updatedAtRaw, row.id),
     }));
   } catch (error) {
@@ -373,13 +398,26 @@ export async function getTasks({
  */
 export async function getTask(id: number): Promise<TaskWithProject | null> {
   try {
-    const [task] = await sql<TaskWithProject[]>`
-      ${TASK_PROJECTION}
-      WHERE t.id = ${id}
-      GROUP BY t.id, p.name, u.display_name
-    `;
+    const [task] = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        projectName: projects.name,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        assigneeName: sql<string>`coalesce(${users.displayName}, 'Unassigned')`,
+        commentCount: count(comments.id),
+        updatedAt: utcSecond(tasks.updatedAt),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(comments.taskId, tasks.id))
+      .where(eq(tasks.id, id))
+      .groupBy(tasks.id, projects.name, users.displayName);
 
-    return task ?? null;
+    return task ? { ...task, status: task.status as TaskStatus } : null;
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the task.");
@@ -397,19 +435,19 @@ export async function getComments(
   limit = COMMENTS_PER_TASK,
 ): Promise<Comment[]> {
   try {
-    return await sql<Comment[]>`
-      SELECT
-        c.id::int AS id,
-        c.task_id::int AS "taskId",
-        u.display_name AS "authorName",
-        c.body,
-        to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
-      FROM comments c
-      JOIN users u ON u.id = c.author_id
-      WHERE c.task_id = ${taskId}
-      ORDER BY c.created_at DESC, c.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, COMMENTS_PER_TASK))}
-    `;
+    return await db
+      .select({
+        id: comments.id,
+        taskId: comments.taskId,
+        authorName: users.displayName,
+        body: comments.body,
+        createdAt: utcSecond(comments.createdAt),
+      })
+      .from(comments)
+      .innerJoin(users, eq(users.id, comments.authorId))
+      .where(eq(comments.taskId, taskId))
+      .orderBy(desc(comments.createdAt), desc(comments.id))
+      .limit(Math.max(1, Math.min(limit, COMMENTS_PER_TASK)));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the task comments.");
@@ -437,22 +475,26 @@ export async function countTasks({
   }
 
   const term = search.trim();
+  const pattern = `%${escapeLike(term)}%`;
 
   const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
-          OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
+    ? or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))
+    : undefined;
 
   try {
-    const [row] = await sql<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count
-      FROM tasks t
-      WHERE 1 = 1
-      ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
-      ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
-      ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
-      ${searchFilter}
-    `;
+    const [row] = await db
+      .select({ count: count() })
+      .from(tasks)
+      .where(
+        and(
+          projectId === undefined ? undefined : eq(tasks.projectId, projectId),
+          statusTerm ? eq(tasks.status, statusTerm) : undefined,
+          assigneeId === undefined
+            ? undefined
+            : eq(tasks.assigneeId, assigneeId),
+          searchFilter,
+        ),
+      );
 
     return row?.count ?? 0;
   } catch (error) {
@@ -464,25 +506,27 @@ export async function countTasks({
 /**
  * Workspace totals for the dashboard's stat cards.
  *
- * One statement rather than three, because the cards are rendered together and
+ * One statement rather than seven, because the cards are rendered together and
  * separate COUNT queries would each scan a different table for the same row.
+ *
+ * The `FROM (select 1)` is what makes an empty workspace work: the subqueries
+ * are all aggregate scalars that would each return a row on their own, but
+ * Drizzle needs *some* FROM to build the select from, and this one yields
+ * exactly one row no matter how few projects exist.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const [stats] = await sql<DashboardStats[]>`
-      SELECT
-        (SELECT COUNT(*) FROM projects)::int AS "projectCount",
-        (SELECT COUNT(*) FROM tasks)::int AS "totalTasks",
-        (
-          SELECT COUNT(*) FROM tasks WHERE status <> 'done'
-        )::int AS "openTasks",
-        (SELECT COUNT(*) FROM users)::int AS "peopleCount",
-        (SELECT COUNT(*) FROM tasks WHERE status = 'todo')::int AS "todoTasks",
-        (
-          SELECT COUNT(*) FROM tasks WHERE status = 'in progress'
-        )::int AS "inProgressTasks",
-        (SELECT COUNT(*) FROM tasks WHERE status = 'done')::int AS "doneTasks"
-    `;
+    const [stats] = await db
+      .select({
+        projectCount: sql<number>`(select count(*)::int from ${projects})`,
+        totalTasks: sql<number>`(select count(*)::int from ${tasks})`,
+        openTasks: sql<number>`(select count(*)::int from ${tasks} where ${ne(tasks.status, "done")})`,
+        peopleCount: sql<number>`(select count(*)::int from ${users})`,
+        todoTasks: sql<number>`(select count(*)::int from ${tasks} where ${eq(tasks.status, "todo")})`,
+        inProgressTasks: sql<number>`(select count(*)::int from ${tasks} where ${eq(tasks.status, "in progress")})`,
+        doneTasks: sql<number>`(select count(*)::int from ${tasks} where ${eq(tasks.status, "done")})`,
+      })
+      .from(sql`(select 1) as one_row`);
 
     return stats;
   } catch (error) {
@@ -501,20 +545,22 @@ export async function getRecentTasks(
   limit = DASHBOARD_RECENT_TASKS,
 ): Promise<DashboardTask[]> {
   try {
-    return await sql<DashboardTask[]>`
-      SELECT
-        t.id::int AS id,
-        t.title,
-        p.name AS "projectName",
-        t.status,
-        COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
-        to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
-      FROM tasks t
-      JOIN projects p ON p.id = t.project_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS))}
-    `;
+    const rows = await db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        projectName: projects.name,
+        status: tasks.status,
+        assigneeName: sql<string>`coalesce(${users.displayName}, 'Unassigned')`,
+        updatedAt: utcSecond(tasks.updatedAt),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .orderBy(desc(tasks.updatedAt), desc(tasks.id))
+      .limit(Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS)));
+
+    return rows.map((row) => ({ ...row, status: row.status as TaskStatus }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch recent tasks.");
@@ -531,20 +577,20 @@ export async function getDashboardProjects(
   limit = DASHBOARD_PROJECTS,
 ): Promise<DashboardProject[]> {
   try {
-    return await sql<DashboardProject[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      GROUP BY p.id, p.name, p.description
-      ORDER BY COUNT(t.id) DESC, p.id ASC
-      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_PROJECTS))}
-    `;
+    return await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        taskCount: count(tasks.id),
+        openTaskCount: openTaskCount(),
+        peopleCount: countDistinct(tasks.assigneeId),
+      })
+      .from(projects)
+      .leftJoin(tasks, eq(tasks.projectId, projects.id))
+      .groupBy(projects.id)
+      .orderBy(desc(count(tasks.id)), projects.id)
+      .limit(Math.max(1, Math.min(limit, DASHBOARD_PROJECTS)));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch dashboard projects.");
@@ -581,11 +627,13 @@ export async function getUsers(value = ""): Promise<User[]> {
  */
 export async function getUser(id: number): Promise<User | null> {
   try {
-    const [user] = await sql<User[]>`
-      ${USER_AGGREGATES}
-      WHERE u.id = ${id}
-      GROUP BY u.id, u.display_name, u.email
-    `;
+    const [user] = await db
+      .select(USER_AGGREGATE_COLUMNS)
+      .from(users)
+      .leftJoin(tasks, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(users.id, comments.authorId))
+      .where(eq(users.id, id))
+      .groupBy(users.id, users.displayName, users.email);
 
     return user ?? null;
   } catch (error) {
@@ -603,12 +651,27 @@ export async function getUser(id: number): Promise<User | null> {
  */
 export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
   try {
-    return await sql<TaskWithProject[]>`
-      ${TASK_PROJECTION}
-      WHERE t.assignee_id = ${id}
-      GROUP BY t.id, p.name, u.display_name
-      ORDER BY t.updated_at DESC, t.id DESC
-    `;
+    const rows = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        projectName: projects.name,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        assigneeName: sql<string>`coalesce(${users.displayName}, 'Unassigned')`,
+        commentCount: count(comments.id),
+        updatedAt: utcSecond(tasks.updatedAt),
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(projects.id, tasks.projectId))
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(comments.taskId, tasks.id))
+      .where(eq(tasks.assigneeId, id))
+      .groupBy(tasks.id, projects.name, users.displayName, tasks.updatedAt)
+      .orderBy(desc(tasks.updatedAt), desc(tasks.id));
+
+    return rows.map((row) => ({ ...row, status: row.status as TaskStatus }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user's tasks.");
