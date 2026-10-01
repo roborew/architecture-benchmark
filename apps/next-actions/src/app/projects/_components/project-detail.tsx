@@ -1,7 +1,6 @@
 import Link from "next/link";
-import type { Project } from "@/lib/types";
+import type { Project, ProjectTaskRow } from "@/lib/types";
 import { TaskTable } from "@/app/tasks/_components/task-table";
-import type { TaskWithProject } from "@/lib/types";
 
 function StatCard({
   label,
@@ -28,9 +27,14 @@ function StatCard({
 export function ProjectDetail({
   project,
   tasks,
+  status = "",
+  hasMore = false,
 }: {
   project: Project;
-  tasks: TaskWithProject[];
+  tasks: ProjectTaskRow[];
+  status?: string;
+  /** Whether the query filled its page, i.e. whether older rows probably exist. */
+  hasMore?: boolean;
 }) {
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -88,9 +92,9 @@ export function ProjectDetail({
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Project tasks
           </h2>
-          {/* Static chrome: this version renders seed data and does
-              not implement filtering. */}
-          <div className="flex gap-2">
+          {/* The select is a plain GET form so filtering needs no client
+              state and the applied filter lives in the URL. */}
+          <form className="flex gap-2" method="get">
             <label className="relative block">
               <span className="sr-only">Search tasks</span>
               <span
@@ -101,13 +105,19 @@ export function ProjectDetail({
               </span>
               <input
                 type="search"
+                name="q"
                 placeholder="Search tasks…"
                 className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
               />
             </label>
             <select
               aria-label="Status"
-              defaultValue=""
+              name="status"
+              // Remount on change so the browser follows the GET form. Without
+              // a key, React keeps the pre-change value and the submission
+              // carries the status the user just navigated away from.
+              key={status}
+              defaultValue={status}
               className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
             >
               <option value="">All statuses</option>
@@ -115,7 +125,11 @@ export function ProjectDetail({
               <option value="in-progress">In progress</option>
               <option value="done">Done</option>
             </select>
-          </div>
+            {/* Filters are single-select; on submit keep whichever one was set. */}
+            <button type="submit" className="sr-only">
+              Apply
+            </button>
+          </form>
         </div>
 
         {/* The project is implied by the page, so the table shows
@@ -125,7 +139,29 @@ export function ProjectDetail({
             No tasks in this project yet.
           </p>
         ) : (
-          <TaskTable tasks={tasks} showComments />
+          <>
+            <TaskTable tasks={tasks} showComments />
+
+            {/* Keyset pagination (spec/queries.md): the cursor carries the
+                `(created_at, id)` of the last row shown, so the next page
+                starts exactly after it. The status is carried too, or the
+                filter would silently reset while the select still shows it. */}
+            {hasMore && tasks.length > 0 ? (
+              <div className="flex justify-end border-t border-slate-100 px-5 py-4">
+                <Link
+                  href={`/projects/${project.id}?${
+                    status ? `status=${encodeURIComponent(status)}&` : ""
+                  }cursor=${encodeURIComponent(
+                    tasks[tasks.length - 1].cursorFor,
+                  )}`}
+                  data-testid="next-page"
+                  className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Older tasks
+                </Link>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
     </div>

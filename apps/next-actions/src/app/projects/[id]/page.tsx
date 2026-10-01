@@ -1,14 +1,25 @@
 import Link from "next/link";
 import { ProjectDetail } from "@/app/projects/_components/project-detail";
-import { allTasks, projects } from "@tests/fixtures/data";
+import { getProject, getProjectTasks } from "@/lib/data";
 
 export default async function ProjectDetailPage({
   params,
-}: PageProps<"/projects/[id]">) {
+  searchParams,
+}: PageProps<"/projects/[id]"> & {
+  searchParams: Promise<{
+    status?: string | string[];
+    cursor?: string | string[];
+  }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const status = Array.isArray(query.status) ? query.status[0] : query.status;
+  const cursor = Array.isArray(query.cursor) ? query.cursor[0] : query.cursor;
 
-  const project = projects.find((candidate) => candidate.id === Number(id));
-
+  const projectId = Number(id);
+  const project = Number.isInteger(projectId)
+    ? await getProject(projectId)
+    : null;
   if (!project) {
     return (
       <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -28,9 +39,40 @@ export default async function ProjectDetailPage({
     );
   }
 
-  // allTasks already carries the project name the table needs, so the
-  // rows are filtered by projectId rather than re-derived.
-  const tasks = allTasks.filter((task) => task.projectId === project.id);
+  // The form and the Tasks filters use `in-progress` in a query string because
+  // a raw space is awkward there; the stored value is `in progress`
+  // (spec/contract.md). Translate here so the query layer only ever sees the
+  // stored form.
+  const STATUS_FROM_QUERY: Record<string, string> = {
+    todo: "todo",
+    "in-progress": "in progress",
+    done: "done",
+  };
 
-  return <ProjectDetail project={project} tasks={tasks} />;
+  const appliedStatus =
+    status && status in STATUS_FROM_QUERY
+      ? STATUS_FROM_QUERY[status]
+      : undefined;
+
+  // Over-fetch by one row to learn whether more exist: the extra row is dropped
+  // before rendering, so the page still shows at most `PAGE_SIZE` tasks.
+  const PAGE = 25;
+  const fetched = await getProjectTasks(project.id, {
+    status: appliedStatus,
+    cursor,
+    limit: PAGE + 1,
+  });
+
+  const tasks = fetched.slice(0, PAGE);
+  const hasMore = fetched.length > PAGE;
+
+  // The select keeps the query-string spelling so re-submitting is stable.
+  return (
+    <ProjectDetail
+      project={project}
+      tasks={tasks}
+      status={status ?? ""}
+      hasMore={hasMore}
+    />
+  );
 }

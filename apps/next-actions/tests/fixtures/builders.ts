@@ -2,6 +2,7 @@ import type {
   Comment,
   DashboardTask,
   Project,
+  ProjectTaskRow,
   Task,
   TaskWithProject,
   User,
@@ -61,6 +62,29 @@ export function makeTaskWithProject(
   overrides: Partial<TaskWithProject> = {},
 ): TaskWithProject {
   return { ...makeTask(), projectName: "Fixture project", ...overrides };
+}
+
+/**
+ * A project-board row, which additionally carries the keyset cursor the page
+ * needs to build its "older" link.
+ *
+ * The cursor is derived from the row id so it stays stable per row, and a
+ * default `createdAtRaw` keeps the value a real instant rather than a fixture
+ * label — a test that asserts on cursor behaviour should not have to invent one.
+ */
+export function makeProjectTaskRow(
+  overrides: Partial<ProjectTaskRow> = {},
+): ProjectTaskRow {
+  const row = {
+    ...makeTaskWithProject(),
+    createdAtRaw: "2026-01-01T00:00:00.000000Z",
+    ...overrides,
+  };
+
+  return {
+    ...row,
+    cursorFor: overrides.cursorFor ?? `cursor-${row.id}`,
+  };
 }
 
 export function makeUser(overrides: Partial<User> = {}): User {

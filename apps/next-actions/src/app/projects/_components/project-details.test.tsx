@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { ProjectDetail } from "./project-detail";
-import { makeProject, makeTaskWithProject } from "@tests/fixtures/builders";
+import { makeProject, makeProjectTaskRow } from "@tests/fixtures/builders";
 
 const project = makeProject({
   id: 3,
@@ -13,8 +13,8 @@ const project = makeProject({
 });
 
 const tasks = [
-  makeTaskWithProject({ id: 11, title: "First task", status: "in progress" }),
-  makeTaskWithProject({ id: 12, title: "Second task", status: "done" }),
+  makeProjectTaskRow({ id: 11, title: "First task", status: "in progress" }),
+  makeProjectTaskRow({ id: 12, title: "Second task", status: "done" }),
 ];
 
 describe("ProjectDetail", () => {
@@ -88,11 +88,77 @@ describe("ProjectDetail", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks the active status so the filter shows what is applied", () => {
+    render(<ProjectDetail project={project} tasks={tasks} status="todo" />);
+
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
+      "todo",
+    );
+  });
+
+  it("shows the status filter as empty when no status is selected", () => {
+    render(<ProjectDetail project={project} tasks={tasks} status="" />);
+
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("");
+  });
+
   it("shows an empty state when the project has no tasks", () => {
     render(<ProjectDetail project={project} tasks={[]} />);
 
     expect(
       screen.getByText("No tasks in this project yet."),
     ).toBeInTheDocument();
+  });
+
+  it("offers no older link when the page came back short of a full page", () => {
+    // A short page means the query ran out of rows, so there is nothing older
+    // to link to and offering one would dead-end the reader.
+    render(<ProjectDetail project={project} tasks={tasks} hasMore={false} />);
+
+    expect(screen.queryByTestId("next-page")).not.toBeInTheDocument();
+  });
+
+  it("links to the next page using the last row's cursor", () => {
+    render(
+      <ProjectDetail
+        project={project}
+        tasks={tasks.map((task) => ({
+          ...task,
+          cursorFor: `cursor-${task.id}`,
+        }))}
+        hasMore
+      />,
+    );
+
+    // The cursor comes from the *last* row on the page: the next page starts
+    // after it, not after the first row.
+    expect(screen.getByTestId("next-page")).toHaveAttribute(
+      "href",
+      `/projects/${project.id}?cursor=cursor-${tasks[tasks.length - 1].id}`,
+    );
+  });
+
+  it("carries the active status filter onto the older link", () => {
+    // Dropping it would silently reset the filter on the next page while the
+    // select still shows it selected.
+    render(
+      <ProjectDetail
+        project={project}
+        tasks={tasks.map((task) => ({ ...task, cursorFor: "cursor-1" }))}
+        status="done"
+        hasMore
+      />,
+    );
+
+    expect(screen.getByTestId("next-page")).toHaveAttribute(
+      "href",
+      `/projects/${project.id}?status=done&cursor=cursor-1`,
+    );
+  });
+
+  it("shows no older link when the page has no rows to continue from", () => {
+    render(<ProjectDetail project={project} tasks={[]} hasMore />);
+
+    expect(screen.queryByTestId("next-page")).not.toBeInTheDocument();
   });
 });
