@@ -3,10 +3,10 @@ import { DashboardStats } from "./_components/dashboard-stats";
 import { RecentTasks } from "./_components/recent-tasks";
 import { DashboardProjects } from "./_components/dashboard-projects";
 import {
-  dashboardStats,
-  dashboardRecentTasks,
-  dashboardProjects,
-} from "@tests/fixtures/data";
+  getDashboardProjects,
+  getDashboardStats,
+  getRecentTasks,
+} from "@/lib/data";
 
 const outlineAction =
   "inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50";
@@ -34,7 +34,16 @@ function SummaryRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  // Three independent aggregates, so they run concurrently rather than in
+  // sequence. Reading them rather than importing a fixture is what makes a task
+  // created moments ago show up here.
+  const [stats, recentTasks, projects] = await Promise.all([
+    getDashboardStats(),
+    getRecentTasks(),
+    getDashboardProjects(),
+  ]);
+
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -59,12 +68,12 @@ export default function Home() {
         </div>
       </div>
 
-      <DashboardStats stats={dashboardStats} />
+      <DashboardStats stats={stats} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_350px]">
         <div className="grid gap-5">
-          <RecentTasks tasks={dashboardRecentTasks} />
-          <DashboardProjects projects={dashboardProjects} />
+          <RecentTasks tasks={recentTasks} />
+          <DashboardProjects projects={projects} />
         </div>
 
         <aside className="grid gap-5">
@@ -88,12 +97,9 @@ export default function Home() {
               </h2>
             </div>
             <dl className="p-5 text-[12px]">
-              <SummaryRow label="To do" value={dashboardStats.todoTasks} />
-              <SummaryRow
-                label="In progress"
-                value={dashboardStats.inProgressTasks}
-              />
-              <SummaryRow label="Done" value={dashboardStats.doneTasks} />
+              <SummaryRow label="To do" value={stats.todoTasks} />
+              <SummaryRow label="In progress" value={stats.inProgressTasks} />
+              <SummaryRow label="Done" value={stats.doneTasks} />
             </dl>
           </section>
         </aside>
