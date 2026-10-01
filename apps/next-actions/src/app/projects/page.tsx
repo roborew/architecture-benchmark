@@ -3,7 +3,6 @@ import { ProjectList } from "./_components/project-list";
 import { getProjects } from "@/lib/data";
 import { Suspense } from "react";
 import { SearchInput } from "../_components/search-input";
-// import { projects } from "@/lib/seed-data";
 
 export default async function ProjectsPage({
   searchParams,

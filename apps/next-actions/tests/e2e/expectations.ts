@@ -15,7 +15,10 @@ export const E2E_FIXTURE = {
     title: "Draft navigation model",
     href: "/tasks/101",
     projectName: "Website redesign",
-    crossProjectTitle: "Review API response shapes",
+    // Newest updated first, so page one is tasks 101, 102, 105 and 103.
+    // "Build profile screen" is the task from a second project that page one
+    // contains; 104 is the oldest and lands on page two.
+    crossProjectTitle: "Build profile screen",
     crossProjectName: "Mobile application",
     description:
       "Map the navigation structure for the public and authenticated product areas.",

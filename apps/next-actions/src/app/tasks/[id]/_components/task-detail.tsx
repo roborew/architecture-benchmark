@@ -1,6 +1,18 @@
+"use client";
+
+// The task detail body.
+//
+// It is a Client Component because the add-comment form and the delete control
+// both submit server actions and need `useActionState` for the validation state
+// and pending flags. The task and its comments arrive as props already read by
+// the page, so no data fetching happens here.
+
 import Link from "next/link";
-import type { Comment, TaskWithProject } from "@/lib/types";
+import { useActionState, useState } from "react";
+
+import type { Comment, TaskWithProject, User } from "@/lib/types";
 import { StatusBadge } from "@/app/_components/status-badge";
+import { createComment, deleteTask, type State } from "@/lib/actions";
 import { initials } from "@/lib/initials";
 
 const fieldLabel =
@@ -21,12 +33,138 @@ function DetailsRow({
   );
 }
 
+/** The add-comment form. Split out so it owns its own action state. */
+function AddCommentForm({
+  taskId,
+  people,
+}: {
+  taskId: number;
+  people: User[];
+}) {
+  const [state, formAction, pending] = useActionState<State, FormData>(
+    createComment.bind(null, taskId),
+    {},
+  );
+
+  // Controlled rather than `defaultValue`: React resets an uncontrolled form
+  // once the action settles, so a rejected submit would blank the draft.
+  const [body, setBody] = useState("");
+
+  return (
+    <form action={formAction} className="border-t border-slate-100 p-5">
+      {state.message ? (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] font-semibold text-red-700"
+        >
+          {state.message}
+        </p>
+      ) : null}
+
+      <label
+        htmlFor="comment-body"
+        className="mb-1.5 block text-[11px] font-bold text-slate-600"
+      >
+        Add comment
+      </label>
+      <textarea
+        id="comment-body"
+        name="commentBody"
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        aria-invalid={state.errors?.commentBody ? true : undefined}
+        aria-describedby={
+          state.errors?.commentBody ? "comment-body-error" : undefined
+        }
+        placeholder="Write a comment…"
+        className="mb-4 min-h-23 w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+      />
+      {state.errors?.commentBody ? (
+        <p
+          id="comment-body-error"
+          className="-mt-2 mb-3 text-[11px] font-semibold text-red-600"
+        >
+          {state.errors.commentBody[0]}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <label htmlFor="comment-author" className="text-[11px] text-slate-500">
+          Author
+          <select
+            id="comment-author"
+            name="commentAuthorId"
+            className="ml-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700"
+          >
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 disabled:opacity-50"
+        >
+          {pending ? "Adding…" : "Add comment"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The delete control.
+ *
+ * Not in a `<form>` of its own here: it needs the task id bound, and keeping it
+ * separate means the pending state is independent of the comment form's.
+ */
+function DeleteTaskButton({
+  taskId,
+  title,
+}: {
+  taskId: number;
+  title: string;
+}) {
+  const [state, formAction, pending] = useActionState<State, FormData>(
+    deleteTask.bind(null, taskId),
+    {},
+  );
+
+  return (
+    <form action={formAction} className="inline">
+      <button
+        type="submit"
+        disabled={pending}
+        aria-label="Delete task"
+        className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 transition hover:border-red-300 disabled:opacity-50"
+      >
+        {pending ? "Deleting…" : "Delete task"}
+      </button>
+      {state.message ? (
+        <span
+          role="alert"
+          className="mt-1 block text-[10px] font-semibold text-red-600"
+        >
+          {state.message}
+        </span>
+      ) : null}
+      <span className="sr-only">{title}</span>
+    </form>
+  );
+}
+
 export function TaskDetail({
   task,
   comments,
+  people,
 }: {
   task: TaskWithProject;
   comments: Comment[];
+  /** Every member, for the comment author select. */
+  people: User[];
 }) {
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -45,16 +183,14 @@ export function TaskDetail({
             Project: {task.projectName}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-start gap-2">
           <Link
-            href="/tasks/new"
+            href={`/tasks/${task.id}/edit`}
             className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
           >
             Edit task
           </Link>
-          <span className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
-            Delete task
-          </span>
+          <DeleteTaskButton taskId={task.id} title={task.title} />
         </div>
       </div>
 
@@ -114,42 +250,7 @@ export function TaskDetail({
               </div>
             )}
 
-            {/* Static chrome: this version renders seed data and does
-                not implement writes. */}
-            <form className="border-t border-slate-100 p-5">
-              <label
-                htmlFor="comment-body"
-                className="mb-1.5 block text-[11px] font-bold text-slate-600"
-              >
-                Add comment
-              </label>
-              <textarea
-                id="comment-body"
-                placeholder="Write a comment…"
-                className="mb-4 min-h-23 w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-              />
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <label
-                  htmlFor="comment-author"
-                  className="text-[11px] text-slate-500"
-                >
-                  Author
-                  <select
-                    id="comment-author"
-                    className="ml-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700"
-                  >
-                    <option>Robin Andrew</option>
-                    <option>Alex Morgan</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700"
-                >
-                  Add comment
-                </button>
-              </div>
-            </form>
+            <AddCommentForm taskId={task.id} people={people} />
           </section>
         </div>
 

@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { TaskDetail } from "./_components/task-detail";
-import { allTasks, taskComments } from "@tests/fixtures/data";
+import { getComments, getTask, getUsers } from "@/lib/data";
 
-export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]">) {
+export default async function TaskDetailPage({
+  params,
+}: PageProps<"/tasks/[id]">) {
   const { id } = await params;
+  const taskId = Number(id);
 
-  const task = allTasks.find((candidate) => candidate.id === Number(id));
+  // `Number` yields NaN for anything non-numeric, and a NaN lookup finds no
+  // row, so both paths land on the not-found state below. Scoped by id rather
+  // than by title, which is what the in-memory fixture lookup did.
+  const task = Number.isInteger(taskId) ? await getTask(taskId) : null;
 
   if (!task) {
     return (
@@ -26,7 +32,13 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
     );
   }
 
-  const comments = taskComments.filter((comment) => comment.taskId === task.id);
+  // The comment author select needs every member, not only those already on the
+  // task — anyone in the workspace may comment. Both reads are independent, so
+  // they run concurrently.
+  const [comments, people] = await Promise.all([
+    getComments(task.id),
+    getUsers(),
+  ]);
 
-  return <TaskDetail task={task} comments={comments} />;
+  return <TaskDetail task={task} comments={comments} people={people} />;
 }

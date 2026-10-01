@@ -57,4 +57,64 @@ describe("TaskFilters", () => {
 
     expect(screen.getAllByRole("combobox")).toHaveLength(3);
   });
+
+  it("submits as a GET form, so filtering needs no client state", () => {
+    const { container } = render(
+      <TaskFilters projects={fixtureProjects} people={fixturePeople} />,
+    );
+
+    const form = container.querySelector("form");
+
+    expect(form).not.toBeNull();
+    expect(form).toHaveAttribute("method", "get");
+  });
+
+  it("names every control, or the submission carries nothing", () => {
+    const { container } = render(
+      <TaskFilters projects={fixtureProjects} people={fixturePeople} />,
+    );
+
+    for (const name of ["q", "project", "status", "assignee"]) {
+      expect(
+        container.querySelector(`[name="${name}"]`),
+        `missing ${name}`,
+      ).not.toBeNull();
+    }
+  });
+
+  it("shows the filters that are currently applied", () => {
+    render(
+      <TaskFilters
+        projects={fixtureProjects}
+        people={fixturePeople}
+        status="in-progress"
+        projectId={fixtureProjects[0].id}
+        assigneeId={fixturePeople[0].id}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
+      "in-progress",
+    );
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(
+      String(fixtureProjects[0].id),
+    );
+    expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue(
+      String(fixturePeople[0].id),
+    );
+  });
+
+  it("shows the applied search term", () => {
+    render(
+      <TaskFilters
+        projects={fixtureProjects}
+        people={fixturePeople}
+        search="navigation"
+      />,
+    );
+
+    expect(screen.getByRole("searchbox", { name: "Search tasks" })).toHaveValue(
+      "navigation",
+    );
+  });
 });

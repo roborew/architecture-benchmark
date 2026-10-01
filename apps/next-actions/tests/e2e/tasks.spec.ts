@@ -56,3 +56,103 @@ test("a task title links to the task detail", async ({ page }) => {
 
   await expect(page).toHaveURL(E2E_FIXTURE.task.href);
 });
+
+test("the next page shows older tasks, without repeating the first", async ({
+  page,
+}) => {
+  const main = page.getByRole("main");
+
+  // Scoped to table body rows: the header row repeats on every page, and
+  // `getByRole("link")` across the whole main region would also catch the
+  // "New task" link.
+  const rowTitles = async () =>
+    (
+      await main.getByRole("rowgroup").nth(1).getByRole("row").allTextContents()
+    ).map((row) => row.replace(/Edit.*$/, "").trim());
+
+  const firstPageTitles = await rowTitles();
+
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page).toHaveURL(/cursor=/);
+
+  const secondPageTitles = await rowTitles();
+
+  expect(firstPageTitles.length).toBeGreaterThan(0);
+  expect(secondPageTitles.length).toBeGreaterThan(0);
+
+  // Keyset paging fails by repeating a row or skipping one; either would show
+  // up here as an overlap between the two pages.
+  expect(
+    secondPageTitles.filter((title) => firstPageTitles.includes(title)),
+  ).toEqual([]);
+});
+
+test("the previous control returns to the first page", async ({ page }) => {
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page).toHaveURL(/cursor=/);
+  await expect(
+    page.getByRole("button", { name: "Previous", exact: true }),
+  ).toBeEnabled();
+
+  await page.getByRole("button", { name: "Previous", exact: true }).click();
+
+  await expect(page).not.toHaveURL(/cursor=/);
+  await expect(
+    page.getByRole("button", { name: "Previous", exact: true }),
+  ).toBeDisabled();
+});
+
+test("filters the list by project", async ({ page }) => {
+  await page.goto("/tasks");
+
+  await page
+    .getByRole("combobox", { name: "Project" })
+    .selectOption({ label: E2E_FIXTURE.project.secondName });
+
+  await expect(page).toHaveURL(/project=2/);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: E2E_FIXTURE.task.crossProjectTitle }),
+  ).toBeVisible();
+  // Nothing from the other project may survive the filter.
+  await expect(
+    page.getByRole("link", { name: E2E_FIXTURE.task.title }),
+  ).toHaveCount(0);
+});
+
+test("filters the list by status", async ({ page }) => {
+  await page.goto("/tasks");
+
+  await page.getByRole("combobox", { name: "Status" }).selectOption("done");
+
+  await expect(page).toHaveURL(/status=done/);
+  // "Prepare content inventory" is the only seeded done task.
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: "Prepare content inventory" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: E2E_FIXTURE.task.title }),
+  ).toHaveCount(0);
+});
+
+test("searches tasks by title", async ({ page }) => {
+  await page.goto("/tasks");
+
+  await page
+    .getByRole("searchbox", { name: "Search tasks" })
+    .fill("breakpoint");
+  await page.getByRole("searchbox", { name: "Search tasks" }).press("Enter");
+
+  await expect(page).toHaveURL(/q=breakpoint/);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: "Confirm breakpoint rules" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: E2E_FIXTURE.task.title }),
+  ).toHaveCount(0);
+});
