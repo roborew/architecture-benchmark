@@ -8,7 +8,7 @@
 // state and the pending flag. The action itself still runs on the server.
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import type { Project } from "@/lib/types";
 import { createProject, updateProject, type State } from "@/lib/actions";
@@ -30,6 +30,14 @@ export function ProjectForm({ project }: { project?: Project }) {
   const action = isEdit ? updateProject.bind(null, project.id) : createProject;
 
   const [state, formAction, pending] = useActionState(action, initialState);
+
+  // Controlled rather than `defaultValue`. React resets an uncontrolled form
+  // once the action it submitted to settles, so a rejected submit would blank
+  // the fields the user just typed — exactly the moment they most need to see
+  // what went wrong. State also survives the re-render after the action
+  // returns.
+  const [name, setName] = useState(project?.name ?? "");
+  const [description, setDescription] = useState(project?.description ?? "");
 
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -66,7 +74,8 @@ export function ProjectForm({ project }: { project?: Project }) {
             name="name"
             required
             maxLength={200}
-            defaultValue={project?.name ?? ""}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Website redesign"
             aria-invalid={state.errors?.name ? true : undefined}
             aria-describedby={
@@ -91,7 +100,8 @@ export function ProjectForm({ project }: { project?: Project }) {
           <textarea
             id="project-description"
             name="description"
-            defaultValue={project?.description ?? ""}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="What is this project for?"
             className={`${textareaClass} mt-1.5 mb-0`}
           />
