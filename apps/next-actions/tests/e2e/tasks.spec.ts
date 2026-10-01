@@ -43,6 +43,17 @@ test("shows the result count and pagination", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Previous", exact: true }),
   ).toBeDisabled();
+
+  // All six seeded tasks fit the default page size, so there is nothing
+  // older to reach until the size is dropped.
+  await expect(
+    page.getByRole("button", { name: "Next", exact: true }),
+  ).toBeDisabled();
+
+  await page
+    .getByRole("combobox", { name: "Tasks per page" })
+    .selectOption("5");
+
   await expect(
     page.getByRole("button", { name: "Next", exact: true }),
   ).toBeEnabled();
@@ -61,6 +72,14 @@ test("the next page shows older tasks, without repeating the first", async ({
   page,
 }) => {
   const main = page.getByRole("main");
+
+  // Drop to five a page so the six seeded tasks span two pages. The URL wait
+  // matters: without it the rows below are read before the navigation lands,
+  // and page one looks like it holds all six.
+  await page
+    .getByRole("combobox", { name: "Tasks per page" })
+    .selectOption("5");
+  await expect(page).toHaveURL(/size=5/);
 
   // Scoped to table body rows: the header row repeats on every page, and
   // `getByRole("link")` across the whole main region would also catch the
@@ -88,6 +107,10 @@ test("the next page shows older tasks, without repeating the first", async ({
 });
 
 test("the previous control returns to the first page", async ({ page }) => {
+  await page
+    .getByRole("combobox", { name: "Tasks per page" })
+    .selectOption("5");
+
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page).toHaveURL(/cursor=/);
   await expect(
@@ -100,6 +123,71 @@ test("the previous control returns to the first page", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Previous", exact: true }),
   ).toBeDisabled();
+});
+
+test("the summary reports where in the list the reader is", async ({
+  page,
+}) => {
+  // The bug: the start was hardcoded to 1 and the end was the page's row
+  // count, so every page claimed to be the first.
+  const summary = page.getByText(/Showing \d+-\d+ of \d+/);
+
+  await expect(summary).toHaveText(`Showing 1-6 of 6 tasks`);
+
+  // Drop to the smallest page size so the six seeded tasks span two pages.
+  await page
+    .getByRole("combobox", { name: "Tasks per page" })
+    .selectOption("5");
+
+  await expect(summary).toHaveText("Showing 1-5 of 6 tasks");
+
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+
+  // Page two holds the single remaining task, at position 6.
+  await expect(summary).toHaveText("Showing 6-6 of 6 tasks");
+});
+
+test("offers 10 tasks a page", async ({ page }) => {
+  const perPage = page.getByRole("combobox", { name: "Tasks per page" });
+
+  await expect(perPage).toBeVisible();
+
+  // The default is the whole six-row fixture, so every task is visible.
+  await expect(
+    page.getByRole("main").getByRole("link", { name: E2E_FIXTURE.task.title }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Write migration checklist" }),
+  ).toBeVisible();
+
+  await perPage.selectOption("5");
+
+  await expect(page).toHaveURL(/size=5/);
+  // Only the first five are now on screen.
+  await expect(
+    page.getByRole("link", { name: "Write migration checklist" }),
+  ).toHaveCount(0);
+});
+
+test("changing the page size returns to the first page of the same filters", async ({
+  page,
+}) => {
+  await page
+    .getByRole("combobox", { name: "Project" })
+    .selectOption({ label: E2E_FIXTURE.project.secondName });
+  // Wait for that navigation before touching the second control: changing a
+  // filter re-renders the page, and the size select on a page mid-navigation
+  // would build its link from stale filters and drop this one.
+  await expect(page).toHaveURL(/project=2/);
+
+  await page
+    .getByRole("combobox", { name: "Tasks per page" })
+    .selectOption("5");
+
+  // The filter survives, and the cursor does not carry over.
+  await expect(page).toHaveURL(/project=2/);
+  await expect(page).toHaveURL(/size=5/);
+  await expect(page).not.toHaveURL(/cursor=/);
 });
 
 test("filters the list by project", async ({ page }) => {

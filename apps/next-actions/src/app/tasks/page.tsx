@@ -5,13 +5,17 @@ import { TaskFilters } from "./_components/task-filters";
 import { TaskPagination } from "./_components/task-pagination";
 import { TaskTable } from "./_components/task-table";
 import { countTasks, getProjects, getTasks, getUsers } from "@/lib/data";
+import {
+  DEFAULT_PAGE_SIZE,
+  formatRange,
+  pageRange,
+  parsePage,
+  parsePageSize,
+} from "@/lib/pagination";
 
 // The workspace-wide task list. Every filter is applied in the query rather
 // than in memory: the page used to slice an in-memory fixture, so a task
 // created through a server action never appeared here at all.
-
-/** Rows shown per page. spec/queries.md's own bound is 25. */
-const PAGE_SIZE = 4;
 
 /**
  * The status filter's query-string spelling.
@@ -32,7 +36,8 @@ type Query = {
   status?: string | string[];
   assignee?: string | string[];
   cursor?: string | string[];
-  dir?: string | string[];
+  page?: string | string[];
+  size?: string | string[];
 };
 
 function first(value: string | string[] | undefined) {
@@ -63,6 +68,13 @@ export default async function TasksPage({
   const cursor = first(params.cursor) ?? null;
   const onLaterPage = cursor !== null;
 
+  // The page size is a query LIMIT, so only the offered values are accepted.
+  const size = parsePageSize(first(params.size));
+
+  // The cursor does the paging; the page number is display state alongside it,
+  // because a keyset walk carries no offset to derive a position from.
+  const page = parsePage(first(params.page), { hasCursor: onLaterPage });
+
   const filters = {
     search,
     status:
@@ -81,7 +93,7 @@ export default async function TasksPage({
   // the e2e suite asserts, and is a separate aggregate on purpose: a window
   // COUNT would force Postgres to materialise every matching row.
   const [tasks, total, projects, people] = await Promise.all([
-    getTasks({ ...filters, limit: PAGE_SIZE + 1, cursor }),
+    getTasks({ ...filters, limit: size + 1, cursor }),
     countTasks(filters),
     getProjects(),
     getUsers(),
@@ -89,10 +101,11 @@ export default async function TasksPage({
 
   // Over-fetched by one so `hasMore` costs no COUNT beyond the one already
   // backing the summary line.
-  const hasMore = tasks.length > PAGE_SIZE;
-  const page = tasks.slice(0, PAGE_SIZE);
-  const shown = Math.min(page.length, total);
-  const lastCursor = page.at(-1)?.cursorFor;
+  const hasMore = tasks.length > size;
+  const rows = tasks.slice(0, size);
+  const lastCursor = rows.at(-1)?.cursorFor;
+
+  const range = pageRange({ page, size, total });
 
   // Keyset paging only moves forward from a cursor, so "Previous" re-runs the
   // first page rather than walking backwards through cursors it no longer has.
@@ -101,11 +114,13 @@ export default async function TasksPage({
     ...(statusParam ? { status: statusParam } : {}),
     ...(projectId === undefined ? {} : { project: String(projectId) }),
     ...(assigneeId === undefined ? {} : { assignee: String(assigneeId) }),
+    ...(size === DEFAULT_PAGE_SIZE ? {} : { size: String(size) }),
   });
   const prefix = carriedParams.toString();
   const nextHref = lastCursor
-    ? `/tasks?${prefix ? `${prefix}&` : ""}cursor=${encodeURIComponent(lastCursor)}`
+    ? `/tasks?${prefix ? `${prefix}&` : ""}page=${page + 1}&cursor=${encodeURIComponent(lastCursor)}`
     : "/tasks";
+  // "Previous" drops the cursor, which returns to page 1 of the same filters.
   const firstHref = prefix ? `/tasks?${prefix}` : "/tasks";
 
   return (
@@ -144,22 +159,17 @@ export default async function TasksPage({
           />
         </Suspense>
 
-        <TaskTable tasks={page} showProject showComments />
+        <TaskTable tasks={rows} showProject showComments />
 
         <div className="flex items-center justify-between px-5 py-4 text-[11px] text-slate-500">
-          <span>
-            {shown === 0
-              ? "Showing 0 of 0 tasks"
-              : `Showing 1-${shown} of ${total} ${
-                  total === 1 ? "task" : "tasks"
-                }${filtered ? " matching your filters" : ""}`}
-          </span>
+          <span>{formatRange({ ...range, filtered })}</span>
           {/* Keyset pagination (spec/queries.md). */}
           <TaskPagination
             hasNewer={onLaterPage}
             hasOlder={hasMore}
             firstHref={firstHref}
             nextHref={nextHref}
+            size={size}
           />
         </div>
       </section>

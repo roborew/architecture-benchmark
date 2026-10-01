@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRouter } from "next/navigation";
 
 import type { Project, User } from "@/lib/types";
 
@@ -10,17 +10,18 @@ const selectClass =
 /**
  * The workspace list's filter bar.
  *
- * A plain GET form rather than controlled client state: the applied filters
- * live in the URL, so a filtered list is shareable, survives a reload, and the
- * server does the filtering.
+ * The applied filters live in the URL, so a filtered list is shareable, survives
+ * a reload, and the server does the filtering.
+ *
+ * It submits through the router rather than letting the GET form navigate
+ * natively, for two reasons: a native GET submit emits every empty control as a
+ * bare `?q=&status=&assignee=`, and it can land after a second, faster
+ * navigation and overwrite it. Building the query here keeps the URL to the
+ * filters that are actually set.
  *
  * Each select is keyed on its current value. Without the key, React keeps the
- * pre-change value after a navigation, so the submission would carry the filter
- * the user just navigated away from.
- *
- * Changing a select submits the form immediately, and Enter in the search box
- * does the same — there is no separate Apply button, so there is no state in
- * which the visible filters and the submitted ones disagree.
+ * pre-change value after a navigation, so the next change would be built from
+ * the filter the user just navigated away from.
  */
 export function TaskFilters({
   projects,
@@ -38,14 +39,36 @@ export function TaskFilters({
   projectId?: number;
   assigneeId?: number;
 }) {
-  const form = useRef<HTMLFormElement>(null);
+  const router = useRouter();
 
-  const submit = () => form.current?.requestSubmit();
+  // The currently applied values, used to rebuild the URL on the next change.
+  const current = { search, status, projectId, assigneeId };
+
+  const apply = (next: Partial<typeof current>) => {
+    const merged = { ...current, ...next };
+    const params = new URLSearchParams();
+
+    if (merged.search) params.set("q", merged.search);
+    if (merged.status) params.set("status", merged.status);
+    if (merged.projectId !== undefined)
+      params.set("project", String(merged.projectId));
+    if (merged.assigneeId !== undefined)
+      params.set("assignee", String(merged.assigneeId));
+
+    const query = params.toString();
+
+    // Changing a filter invalidates the cursor and the page number, so both
+    // are dropped rather than carried into a result set they no longer match.
+    router.push(query ? `/tasks?${query}` : "/tasks");
+  };
 
   return (
     <form
-      ref={form}
       method="get"
+      onSubmit={(event) => {
+        event.preventDefault();
+        apply({});
+      }}
       className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 lg:flex-row"
     >
       <label className="relative block flex-1">
@@ -63,7 +86,7 @@ export function TaskFilters({
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              submit();
+              apply({ search: event.currentTarget.value.trim() });
             }
           }}
           placeholder="Search tasks…"
@@ -76,7 +99,9 @@ export function TaskFilters({
         aria-label="Project"
         name="project"
         defaultValue={projectId === undefined ? "" : String(projectId)}
-        onChange={submit}
+        onChange={(event) =>
+          apply({ projectId: Number(event.target.value) || undefined })
+        }
         className={selectClass}
       >
         <option value="">All projects</option>
@@ -92,7 +117,7 @@ export function TaskFilters({
         aria-label="Status"
         name="status"
         defaultValue={status}
-        onChange={submit}
+        onChange={(event) => apply({ status: event.target.value || undefined })}
         className={selectClass}
       >
         <option value="">All statuses</option>
@@ -106,7 +131,9 @@ export function TaskFilters({
         aria-label="Assignee"
         name="assignee"
         defaultValue={assigneeId === undefined ? "" : String(assigneeId)}
-        onChange={submit}
+        onChange={(event) =>
+          apply({ assigneeId: Number(event.target.value) || undefined })
+        }
         className={selectClass}
       >
         <option value="">All assignees</option>

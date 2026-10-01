@@ -1,7 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { TaskFilters } from "./task-filters";
 import { fixtureProjects, fixturePeople } from "@tests/fixtures/builders";
+
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
+
+beforeEach(() => {
+  push.mockClear();
+});
 
 describe("TaskFilters", () => {
   it("renders a labelled search field", () => {
@@ -67,6 +78,75 @@ describe("TaskFilters", () => {
 
     expect(form).not.toBeNull();
     expect(form).toHaveAttribute("method", "get");
+  });
+
+  describe("submitting", () => {
+    it("pushes only the filter that changed", async () => {
+      const user = userEvent.setup();
+      render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
+
+      await user.selectOptions(
+        screen.getByRole("combobox", { name: "Project" }),
+        String(fixtureProjects[0].id),
+      );
+
+      // Not a bare `?q=&status=&assignee=`: a native GET submit emits every
+      // empty control, which is what the router-based submit exists to avoid.
+      expect(push).toHaveBeenCalledWith(
+        `/tasks?project=${fixtureProjects[0].id}`,
+      );
+    });
+
+    it("clearing a filter returns to the bare list", async () => {
+      const user = userEvent.setup();
+      render(
+        <TaskFilters
+          projects={fixtureProjects}
+          people={fixturePeople}
+          projectId={fixtureProjects[0].id}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole("combobox", { name: "Project" }),
+        "",
+      );
+
+      expect(push).toHaveBeenCalledWith("/tasks");
+    });
+
+    it("keeps the other filters when one changes", async () => {
+      const user = userEvent.setup();
+      render(
+        <TaskFilters
+          projects={fixtureProjects}
+          people={fixturePeople}
+          search="navigation"
+          status="todo"
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole("combobox", { name: "Assignee" }),
+        String(fixturePeople[0].id),
+      );
+
+      expect(push).toHaveBeenCalledWith(
+        `/tasks?q=navigation&status=todo&assignee=${fixturePeople[0].id}`,
+      );
+    });
+
+    it("submits the search term on Enter", async () => {
+      const user = userEvent.setup();
+      render(<TaskFilters projects={fixtureProjects} people={fixturePeople} />);
+
+      await user.type(
+        screen.getByRole("searchbox", { name: "Search tasks" }),
+        "breakpoint{Enter}",
+      );
+
+      expect(push).toHaveBeenCalledWith("/tasks?q=breakpoint");
+    });
   });
 
   it("names every control, or the submission carries nothing", () => {
