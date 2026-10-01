@@ -14,6 +14,7 @@ const ROUTES: Route[] = [
   { name: "projects", path: "/projects" },
   { name: "project detail", path: "/projects/1" },
   { name: "new project", path: "/projects/new" },
+  { name: "edit project", path: "/projects/1/edit" },
   { name: "all tasks", path: "/tasks" },
   { name: "task detail", path: "/tasks/101" },
   { name: "new task", path: "/tasks/new" },
