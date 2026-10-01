@@ -11,9 +11,15 @@ import type {
   UserRow,
 } from "@/lib/types";
 import { decodeCursor, encodeCursor } from "./cursor";
-import { sql } from "./db";
 import prisma from "./prisma";
 
+/**
+ * Escapes the LIKE metacharacters so a search box treats them as literals.
+ *
+ * Prisma's `contains` compiles to a LIKE, and it escapes the *parameter* but not
+ * the wildcards inside it. Without this, a single `%` matches every row and hides
+ * a real filtering bug.
+ */
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
 /**
@@ -35,30 +41,36 @@ const DASHBOARD_PROJECTS = 2;
 /**
  * Rendering notes for every timestamp below.
  *
- * Left alone, postgres.js renders a `timestamptz` in the *server's* zone, so
- * one row reads `2026-09-29 09:00:00+01` on a machine west of UTC. Every
- * timestamp in the schema is UTC (spec/schema.sql) and the fixtures store the
- * ISO-Z form, so a screen rendering a local-time string would show a different
- * instant than the database holds — and a different one per machine. Each
- * projection therefore pins the zone in SQL rather than relying on the driver.
+ * Every timestamp in the schema is `timestamptz` and UTC (spec/schema.sql), and
+ * the fixtures store the ISO-Z form, so a screen rendering a local-time string
+ * would show a different instant than the database holds — and a different one
+ * per machine. Prisma hands back a `Date` rather than a pre-rendered string, so
+ * the zone and the precision are both re-applied here.
  *
  * Timestamps are rendered to whole seconds because that is the fixture
  * precision; a sub-second component would make an integration assertion fail on
  * a value the fixture never claimed to carry.
  */
 
-// src/lib/data.ts, replacing the commented USER_AGGREGATES at L57-68
-
 /**
- * Renders a `timestamptz` the way the fixtures store it, for the reasons set
- * out above: whole seconds, UTC, an ISO-Z string rather than a `Date`.
- *
- * This is what replaces the `to_char(… AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
- * the SQL projections used to pin. Prisma returns a `Date`, so the zone and the
- * precision both have to be re-applied here.
+ * Renders a `timestamptz` the way the fixtures store it: whole seconds, UTC, an
+ * ISO-Z string rather than a `Date`. This replaces the
+ * `to_char(… AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')` the old SQL
+ * projections pinned — Prisma returns a `Date`, so both have to be re-applied.
  */
 function toUtcSecond(value: Date): string {
   return value.toISOString().slice(0, 19) + "Z";
+}
+
+/**
+ * Renders a `timestamptz` as the UTC calendar date the projects list shows.
+ *
+ * `toISOString` already converts to UTC before slicing, so this is the same
+ * instant `AT TIME ZONE 'UTC'` produced, minus the time of day. `formatDate`
+ * consumes it as a bare `YYYY-MM-DD`.
+ */
+function toUtcDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
 }
 
 /**
@@ -105,80 +117,175 @@ function toUser(row: UserRow, openCounts: Map<bigint, number>): User {
   };
 }
 
+type ProjectRollup = {
+  taskCount: number;
+  openTaskCount: number;
+  peopleCount: number;
+};
+
+const NO_TASKS: ProjectRollup = {
+  taskCount: 0,
+  openTaskCount: 0,
+  peopleCount: 0,
+};
+
 /**
- * The task columns every read returns.
+ * The per-project task totals the project list and the dashboard cards render.
  *
- * Split from the `FROM` clause so a query that needs one extra column — the
- * keyset cursor — can add it without restating the shared ones.
- */
-const TASK_PROJECTION_FIELDS = sql`
-    t.id::int AS id,
-    t.project_id::int AS "projectId",
-    p.name AS "projectName",
-    t.title,
-    t.description,
-    t.status,
-    COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
-    COUNT(c.id)::int AS "commentCount",
-    to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
-`;
-
-/**
- * The raw `(updated_at, id)` components a keyset cursor is built from.
+ * The SQL did this as one `GROUP BY p.id` over a LEFT JOIN. Prisma has no
+ * equivalent — `groupBy` counts a chosen relation but cannot count it
+ * *conditionally*, and `peopleCount` is a `COUNT(DISTINCT assignee_id)` that no
+ * count expression can express — so this groups by the three columns that fully
+ * determine the answer and folds them in JS.
  *
- * Appended only by the paged queries. `getTask` fetches a single row by
- * primary key and has no cursor to build, so it must not carry this.
+ * Grouping on `(assignee_id, status)` is what collapses the join multiplication
+ * the SQL guarded against with DISTINCT: each combination is already one row, so
+ * summing its count cannot double-count a task. Grouping on `assignee_id` also
+ * gives `peopleCount` as a set size, and it excludes NULL by construction — which
+ * is what `COUNT(DISTINCT assignee_id)` did.
+ *
+ * A project with no tasks is absent from the map rather than present with
+ * zeros; callers substitute `NO_TASKS`, matching the LEFT JOIN's row.
  */
-const CURSOR_FIELD = sql`
-    to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z' AS "updatedAtRaw"
-`;
+async function projectRollups(): Promise<Map<bigint, ProjectRollup>> {
+  const grouped = await prisma.tasks.groupBy({
+    by: ["project_id", "assignee_id", "status"],
+    _count: { _all: true },
+  });
 
-/** The `FROM`/`JOIN` clause every task read shares, so the joins cannot drift. */
-const TASK_PROJECTION_FROM = sql`
-  FROM tasks t
-  JOIN projects p ON p.id = t.project_id
-  LEFT JOIN users u ON u.id = t.assignee_id
-  LEFT JOIN comments c ON c.task_id = t.id
-`;
+  const totals = new Map<bigint, ProjectRollup>();
+  const assignees = new Map<bigint, Set<bigint>>();
+
+  for (const row of grouped) {
+    const { project_id: projectId, assignee_id: assigneeId, status } = row;
+    const count = row._count._all;
+
+    let entry = totals.get(projectId);
+
+    if (!entry) {
+      entry = { ...NO_TASKS };
+      totals.set(projectId, entry);
+      assignees.set(projectId, new Set());
+    }
+
+    entry.taskCount += count;
+
+    if (status !== "done") {
+      entry.openTaskCount += count;
+    }
+
+    // `COUNT(DISTINCT assignee_id)` ignores NULLs, so an unassigned task never
+    // contributes a person.
+    if (assigneeId !== null) {
+      assignees.get(projectId)!.add(assigneeId);
+    }
+  }
+
+  for (const [projectId, people] of assignees) {
+    totals.get(projectId)!.peopleCount = people.size;
+  }
+
+  return totals;
+}
+
+/** The `(created_at, id)` and `(updated_at, id)` page windows. */
+function taskRowSelect() {
+  return {
+    id: true,
+    project_id: true,
+    title: true,
+    description: true,
+    status: true,
+    updated_at: true,
+    created_at: true,
+    projects: { select: { name: true } },
+    users: { select: { display_name: true } },
+    _count: { select: { comments: true } },
+  } as const;
+}
 
 /**
- * The task row projection shared by every task read.
+ * Flattens a selected task row into the shape the three task pages share.
  *
  * Declared once because the same task is rendered by three pages; a projection
  * that drifted between them would show one task with two different statuses.
- * `COALESCE` covers the nullable `assignee_id`, and `commentCount` uses COUNT
- * over the LEFT JOIN rather than a subquery so it costs nothing extra on the
- * bounded page.
  */
-const TASK_PROJECTION = sql`
-  SELECT
-    ${TASK_PROJECTION_FIELDS}
-  ${TASK_PROJECTION_FROM}
-`;
+function toTaskRow(row: {
+  id: bigint;
+  project_id: bigint;
+  title: string;
+  description: string;
+  status: string;
+  updated_at: Date;
+  projects: { name: string };
+  users: { display_name: string } | null;
+  _count: { comments: number };
+}): TaskWithProject {
+  return {
+    id: Number(row.id),
+    projectId: Number(row.project_id),
+    projectName: row.projects.name,
+    title: row.title,
+    description: row.description,
+    // The column is plain text in the database; the union lives in
+    // `types.ts`, and the CHECK constraint on the table is what keeps a value
+    // outside it from ever arriving here.
+    status: row.status as TaskStatus,
+    // `assignee_id` is nullable, which the old SQL covered with a COALESCE.
+    assigneeName: row.users?.display_name ?? "Unassigned",
+    commentCount: row._count.comments,
+    updatedAt: toUtcSecond(row.updated_at),
+  };
+}
 
-export async function getProjects(value = "") {
+/**
+ * Renders a timestamp at microsecond precision for the keyset cursor.
+ *
+ * The display stamps above are truncated to whole seconds; a cursor cannot be,
+ * because two rows sharing a second must still produce different cursors.
+ */
+function toUtcMicrosecond(value: Date): string {
+  return `${value.toISOString().slice(0, 26)}Z`;
+}
+
+export async function getProjects(value = ""): Promise<Project[]> {
   const term = value.trim();
-  const where = term
-    ? sql`WHERE p.name ILIKE ${`%${escapeLike(term)}%`}
-          OR p.description ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+  const search = escapeLike(term);
 
   try {
-    return await sql<Project[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount",
-        (p.created_at AT TIME ZONE 'UTC')::date::text AS "createdAt"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      ${where}
-      GROUP BY p.id, p.name, p.description, p.created_at
-      ORDER BY p.created_at DESC, p.id DESC
-    `;
+    // Independent queries, so they run concurrently: the project rows and the
+    // per-project totals never depend on each other.
+    const [projects, rollups] = await Promise.all([
+      prisma.projects.findMany({
+        // `contains` compiles to an ILIKE, so the term has to be escaped or a
+        // search for `%` would match every project.
+        where: term
+          ? {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { description: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : undefined,
+        orderBy: [{ created_at: "desc" }, { id: "desc" }],
+        select: { id: true, name: true, description: true, created_at: true },
+      }),
+      projectRollups(),
+    ]);
+
+    return projects.map((project) => {
+      const rollup = rollups.get(project.id) ?? NO_TASKS;
+
+      return {
+        id: Number(project.id),
+        name: project.name,
+        description: project.description,
+        taskCount: rollup.taskCount,
+        openTaskCount: rollup.openTaskCount,
+        peopleCount: rollup.peopleCount,
+        createdAt: toUtcDate(project.created_at),
+      };
+    });
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch projects.");
@@ -192,22 +299,29 @@ export async function getProjects(value = "") {
  */
 export async function getProject(id: number): Promise<Project | null> {
   try {
-    const [project] = await sql<Project[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount",
-        (p.created_at AT TIME ZONE 'UTC')::date::text AS "createdAt"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      WHERE p.id = ${id}
-      GROUP BY p.id, p.name, p.description, p.created_at
-    `;
+    const [project, rollups] = await Promise.all([
+      prisma.projects.findFirst({
+        where: { id },
+        select: { id: true, name: true, description: true, created_at: true },
+      }),
+      projectRollups(),
+    ]);
 
-    return project ?? null;
+    if (!project) {
+      return null;
+    }
+
+    const rollup = rollups.get(project.id) ?? NO_TASKS;
+
+    return {
+      id: Number(project.id),
+      name: project.name,
+      description: project.description,
+      taskCount: rollup.taskCount,
+      openTaskCount: rollup.openTaskCount,
+      peopleCount: rollup.peopleCount,
+      createdAt: toUtcDate(project.created_at),
+    };
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the project.");
@@ -226,11 +340,11 @@ export type ProjectTaskFilters = {
  * One page of a project's tasks, newest first, with the assignee name and the
  * comment count the table renders.
  *
- * spec/queries.md fixes the shape: `tasks` driving, LEFT JOIN `users` on the
+ * spec/queries.md fixes the shape: `tasks` driving, the assignee joined on the
  * nullable `assignee_id`, ordered `(created_at DESC, id DESC)` and `LIMIT`ed.
- * `id` is the tiebreaker because fixture timestamps are unique but a live
- * insert can share one, and an unstable order would make a keyset page skip or
- * repeat a row.
+ * `id` is the tiebreaker because fixture timestamps are unique but a live insert
+ * can share one, and an unstable order would make a keyset page skip or repeat
+ * a row.
  */
 export async function getProjectTasks(
   projectId: number,
@@ -245,22 +359,7 @@ export async function getProjectTasks(
     throw new Error(`Unknown task status: ${term}`);
   }
 
-  const statusFilter = term ? sql`AND t.status = ${term}` : sql``;
-
   const decoded = decodeCursor(cursor);
-
-  // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
-  // costs 50x page 1, and a row inserted mid-walk shifts the window. Comparing
-  // the row tuple in one predicate lets Postgres use
-  // tasks_project_created_id_idx directly.
-  //
-  // The cursor is bound as text and cast in SQL rather than as a timestamptz:
-  // the driver would otherwise try to parse it back into a Date, which turns a
-  // stale or hand-edited cursor into a driver-level error instead of simply
-  // not matching a row.
-  const cursorFilter = decoded
-    ? sql`AND (t.created_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
 
   // Clamped so a caller cannot ask for an unbounded page. One row above the page
   // size is allowed deliberately: fetching PAGE + 1 and dropping the last is
@@ -268,27 +367,35 @@ export async function getProjectTasks(
   const bound = Math.max(1, Math.min(limit, PAGE_SIZE + 1));
 
   try {
-    const rows = await sql<ProjectTaskRow[]>`
-      SELECT
-        ${TASK_PROJECTION_FIELDS},
-        -- The cursor needs microsecond precision, and a Z suffix since the
-        -- value is already in UTC.
-        to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || 'Z' AS "createdAtRaw"
-      ${TASK_PROJECTION_FROM}
-      WHERE t.project_id = ${projectId}
-      ${statusFilter}
-      ${cursorFilter}
-      GROUP BY t.id, p.name, u.display_name, t.created_at
-      ORDER BY t.created_at DESC, t.id DESC
-      LIMIT ${bound}
-    `;
+    const rows = await prisma.tasks.findMany({
+      where: {
+        project_id: projectId,
+        ...(term ? { status: term } : {}),
+      },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
+      // costs 50x page 1, and a row inserted mid-walk shifts the window.
+      //
+      // Prisma's cursor turns the unique `id` into the same row-tuple predicate
+      // the SQL spelled out by hand — `(created_at, id) < (…)` — so
+      // tasks_project_created_id_idx is still the access path. A cursor naming a
+      // row that no longer exists simply matches nothing, rather than failing.
+      ...(decoded ? { cursor: { id: BigInt(decoded.id) }, skip: 1 } : {}),
+      take: bound,
+      select: taskRowSelect(),
+    });
 
-    // Derived here rather than in SQL so cursor packing has one implementation,
-    // shared with the decoder this query uses to read a page back.
-    return rows.map((row) => ({
-      ...row,
-      cursorFor: encodeCursor(row.createdAtRaw, row.id),
-    }));
+    // Derived here rather than in the query so cursor packing has one
+    // implementation, shared with the decoder this query uses to read a page back.
+    return rows.map((row) => {
+      const createdAtRaw = toUtcMicrosecond(row.created_at);
+
+      return {
+        ...toTaskRow(row),
+        createdAtRaw,
+        cursorFor: encodeCursor(createdAtRaw, Number(row.id)),
+      };
+    });
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the project tasks.");
@@ -313,20 +420,18 @@ export type TaskFilters = {
 };
 
 /**
- * The workspace-wide task list, newest updated first.
+ * The `where` clause shared by `getTasks` and `countTasks`.
  *
- * Shares its projection with `getProjectTasks` so a row cannot look different
- * depending on which page fetched it — the same task must render identically in
- * the project board, the workspace list and its detail page.
+ * Both the page and the "Showing 1-25 of N" line come from here, so a filter can
+ * never narrow one and not the other — a mismatch would show "1-2 of 6" for a
+ * two-row page.
  */
-export async function getTasks({
+function taskWhere({
   projectId,
   status = "",
   assigneeId,
   search = "",
-  limit = PAGE_SIZE,
-  cursor = null,
-}: TaskFilters = {}): Promise<TaskRow[]> {
+}: TaskFilters): Record<string, unknown> {
   const statusTerm = status.trim();
 
   if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
@@ -334,46 +439,59 @@ export async function getTasks({
   }
 
   const term = search.trim();
+  const escaped = escapeLike(term);
 
-  // LIKE wildcards in a search box are almost always a literal character the
-  // user typed, not a pattern. Without escaping, a single `%` matches every
-  // row and hides a real filtering bug.
-  const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
-          OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
+  return {
+    ...(projectId === undefined ? {} : { project_id: projectId }),
+    ...(statusTerm ? { status: statusTerm } : {}),
+    ...(assigneeId === undefined ? {} : { assignee_id: assigneeId }),
+    ...(term
+      ? {
+          OR: [
+            { title: { contains: escaped, mode: "insensitive" } },
+            { description: { contains: escaped, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+}
 
+/**
+ * The workspace-wide task list, newest updated first.
+ *
+ * Shares its projection with `getProjectTasks` so a row cannot look different
+ * depending on which page fetched it — the same task must render identically in
+ * the project board, the workspace list and its detail page.
+ */
+export async function getTasks({
+  limit = PAGE_SIZE,
+  cursor = null,
+  ...filters
+}: TaskFilters = {}): Promise<TaskRow[]> {
+  const where = taskWhere(filters);
   const decoded = decodeCursor(cursor);
 
-  // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
-  // costs 50x page 1, and a row inserted mid-walk shifts the window. Bound as
-  // text and cast in SQL so an unusable cursor matches nothing instead of
-  // failing in the driver.
-  const cursorFilter = decoded
-    ? sql`AND (t.updated_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
-
   try {
-    const rows = await sql<TaskRow[]>`
-      SELECT
-        ${TASK_PROJECTION_FIELDS},
-        ${CURSOR_FIELD}
-      ${TASK_PROJECTION_FROM}
-      WHERE 1 = 1
-      ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
-      ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
-      ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
-      ${searchFilter}
-      ${cursorFilter}
-      GROUP BY t.id, p.name, u.display_name, t.updated_at
-      ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, PAGE_SIZE + 1))}
-    `;
+    const rows = await prisma.tasks.findMany({
+      where,
+      orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+      // Keyset rather than OFFSET, for the reasons spelled out in
+      // `getProjectTasks`. Prisma compiles the unique `id` cursor into
+      // `(updated_at, id) < (…)` against tasks' indexes.
+      ...(decoded ? { cursor: { id: BigInt(decoded.id) }, skip: 1 } : {}),
+      take: Math.max(1, Math.min(limit, PAGE_SIZE + 1)),
+      select: taskRowSelect(),
+    });
 
-    return rows.map((row) => ({
-      ...row,
-      cursorFor: encodeCursor(row.updatedAtRaw, row.id),
-    }));
+    return rows.map((row) => {
+      const updatedAtRaw = toUtcMicrosecond(row.updated_at);
+
+      return {
+        ...toTaskRow(row),
+        updatedAtRaw,
+        cursorFor: encodeCursor(updatedAtRaw, Number(row.id)),
+      };
+    });
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch tasks.");
@@ -381,18 +499,36 @@ export async function getTasks({
 }
 
 /**
+ * Counts the tasks matching the workspace list's filters.
+ *
+ * A second statement rather than a window function, deliberately: the list is
+ * `LIMIT`ed, and `COUNT(*) OVER ()` would force Postgres to materialise every
+ * matching row before discarding all but the first page. This way the page's
+ * cost is one bounded read plus one aggregate.
+ */
+export async function countTasks(filters: TaskFilters = {}): Promise<number> {
+  try {
+    return await prisma.tasks.count({ where: taskWhere(filters) });
+  } catch (error) {
+    console.error("Database Error:", error);
+    throw new Error("Failed to count tasks.");
+  }
+}
+
+/**
  * One task by id, with the project and assignee names the detail page renders,
  * or `null` when no row matches.
+ *
+ * Fetched by primary key, so it carries no cursor: there is no page to resume.
  */
 export async function getTask(id: number): Promise<TaskWithProject | null> {
   try {
-    const [task] = await sql<TaskWithProject[]>`
-      ${TASK_PROJECTION}
-      WHERE t.id = ${id}
-      GROUP BY t.id, p.name, u.display_name
-    `;
+    const row = await prisma.tasks.findFirst({
+      where: { id },
+      select: taskRowSelect(),
+    });
 
-    return task ?? null;
+    return row ? toTaskRow(row) : null;
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the task.");
@@ -410,19 +546,26 @@ export async function getComments(
   limit = COMMENTS_PER_TASK,
 ): Promise<Comment[]> {
   try {
-    return await sql<Comment[]>`
-      SELECT
-        c.id::int AS id,
-        c.task_id::int AS "taskId",
-        u.display_name AS "authorName",
-        c.body,
-        to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
-      FROM comments c
-      JOIN users u ON u.id = c.author_id
-      WHERE c.task_id = ${taskId}
-      ORDER BY c.created_at DESC, c.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, COMMENTS_PER_TASK))}
-    `;
+    const comments = await prisma.comments.findMany({
+      where: { task_id: taskId },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      take: Math.max(1, Math.min(limit, COMMENTS_PER_TASK)),
+      select: {
+        id: true,
+        task_id: true,
+        body: true,
+        created_at: true,
+        users: { select: { display_name: true } },
+      },
+    });
+
+    return comments.map((comment) => ({
+      id: Number(comment.id),
+      taskId: Number(comment.task_id),
+      authorName: comment.users.display_name,
+      body: comment.body,
+      createdAt: toUtcSecond(comment.created_at),
+    }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the task comments.");
@@ -430,74 +573,42 @@ export async function getComments(
 }
 
 /**
- * Counts the tasks matching the workspace list's filters.
- *
- * A second statement rather than a window function, deliberately: the list is
- * `LIMIT`ed, and `COUNT(*) OVER ()` would force Postgres to materialise every
- * matching row before discarding all but the first page. This way the page's
- * cost is one bounded read plus one aggregate.
- */
-export async function countTasks({
-  search = "",
-  status = "",
-  projectId,
-  assigneeId,
-}: TaskFilters = {}): Promise<number> {
-  const statusTerm = status.trim();
-
-  if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
-    throw new Error(`Unknown task status: ${statusTerm}`);
-  }
-
-  const term = search.trim();
-
-  const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
-          OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
-
-  try {
-    const [row] = await sql<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count
-      FROM tasks t
-      WHERE 1 = 1
-      ${projectId === undefined ? sql`` : sql`AND t.project_id = ${projectId}`}
-      ${statusTerm ? sql`AND t.status = ${statusTerm}` : sql``}
-      ${assigneeId === undefined ? sql`` : sql`AND t.assignee_id = ${assigneeId}`}
-      ${searchFilter}
-    `;
-
-    return row?.count ?? 0;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to count tasks.");
-  }
-}
-
-/**
  * Workspace totals for the dashboard's stat cards.
  *
- * One statement rather than three, because the cards are rendered together and
- * separate COUNT queries would each scan a different table for the same row.
+ * Issued as one batched transaction rather than seven separate awaits, because
+ * the cards are rendered together and separate round trips would each re-check
+ * the same rows at a different moment — a task created mid-render would show up
+ * in `totalTasks` but not in `todoTasks`, and the cards would not add up.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const [stats] = await sql<DashboardStats[]>`
-      SELECT
-        (SELECT COUNT(*) FROM projects)::int AS "projectCount",
-        (SELECT COUNT(*) FROM tasks)::int AS "totalTasks",
-        (
-          SELECT COUNT(*) FROM tasks WHERE status <> 'done'
-        )::int AS "openTasks",
-        (SELECT COUNT(*) FROM users)::int AS "peopleCount",
-        (SELECT COUNT(*) FROM tasks WHERE status = 'todo')::int AS "todoTasks",
-        (
-          SELECT COUNT(*) FROM tasks WHERE status = 'in progress'
-        )::int AS "inProgressTasks",
-        (SELECT COUNT(*) FROM tasks WHERE status = 'done')::int AS "doneTasks"
-    `;
+    const [
+      projectCount,
+      totalTasks,
+      openTasks,
+      peopleCount,
+      todoTasks,
+      inProgressTasks,
+      doneTasks,
+    ] = await prisma.$transaction([
+      prisma.projects.count(),
+      prisma.tasks.count(),
+      prisma.tasks.count({ where: { status: { not: "done" } } }),
+      prisma.users.count(),
+      prisma.tasks.count({ where: { status: "todo" } }),
+      prisma.tasks.count({ where: { status: "in progress" } }),
+      prisma.tasks.count({ where: { status: "done" } }),
+    ]);
 
-    return stats;
+    return {
+      projectCount,
+      totalTasks,
+      openTasks,
+      peopleCount,
+      todoTasks,
+      inProgressTasks,
+      doneTasks,
+    };
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the dashboard stats.");
@@ -514,20 +625,30 @@ export async function getRecentTasks(
   limit = DASHBOARD_RECENT_TASKS,
 ): Promise<DashboardTask[]> {
   try {
-    return await sql<DashboardTask[]>`
-      SELECT
-        t.id::int AS id,
-        t.title,
-        p.name AS "projectName",
-        t.status,
-        COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
-        to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
-      FROM tasks t
-      JOIN projects p ON p.id = t.project_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS))}
-    `;
+    const tasks = await prisma.tasks.findMany({
+      orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+      take: Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS)),
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        updated_at: true,
+        projects: { select: { name: true } },
+        users: { select: { display_name: true } },
+      },
+    });
+
+    // Deliberately built field by field rather than spread from a wider row: the
+    // recent-tasks table has no project column and no comment count, and a test
+    // asserts those keys are absent.
+    return tasks.map((task) => ({
+      id: Number(task.id),
+      title: task.title,
+      projectName: task.projects.name,
+      status: task.status as TaskStatus,
+      assigneeName: task.users?.display_name ?? "Unassigned",
+      updatedAt: toUtcSecond(task.updated_at),
+    }));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch recent tasks.");
@@ -538,26 +659,40 @@ export async function getRecentTasks(
  * The busiest projects, for the dashboard's project cards.
  *
  * Ordered by task count so the cards answer "where is the work?" rather than
- * repeating the newest-first ordering of every other list.
+ * repeating the newest-first ordering of every other list. The order is applied
+ * in JS rather than in the query because Prisma cannot order by a computed
+ * count; the totals themselves still come from a single grouped read.
  */
 export async function getDashboardProjects(
   limit = DASHBOARD_PROJECTS,
 ): Promise<DashboardProject[]> {
   try {
-    return await sql<DashboardProject[]>`
-      SELECT
-        p.id::int AS id,
-        p.name,
-        p.description,
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-        COUNT(DISTINCT t.assignee_id)::int AS "peopleCount"
-      FROM projects p
-      LEFT JOIN tasks t ON p.id = t.project_id
-      GROUP BY p.id, p.name, p.description
-      ORDER BY COUNT(t.id) DESC, p.id ASC
-      LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_PROJECTS))}
-    `;
+    const [projects, rollups] = await Promise.all([
+      prisma.projects.findMany({
+        select: { id: true, name: true, description: true },
+      }),
+      projectRollups(),
+    ]);
+
+    return (
+      projects
+        .map((project) => {
+          const rollup = rollups.get(project.id) ?? NO_TASKS;
+
+          return {
+            id: Number(project.id),
+            name: project.name,
+            description: project.description,
+            taskCount: rollup.taskCount,
+            openTaskCount: rollup.openTaskCount,
+            peopleCount: rollup.peopleCount,
+          };
+        })
+        // `id` is the tiebreaker so the order is stable: two projects with the same
+        // task count must not swap places between renders.
+        .sort((a, b) => b.taskCount - a.taskCount || a.id - b.id)
+        .slice(0, Math.max(1, Math.min(limit, DASHBOARD_PROJECTS)))
+    );
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch dashboard projects.");
@@ -649,34 +784,10 @@ export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
       // expectation by `updatedAt` alone, so two tasks sharing an instant have
       // to come back in a stable order for that assertion to hold.
       orderBy: [{ updated_at: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        project_id: true,
-        title: true,
-        description: true,
-        status: true,
-        updated_at: true,
-        projects: { select: { name: true } },
-        users: { select: { display_name: true } },
-        _count: { select: { comments: true } },
-      },
+      select: taskRowSelect(),
     });
 
-    return tasks.map((task) => ({
-      id: Number(task.id),
-      projectId: Number(task.project_id),
-      projectName: task.projects.name,
-      title: task.title,
-      description: task.description,
-      // The column is plain text in the database; the union lives in
-      // `types.ts`, and the CHECK constraint on the table is what keeps a
-      // value outside it from ever arriving here.
-      status: task.status as TaskStatus,
-      // `assignee_id` is nullable, which the SQL covered with a COALESCE.
-      assigneeName: task.users?.display_name ?? "Unassigned",
-      commentCount: task._count.comments,
-      updatedAt: toUtcSecond(task.updated_at),
-    }));
+    return tasks.map((task) => toTaskRow(task));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user's tasks.");
