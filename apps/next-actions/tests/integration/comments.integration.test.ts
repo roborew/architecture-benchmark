@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createComment, type State } from "@/lib/actions";
 import { getComments } from "@/lib/data";
 import { sql } from "@/lib/db";
-import { loadComments, loadUsers } from "../../tests/fixtures/load";
+import { loadComments, loadUsers } from "../fixtures/load";
 
 // spec/queries.md — task detail shows "the 10 most recent comments with author
 // names", ordered `created_at DESC, id DESC`. The bound is the point: an

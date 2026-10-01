@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { TaskFilters } from "./_components/task-filters";
-import { TaskPagination } from "./_components/task-pagination";
 import { TaskTable } from "./_components/task-table";
 import { countTasks, getProjects, getTasks, getUsers } from "@/lib/data";
 import {
@@ -12,6 +11,7 @@ import {
   parsePage,
   parsePageSize,
 } from "@/lib/pagination";
+import { TaskPagination } from "./_components/task-pagination";
 
 // The workspace-wide task list. Every filter is applied in the query rather
 // than in memory: the page used to slice an in-memory fixture, so a task

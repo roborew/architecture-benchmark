@@ -11,7 +11,7 @@ import {
   loadRawRows,
   loadTasks,
   loadUsers,
-} from "../../tests/fixtures/load";
+} from "../fixtures/load";
 
 // The dashboard read three independent aggregates from the in-memory fixture.
 // Judged against the same rows the rest of the app asserts, so a write made

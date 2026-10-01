@@ -11,7 +11,7 @@ import {
   loadProjects,
   loadTasks,
   loadUsers,
-} from "../../tests/fixtures/load";
+} from "../fixtures/load";
 
 afterAll(async () => {
   await sql.end();

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { getUser, getUserTasks } from "@/lib/data";
 import { sql } from "@/lib/db";
-import { loadProjects, loadTasks, loadUsers } from "../../tests/fixtures/load";
+import { loadProjects, loadTasks, loadUsers } from "../fixtures/load";
 
 // Reads behind `/users/[id]`: the member header and their assigned tasks.
 // Until now that page filtered the in-memory fixture by display name, which

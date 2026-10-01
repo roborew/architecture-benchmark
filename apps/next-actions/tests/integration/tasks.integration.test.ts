@@ -8,7 +8,7 @@ import {
   loadProjects,
   loadTasks,
   loadUsers,
-} from "../../tests/fixtures/load";
+} from "../fixtures/load";
 
 // The workspace-wide task list and the task detail row, which
 // spec/queries.md names "Task detail": one task plus its project, assignee and

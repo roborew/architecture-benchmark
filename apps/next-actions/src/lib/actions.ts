@@ -222,8 +222,8 @@ export async function updateProject(
 
 export async function deleteProject(
   id: number,
-  prevState: State,
-  formData: FormData,
+  _prevState: State,
+  _formData: FormData,
 ): Promise<State> {
   try {
     const deleted = await sql<{ id: number }[]>`
@@ -343,8 +343,8 @@ export async function updateUser(
 
 export async function deleteUser(
   id: number,
-  prevState: State,
-  formData: FormData,
+  _prevState: State,
+  _formData: FormData,
 ): Promise<State> {
   try {
     const deleted = await sql<{ id: number }[]>`
@@ -549,8 +549,8 @@ export async function updateTask(
  */
 export async function deleteTask(
   id: number,
-  prevState: State,
-  formData: FormData,
+  _prevState: State,
+  _formData: FormData,
 ): Promise<State> {
   // Read the project first, both to revalidate its board and because the
   // contract redirects there after a delete.

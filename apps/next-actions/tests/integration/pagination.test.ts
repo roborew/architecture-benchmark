@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
-
 import {
-  PAGE_SIZES,
-  DEFAULT_PAGE_SIZE,
-  formatRange,
   pageRange,
-  parsePage,
+  formatRange,
+  PAGE_SIZES,
   parsePageSize,
-} from "./pagination";
+  DEFAULT_PAGE_SIZE,
+  parsePage,
+} from "../../src/lib/pagination";
 
 // The workspace list's summary line said "Showing 1-4 of 1000" on every page,
 // because the start was hardcoded to 1 and the end was the current page's row
@@ -76,15 +75,15 @@ describe("pageRange", () => {
 
 describe("formatRange", () => {
   it("renders the full list", () => {
-    expect(
-      formatRange({ from: 1, to: 6, total: 6 }),
-    ).toBe("Showing 1-6 of 6 tasks");
+    expect(formatRange({ from: 1, to: 6, total: 6 })).toBe(
+      "Showing 1-6 of 6 tasks",
+    );
   });
 
   it("renders a middle page", () => {
-    expect(
-      formatRange({ from: 11, to: 20, total: 25 }),
-    ).toBe("Showing 11-20 of 25 tasks");
+    expect(formatRange({ from: 11, to: 20, total: 25 })).toBe(
+      "Showing 11-20 of 25 tasks",
+    );
   });
 
   it("uses the singular for a single matching task", () => {
@@ -100,9 +99,9 @@ describe("formatRange", () => {
   });
 
   it("mentions that filters narrowed the result", () => {
-    expect(
-      formatRange({ from: 1, to: 2, total: 2, filtered: true }),
-    ).toBe("Showing 1-2 of 2 tasks matching your filters");
+    expect(formatRange({ from: 1, to: 2, total: 2, filtered: true })).toBe(
+      "Showing 1-2 of 2 tasks matching your filters",
+    );
   });
 });
 

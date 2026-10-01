@@ -8,7 +8,7 @@ import {
   loadProjects,
   loadTasks,
   loadUsers,
-} from "../../tests/fixtures/load";
+} from "../fixtures/load";
 
 // spec/queries.md — "List project tasks": up to 25 rows for a project, newest
 // first, `(created_at DESC, id DESC)`, optional single-status filter, keyset

@@ -5,6 +5,20 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // Server actions take a positional `(prevState, formData)` shape because
+      // `useActionState` requires it, and several of them — the deletes in
+      // particular — have no form fields to read and no previous state to
+      // carry forward. Those parameters are real: the hook's generic inference
+      // reads their types. So an unused one is prefixed with `_` rather than
+      // dropped, and the ignore pattern is what makes that prefix count.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
