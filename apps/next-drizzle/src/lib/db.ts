@@ -16,7 +16,7 @@ if (existsSync(envPath) && !process.env.POSTGRES_URL) {
   process.loadEnvFile(envPath);
 }
 
-const connectionString = process.env.POSTGRES_URL;
+export const connectionString = process.env.POSTGRES_URL;
 
 if (!connectionString) {
   throw new Error(

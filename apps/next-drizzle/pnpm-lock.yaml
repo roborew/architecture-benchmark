@@ -20,6 +20,9 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -5661,8 +5664,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9:
-    optional: true
+  postgres@3.4.9: {}
 
   prelude-ls@1.2.1: {}
 

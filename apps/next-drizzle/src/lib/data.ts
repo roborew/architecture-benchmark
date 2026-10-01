@@ -9,8 +9,19 @@ import type {
   TaskWithProject,
   User,
 } from "@/lib/types";
+import { comments, tasks, users } from "../../drizzle/schema";
+import {
+  countDistinct,
+  desc,
+  eq,
+  ilike,
+  ne,
+  or,
+  sql as tsql,
+} from "drizzle-orm";
 import { decodeCursor, encodeCursor } from "./cursor";
 import { sql } from "./db";
+import { db } from "./drizzle";
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
@@ -51,7 +62,23 @@ const DASHBOARD_PROJECTS = 2;
  * Every count is DISTINCT on its own side's key because the two LEFT JOINs
  * multiply: a member with 2 tasks and 2 comments produces 4 rows, and a plain
  * COUNT over that join would report 4 tasks.
+ *
+ * `openTaskCount` is the one aggregate Drizzle cannot express as a helper
+ * (`countDistinct` has no FILTER support in 1.0.0-rc.4), so it is hand-written
+ * and `.mapWith(Number)`d to match the helpers' decoding.
  */
+const USER_AGGREGATE_COLUMNS = {
+  id: users.id,
+  name: users.displayName,
+  email: users.email,
+  assignedTaskCount: countDistinct(tasks.id),
+  openTaskCount:
+    tsql<number>`count(distinct ${tasks.id}) filter (where ${ne(tasks.status, "done")})`.mapWith(
+      Number,
+    ),
+  commentCount: countDistinct(comments.id),
+};
+
 const USER_AGGREGATES = sql`
   SELECT
     u.id::int AS id,
@@ -524,20 +551,23 @@ export async function getDashboardProjects(
   }
 }
 
-export async function getUsers(value = "") {
+export async function getUsers(value = ""): Promise<User[]> {
   const term = value.trim();
-  const where = term
-    ? sql`WHERE u.display_name ILIKE ${`%${escapeLike(term)}%`}
-          OR u.email ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+  const pattern = `%${escapeLike(term)}%`;
 
   try {
-    return await sql<User[]>`
-      ${USER_AGGREGATES}
-      ${where}
-      GROUP BY u.id, u.display_name, u.email
-      ORDER BY u.display_name DESC, u.id DESC
-    `;
+    return await db
+      .select(USER_AGGREGATE_COLUMNS)
+      .from(users)
+      .leftJoin(tasks, eq(users.id, tasks.assigneeId))
+      .leftJoin(comments, eq(users.id, comments.authorId))
+      .where(
+        term
+          ? or(ilike(users.displayName, pattern), ilike(users.email, pattern))
+          : undefined,
+      )
+      .groupBy(users.id, users.displayName, users.email)
+      .orderBy(desc(users.displayName), desc(users.id));
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch users.");
