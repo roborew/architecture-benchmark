@@ -1,6 +1,6 @@
 // tests/e2e/database.ts
 //
-// Lifecycle for the e2e database.
+// Lifecycle for the e2e database, on `pg` (node-postgres).
 //
 // This app's e2e suite runs against its OWN database — `..._e2e` on the same
 // Postgres server — created, migrated, seeded and dropped around the run. The
@@ -12,16 +12,16 @@
 // fixtures via tests/fixtures/load.ts. Nothing here is imported by the app
 // itself: this file is test infrastructure only.
 
-import { existsSync, createReadStream } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 
-import postgres from "postgres";
+import { Client, escapeIdentifier } from "pg";
 
 import { schemaPath } from "../../src/db/spec-dir";
-import { fixtureDirectory } from "../fixtures/load";
+import { e2eDatabaseUrl } from "../../src/lib/connection-string";
+import { loadRawRows } from "../fixtures/load";
 
-export const E2E_DATABASE = "architecture_next_actions_e2e";
+export const E2E_DATABASE = "architecture_next_drizzle_e2e";
 export const E2E_PORT = 3100;
 
 /**
@@ -49,18 +49,35 @@ export function e2eConnectionString(): string {
     );
   }
 
-  const url = new URL(base);
-  url.pathname = `/${E2E_DATABASE}`;
-
-  return url.toString();
+  // Normalised before the database name is swapped, so a Prisma-style
+  // `?schema=public` cannot reach node-postgres and abort the CREATE/DROP
+  // connection with `unrecognized configuration parameter`.
+  return e2eDatabaseUrl(base, E2E_DATABASE);
 }
 
-/** Connection string for the maintenance database, used to CREATE/DROP DATABASE. */
+/**
+ * Connection string for the maintenance database.
+ *
+ * `CREATE DATABASE` and `DROP DATABASE` cannot run inside the target they name,
+ * so both have to be issued from a different database on the same server.
+ */
 function adminConnectionString(): string {
   const url = new URL(e2eConnectionString());
   url.pathname = "/postgres";
 
   return url.toString();
+}
+
+/** Run one statement against an arbitrary database, then close cleanly. */
+async function runOn(connectionString: string, statement: string) {
+  const client = new Client({ connectionString });
+
+  try {
+    await client.connect();
+    await client.query(statement);
+  } finally {
+    await client.end();
+  }
 }
 
 /**
@@ -72,78 +89,127 @@ function adminConnectionString(): string {
  * still connected.
  */
 export async function resetDatabase(): Promise<void> {
-  const admin = postgres(adminConnectionString(), { ssl: false });
+  // The database name is a constant above, never user input, but it is still an
+  // identifier: `pg` has no bind parameter for one, so it goes through
+  // `escapeIdentifier` rather than string interpolation.
+  const database = escapeIdentifier(E2E_DATABASE);
+
+  await runOn(
+    adminConnectionString(),
+    `drop database if exists ${database} with (force)`,
+  );
+  await runOn(adminConnectionString(), `create database ${database}`);
+
+  const client = new Client({ connectionString: e2eConnectionString() });
 
   try {
-    await admin.unsafe(`
-      drop database if exists ${E2E_DATABASE} with (force)
-    `);
-    await admin.unsafe(`create database ${E2E_DATABASE}`);
+    await client.connect();
+    // `pg` has no `file()` helper the way postgres.js did, so the schema is
+    // read and sent as one multi-statement query. `simple query` protocol is
+    // what lets several statements share a round trip.
+    await client.query({ text: readFileSync(schemaPath, "utf8") });
   } finally {
-    await admin.end();
-  }
-
-  const sql = postgres(e2eConnectionString(), { ssl: false });
-
-  try {
-    await sql.file(schemaPath);
-  } finally {
-    await sql.end();
+    await client.end();
   }
 }
 
+/** Insertion order respects the foreign keys. */
+const TABLES = ["users", "projects", "tasks", "comments"] as const;
+
+/**
+ * Rows per multi-row INSERT.
+ *
+ * `pg` sends values as bind parameters, and Postgres caps a statement at 65535
+ * parameters. The widest table here is `tasks` at 8 columns, so 1000 rows is
+ * 8000 parameters — comfortably inside the limit with room to spare.
+ */
+const INSERT_BATCH = 1000;
+
 /** Load the shared fixture into the e2e database. */
 export async function seedDatabase(): Promise<void> {
-  const sql = postgres(e2eConnectionString(), { ssl: false });
+  const client = new Client({ connectionString: e2eConnectionString() });
+  const rows = loadRawRows();
 
   try {
-    // `COPY ... FROM STDIN` streams the fixture CSVs straight in, which is both
-    // the fastest path and the one `src/db/seed.ts` already uses for the dev
-    // database — so the two seeders cannot diverge in behaviour. The fixture
-    // header rows already match the schema column names exactly, which is the
-    // same contract spec/seed-spec.md relies on.
-    //
-    // The profile is the shared `spec/snapshots/correctness/` fixture, not a
-    // copy kept inside this app.
-    //
-    // Insertion order respects the foreign keys.
-    const tables = ["users", "projects", "tasks", "comments"] as const;
+    await client.connect();
 
-    await sql.begin(async (tx) => {
-      for (const table of tables) {
-        const writable =
-          await tx`copy ${tx(table)} from stdin with (format csv, header true)`.writable();
-        await pipeline(
-          createReadStream(path.join(fixtureDirectory, `${table}.csv`)),
-          writable,
+    await client.query("BEGIN");
+
+    for (const table of TABLES) {
+      const tableRows = rows[table];
+
+      if (tableRows.length === 0) {
+        throw new Error(`Fixture ${table}.csv contains no rows.`);
+      }
+
+      // The fixture header rows already match the schema column names exactly,
+      // which is the contract `COPY ... header true` relied on. The raw loader
+      // keeps the column names, so they drive the INSERT rather than a
+      // hand-maintained list that could drift from the CSV.
+      const columns = Object.keys(tableRows[0]);
+      const quotedColumns = columns
+        .map((column) => escapeIdentifier(column))
+        .join(", ");
+
+      for (let offset = 0; offset < tableRows.length; offset += INSERT_BATCH) {
+        const batch = tableRows.slice(offset, offset + INSERT_BATCH);
+
+        // One placeholder per value per row: ($1,$2),($3,$4),...
+        const placeholders = batch
+          .map((_, rowIndex) => {
+            const start = rowIndex * columns.length + 1;
+
+            return `(${columns.map((_, i) => `$${start + i}`).join(",")})`;
+          })
+          .join(",");
+
+        const values = batch.flatMap((row) =>
+          columns.map((column) => row[column]),
+        );
+
+        await client.query(
+          `insert into ${escapeIdentifier(table)} (${quotedColumns}) values ${placeholders}`,
+          values,
         );
       }
 
-      // The fixture carries explicit ids, which bypass the identity sequences.
+      // Fixture rows carry explicit ids, which bypass the identity sequences.
       // Advance them past the loaded rows or the next live insert collides.
-      for (const table of tables) {
-        await tx`select setval(pg_get_serial_sequence(${table}, 'id'), coalesce((select max(id) from ${tx(table)}), 1))`;
-      }
-    });
+      await client.query(
+        `select setval(
+           pg_get_serial_sequence($1, 'id'),
+           coalesce((select max(id) from ${escapeIdentifier(table)}), 1)
+         )`,
+        [table],
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    // Leave no half-seeded database behind: the caller resets unconditionally
+    // anyway, but a rollback keeps the failure from looking like a seed that
+    // merely inserted fewer rows than expected.
+    await client.query("ROLLBACK").catch(() => {});
+
+    throw error;
   } finally {
-    await sql.end();
+    await client.end();
   }
 }
 
 /** Remove the e2e database entirely. Best-effort: never fails the run. */
 export async function dropDatabase(): Promise<void> {
-  const admin = postgres(adminConnectionString(), { ssl: false });
-
   try {
-    await admin.unsafe(`drop database if exists ${E2E_DATABASE} with (force)`);
+    await runOn(
+      adminConnectionString(),
+      `drop database if exists ${escapeIdentifier(E2E_DATABASE)} with (force)`,
+    );
   } catch (error) {
     console.warn(
       `[e2e] could not drop ${E2E_DATABASE}: ${
         error instanceof Error ? error.message : error
       }`,
     );
-  } finally {
-    await admin.end();
   }
 }
 

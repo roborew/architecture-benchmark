@@ -43,6 +43,10 @@ export default defineConfig({
           // Loads the isolated database before any test module imports the
           // query layer, which reads POSTGRES_URL at import time.
           setupFiles: ["./tests/integration/database.ts", "./vitest.setup.ts"],
+          // Create, migrate, seed and drop the database once for the whole
+          // project. In setupFiles this would run per file — ten create/drop
+          // cycles per run, and a teardown racing each file's open pool.
+          globalSetup: ["./tests/integration/global-setup.ts"],
           include: ["tests/integration/**/*.integration.test.ts"],
           // The database is per-process state; parallel workers would contend
           // for the same rows.

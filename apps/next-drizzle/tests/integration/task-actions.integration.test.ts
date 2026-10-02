@@ -8,7 +8,7 @@ import {
   type State,
 } from "@/lib/actions";
 import { getTask, getTasks } from "@/lib/data";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 
 // spec/queries.md fixes the task write semantics: create sets created_at and
 // updated_at explicitly and equal, update must set updated_at in the statement

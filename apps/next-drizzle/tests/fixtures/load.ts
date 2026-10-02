@@ -56,9 +56,13 @@ function parseCsv<T>(file: string): T[] {
     "utf8",
   )
     .trimEnd()
-    .split("\n");
+    // Split on CRLF as well as LF. The fixtures are committed with LF endings,
+    // but a checkout on a machine with `core.autocrlf=true` rewrites them to
+    // CRLF, which would otherwise leave a trailing \r on the *last* column's
+    // header — silently making that one field `undefined` for every row.
+    .split(/\r?\n/);
 
-  const columns = header.split(",");
+  const columns = header.split(",").map((column) => column.trim());
 
   return lines.map((line) => {
     const values = line.split(",");

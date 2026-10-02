@@ -5,13 +5,9 @@ import {
   getDashboardStats,
   getRecentTasks,
 } from "@/lib/data";
-import { sql } from "@/lib/db";
-import {
-  loadProjects,
-  loadRawRows,
-  loadTasks,
-  loadUsers,
-} from "../fixtures/load";
+import { sql } from "../e2e/query";
+import { seedDatabase } from "../e2e/database";
+import { loadProjects, loadTasks, loadUsers } from "../fixtures/load";
 
 // The dashboard read three independent aggregates from the in-memory fixture.
 // Judged against the same rows the rest of the app asserts, so a write made
@@ -97,20 +93,9 @@ describe("getDashboardStats", () => {
     } finally {
       // Re-seed from the shared fixture rather than hand-inserting rows, so
       // the rows the other suites in this file rely on are restored exactly.
-      const rows = loadRawRows();
-
-      await sql.begin(async (tx) => {
-        for (const table of [
-          "users",
-          "projects",
-          "tasks",
-          "comments",
-        ] as const) {
-          for (const row of rows[table]) {
-            await tx`INSERT INTO ${tx(table)} ${tx(row)}`;
-          }
-        }
-      });
+      // `seedDatabase` is the same code path the suite was seeded with, so
+      // there is only one definition of how the fixture becomes rows.
+      await seedDatabase();
     }
   });
 });
