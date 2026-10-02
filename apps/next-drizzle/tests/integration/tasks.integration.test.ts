@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { countTasks, getTask, getTasks } from "@/lib/data";
 import { encodeCursor } from "@/lib/cursor";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 import {
   loadComments,
   loadProjects,

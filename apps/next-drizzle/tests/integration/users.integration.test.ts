@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 
 import { getUser, getUserTasks } from "@/lib/data";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 import { loadProjects, loadTasks, loadUsers } from "../fixtures/load";
 
 // Reads behind `/users/[id]`: the member header and their assigned tasks.
