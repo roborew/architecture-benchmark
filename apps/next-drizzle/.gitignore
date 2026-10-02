@@ -15,6 +15,10 @@
 
 # next.js
 /.next/
+# The e2e suite builds here (NEXT_DIST_DIR) so it does not contend with `pnpm
+# dev` over the lock on .next. Both entries are needed: the leading slash keeps
+# the rule anchored, so a nested "next" directory elsewhere is unaffected.
+/.next-e2e/
 /out/
 
 # production

@@ -7,7 +7,7 @@ import {
   type State,
 } from "@/lib/actions";
 import { getProject, getProjects } from "@/lib/data";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 
 // Exercises the write path against the same seeded database the read tests use.
 // `spec/contract.md` requires a mutation to be judged by its persisted result,

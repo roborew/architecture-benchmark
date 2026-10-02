@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 
 import { getProjects, getUsers } from "@/lib/data";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 
 // Asserts the same rows the e2e suite renders, against the same seeded
 // database. Values are read from the shared fixture rather than retyped, so a

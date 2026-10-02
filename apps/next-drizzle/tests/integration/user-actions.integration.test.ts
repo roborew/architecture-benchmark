@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { createUser, deleteUser, updateUser, type State } from "@/lib/actions";
 import { getUser, getUsers } from "@/lib/data";
-import { sql } from "@/lib/db";
+import { sql } from "../e2e/query";
 
 // The people write path, judged by its persisted result rather than by the
 // action's return value alone (spec/contract.md). `users.email` has no UNIQUE

@@ -51,16 +51,24 @@ export type FixtureComment = {
 };
 
 function parseCsv<T>(file: string): T[] {
+  // Normalise CRLF before splitting. A checkout that carries \r would leave it
+  // glued to the last column name (`email\r`), so the header and the rows
+  // disagree about the final column and every row's last value reads back as
+  // undefined — which then cascades into any row built from it.
   const [header, ...lines] = readFileSync(
     path.join(fixtureDirectory, file),
     "utf8",
   )
+    .replace(/\r\n/g, "\n")
     .trimEnd()
     .split("\n");
 
-  const columns = header.split(",");
+  // A file with no trailing newline leaves one empty fragment behind.
+  const rows = lines.filter((line) => line.length > 0);
 
-  return lines.map((line) => {
+  const columns = header.split(",").map((column) => column.trim());
+
+  return rows.map((line) => {
     const values = line.split(",");
     const row: Record<string, string> = {};
 

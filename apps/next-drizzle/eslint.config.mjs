@@ -26,6 +26,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The e2e suite builds into its own directory (NEXT_DIST_DIR) so it does not
+    // contend with `pnpm dev` over the lock on `.next`. That makes it a second
+    // build output, and it needs ignoring here for the same reason `.next` does —
+    // otherwise a post-e2e `pnpm lint` reports hundreds of errors in generated
+    // chunks. Mirrors the entry in .gitignore.
+    ".next-e2e/**",
   ]),
 ]);
 

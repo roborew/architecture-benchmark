@@ -18,6 +18,7 @@ import { pipeline } from "node:stream/promises";
 
 import postgres from "postgres";
 
+import { withoutPrismaSchemaParam } from "../../src/lib/db";
 import { schemaPath } from "../../src/db/spec-dir";
 import { fixtureDirectory } from "../fixtures/load";
 
@@ -52,7 +53,11 @@ export function e2eConnectionString(): string {
   const url = new URL(base);
   url.pathname = `/${E2E_DATABASE}`;
 
-  return url.toString();
+  // The shared .env may carry Prisma's `?schema=public`, which postgres.js
+  // would forward to the server as a startup GUC and Postgres rejects. Every
+  // connection made below — admin, migration, seed, and the web server's — is
+  // derived from this string, so strip it once, here.
+  return withoutPrismaSchemaParam(url.toString());
 }
 
 /** Connection string for the maintenance database, used to CREATE/DROP DATABASE. */
