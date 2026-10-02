@@ -10,7 +10,8 @@
 // let the mock dataset and the seeded database disagree can no longer happen.
 //
 // Unquoted CSV, exactly like spec/seed-spec.md: fixture values never contain
-// commas, quotes or newlines.
+// commas, quotes or newlines. The snapshots are checked out with CRLF endings on
+// some platforms, so line endings are normalised below rather than assumed LF.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -55,6 +56,11 @@ function parseCsv<T>(file: string): T[] {
     path.join(fixtureDirectory, file),
     "utf8",
   )
+    // Strip the CR from every CRLF terminator *before* splitting. Doing it after
+    // the split would leave `\r` glued to the final column of each line, which
+    // silently renames the last column (`email` becomes `email\r`) and loses its
+    // value — the CSV then reads as a missing field rather than a parse error.
+    .replace(/\r\n/g, "\n")
     .trimEnd()
     .split("\n");
 

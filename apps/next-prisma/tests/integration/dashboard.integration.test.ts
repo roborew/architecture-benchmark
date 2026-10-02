@@ -107,7 +107,18 @@ describe("getDashboardStats", () => {
           "comments",
         ] as const) {
           for (const row of rows[table]) {
-            await tx`INSERT INTO ${tx(table)} ${tx(row)}`;
+            // The table name and column names are identifiers, so they are
+            // quoted rather than bound; the values are all bound. Keys are
+            // read off the first row because every row from the fixture CSV
+            // carries the full column set.
+            const columns = Object.keys(row);
+
+            await tx.query(
+              `INSERT INTO ${tx.identifier(table).__raw} ` +
+                `(${tx.identifier(columns).__raw}) ` +
+                `VALUES (${columns.map((_, i) => `$${i + 1}`).join(", ")})`,
+              columns.map((column) => row[column]),
+            );
           }
         }
       });

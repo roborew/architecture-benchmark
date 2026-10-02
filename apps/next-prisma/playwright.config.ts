@@ -12,7 +12,12 @@ const E2E_DATABASE_URL = e2eConnectionString();
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
-  testDir: "./tests",
+  // `./tests/e2e`, not `./tests`: Playwright's default `testMatch` also matches
+  // `*.test.ts`, which would sweep the Vitest suites under `tests/integration`
+  // into this run. They need a Vitest runner and a seeded database lifecycle of
+  // their own, so collecting them here fails on `import { describe } from
+  // "vitest"` rather than testing anything.
+  testDir: "./tests/e2e",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

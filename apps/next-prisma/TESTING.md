@@ -9,6 +9,33 @@ the code rather than at the data.
 | Integration | Vitest (`node`)  | seeded test database     | yes              |
 | End-to-end  | Playwright       | seeded test database     | yes              |
 
+## One Postgres client
+
+The app reads and writes through Prisma (`src/lib/data.ts`,
+`src/lib/actions.ts`). Tests and the schema/seed scripts additionally need
+statements an ORM should not be asked to express — `DROP DATABASE`, applying
+`spec/schema.sql` verbatim, building and tearing down fixture rows — so they
+share one escape hatch, `src/lib/db.ts`.
+
+That module is built on **`pg`**, the same driver Prisma's own adapter uses, and
+exposes the tagged-template style the suites are written against:
+
+```ts
+const [row] = await sql<
+  { id: number }[]
+>`SELECT id::int FROM tasks WHERE id = ${id}`;
+await sql.begin(async (tx) => {
+  await tx`...`;
+});
+await sql.end();
+```
+
+So the project depends on one Postgres driver and one ORM rather than two of
+each. A consequence worth knowing: `${ids}::bigint[]` expands to
+`ARRAY[$1,$2]::bigint[]` rather than being bound whole. The `ARRAY[…]` wrapper
+is required — a bare `(…)` is a _record_ in Postgres, and `($1,$2)::bigint[]`
+fails.
+
 ## Layout
 
 ```

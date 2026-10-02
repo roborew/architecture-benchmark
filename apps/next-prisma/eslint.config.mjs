@@ -26,6 +26,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The e2e suite builds into its own directory (playwright.config.ts sets
+    // NEXT_DIST_DIR) so it never contends with `pnpm dev` over the Next.js lock
+    // on `.next`. `.gitignore` only covers `/.next/`, so without this the linter
+    // walks the generated e2e bundle and reports its output as project errors.
+    ".next-e2e/**",
   ]),
 ]);
 
