@@ -1,6 +1,9 @@
 import "server-only";
 
-import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import {
+  createTRPCOptionsProxy,
+  TRPCQueryOptions,
+} from "@trpc/tanstack-react-query";
 import { headers } from "next/headers";
 import { cache } from "react";
 
@@ -17,6 +20,6 @@ export const trpc = createTRPCOptionsProxy({
   queryClient: getQueryClient,
 });
 
-export function prefetch<T extends ReturnType<typeof trpc.foo.query>>(q: T) {
+export function prefetch<T extends ReturnType<TRPCQueryOptions<any>>>(q: T) {
   void getQueryClient().prefetchQuery(q);
 }
