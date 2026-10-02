@@ -6,14 +6,24 @@ import { SearchInput } from "./search-input";
 // how back/forward and shared links arrive. vi.hoisted is required: the
 // mock factory is lifted above these declarations, so it would otherwise
 // close over them before initialisation.
+//
+// `router` is a stable object rather than being rebuilt per call. SearchInput
+// lists `router` in the navigation effect's dependencies, so a fresh object
+// identity on every render makes that effect re-run after every commit. It
+// calls startTransition, which schedules another render, which builds another
+// router object: an unbounded loop. Under `vi.useFakeTimers()` it spins
+// without ever yielding to a real timer, allocating until the worker is killed
+// by SIGABRT — which is what made this file take minutes instead of
+// milliseconds. One object, one navigation.
 const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
+  router: { replace: vi.fn() },
   params: new URLSearchParams(),
   pathname: "/projects",
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mocks.replace }),
+  useRouter: () => mocks.router,
   usePathname: () => mocks.pathname,
   useSearchParams: () => mocks.params,
 }));
@@ -36,7 +46,7 @@ function type(text: string) {
 describe("SearchInput", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mocks.replace.mockClear();
+    mocks.router.replace.mockClear();
     mocks.params = new URLSearchParams();
     mocks.pathname = "/projects";
   });
@@ -67,7 +77,7 @@ describe("SearchInput", () => {
     type("alpha");
     await settle(299);
 
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
   });
 
   it("writes the query to the URL once the debounce elapses", async () => {
@@ -76,7 +86,7 @@ describe("SearchInput", () => {
     type("alpha");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledWith("/projects?q=alpha", {
+    expect(mocks.router.replace).toHaveBeenCalledWith("/projects?q=alpha", {
       scroll: false,
     });
   });
@@ -92,8 +102,8 @@ describe("SearchInput", () => {
     type("alpha");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledTimes(1);
-    expect(mocks.replace).toHaveBeenCalledWith("/projects?q=alpha", {
+    expect(mocks.router.replace).toHaveBeenCalledTimes(1);
+    expect(mocks.router.replace).toHaveBeenCalledWith("/projects?q=alpha", {
       scroll: false,
     });
   });
@@ -109,7 +119,7 @@ describe("SearchInput", () => {
     // The URL is trimmed but the visible field must not be, otherwise
     // "alpha beta" collapses to "alphabeta" while it is being typed.
     expect(input()).toHaveValue("alpha beta");
-    expect(mocks.replace).toHaveBeenLastCalledWith("/projects?q=alpha+beta", {
+    expect(mocks.router.replace).toHaveBeenLastCalledWith("/projects?q=alpha+beta", {
       scroll: false,
     });
   });
@@ -120,7 +130,7 @@ describe("SearchInput", () => {
     type("a");
     await settle();
 
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
   });
 
   it("navigates to the bare path when the field is cleared", async () => {
@@ -130,7 +140,7 @@ describe("SearchInput", () => {
     type("");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledWith("/projects", { scroll: false });
+    expect(mocks.router.replace).toHaveBeenCalledWith("/projects", { scroll: false });
   });
 
   it("preserves unrelated params already in the URL", async () => {
@@ -140,7 +150,7 @@ describe("SearchInput", () => {
     type("alpha");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledWith(
+    expect(mocks.router.replace).toHaveBeenCalledWith(
       "/projects?status=done&q=alpha",
       { scroll: false },
     );
@@ -175,7 +185,7 @@ describe("SearchInput", () => {
     type("alpha");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledWith("/tasks?q=alpha", {
+    expect(mocks.router.replace).toHaveBeenCalledWith("/tasks?q=alpha", {
       scroll: false,
     });
   });
@@ -186,7 +196,7 @@ describe("SearchInput", () => {
     type("alpha");
     await settle();
 
-    expect(mocks.replace).toHaveBeenCalledWith("/projects?name=alpha", {
+    expect(mocks.router.replace).toHaveBeenCalledWith("/projects?name=alpha", {
       scroll: false,
     });
   });
