@@ -23,7 +23,7 @@ import {
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 
-import postgres from "postgres";
+import type { TransactionSql } from "postgres";
 
 import { sql } from "@/lib/db";
 
@@ -123,7 +123,7 @@ async function verifyDigests(
 
 /** Stream one CSV file into an open `COPY ... FROM STDIN` connection. */
 async function copyFile(
-  tx: postgres.TransactionSql,
+  tx: TransactionSql,
   table: Table,
   filePath: string,
 ): Promise<void> {

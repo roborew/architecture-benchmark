@@ -6,14 +6,29 @@ import { SearchInput } from "./search-input";
 // how back/forward and shared links arrive. vi.hoisted is required: the
 // mock factory is lifted above these declarations, so it would otherwise
 // close over them before initialisation.
-const mocks = vi.hoisted(() => ({
-  replace: vi.fn(),
-  params: new URLSearchParams(),
-  pathname: "/projects",
-}));
+//
+// `router` must be ONE object, not a fresh literal per call. SearchInput keeps
+// `router` in a useEffect dependency array, so a new identity every render makes
+// the effect re-run after each commit; it calls startTransition, which renders
+// again, which builds another router. The `query === urlQuery.trim()` guard
+// cannot break that cycle: router.replace is a no-op here, so the mocked search
+// params never move and urlQuery stays "" forever. Under vi.useFakeTimers() the
+// loop never yields and the worker spins until it is killed.
+const mocks = vi.hoisted(() => {
+  const replace = vi.fn();
+
+  return {
+    replace,
+    // Stable identity, and the same spy the tests assert against, so
+    // mockClear() in beforeEach still covers every navigation.
+    router: { replace },
+    params: new URLSearchParams(),
+    pathname: "/projects",
+  };
+});
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mocks.replace }),
+  useRouter: () => mocks.router,
   usePathname: () => mocks.pathname,
   useSearchParams: () => mocks.params,
 }));
