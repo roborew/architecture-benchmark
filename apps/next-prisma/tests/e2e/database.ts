@@ -55,9 +55,27 @@ export function e2eConnectionString(): string {
   return url.toString();
 }
 
+/**
+ * Strips the Prisma-only `?schema=public` before handing a URL to `postgres.js`.
+ *
+ * The harness derives every connection string from the developer's
+ * `POSTGRES_URL`, which is shared with Prisma and therefore carries that
+ * parameter. `postgres.js` forwards unrecognised query parameters to the
+ * server as startup GUCs, so Postgres refuses the connection with
+ * `unrecognized configuration parameter "schema"` (42704). The schema is
+ * `public` regardless, so dropping the parameter changes nothing but the
+ * refusal.
+ */
+function forPostgresJs(connectionString: string): string {
+  const url = new URL(connectionString);
+  url.searchParams.delete("schema");
+
+  return url.toString();
+}
+
 /** Connection string for the maintenance database, used to CREATE/DROP DATABASE. */
 function adminConnectionString(): string {
-  const url = new URL(e2eConnectionString());
+  const url = new URL(forPostgresJs(e2eConnectionString()));
   url.pathname = "/postgres";
 
   return url.toString();
@@ -83,7 +101,7 @@ export async function resetDatabase(): Promise<void> {
     await admin.end();
   }
 
-  const sql = postgres(e2eConnectionString(), { ssl: false });
+  const sql = postgres(forPostgresJs(e2eConnectionString()), { ssl: false });
 
   try {
     await sql.file(schemaPath);
@@ -94,7 +112,7 @@ export async function resetDatabase(): Promise<void> {
 
 /** Load the shared fixture into the e2e database. */
 export async function seedDatabase(): Promise<void> {
-  const sql = postgres(e2eConnectionString(), { ssl: false });
+  const sql = postgres(forPostgresJs(e2eConnectionString()), { ssl: false });
 
   try {
     // `COPY ... FROM STDIN` streams the fixture CSVs straight in, which is both

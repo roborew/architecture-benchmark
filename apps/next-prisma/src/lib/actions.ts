@@ -4,7 +4,37 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { sql } from "./db";
+import { Prisma } from "@/generated/prisma/client";
+
+import prisma from "./prisma";
+
+/**
+ * Whether a write was refused because a foreign key still points at the row.
+ *
+ * Prisma reports the RESTRICT and NO ACTION failures the old `sql` branch
+ * matched on Postgres codes `23001`/`23503` as a single code, `P2003`, with the
+ * original SQLSTATE kept under `meta.driverAdapterError.cause.originalCode`.
+ * Both mean the same thing to a user — rows still reference this one — so the
+ * caller turns this into a readable message rather than an error it cannot act
+ * on.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2003"
+  );
+}
+
+/**
+ * Coerces an id that arrived from the UI into the `BigInt` the schema declares.
+ *
+ * Every pk is a `BigInt`, but ids cross the server-action boundary as `number`
+ * (the type the routes and tables use). Callers only reach this after the id has
+ * been checked to be an integer, so `BigInt` cannot throw here.
+ */
+function toId(value: number): bigint {
+  return BigInt(value);
+}
 
 const ProjectSchema = z.object({
   name: z
@@ -103,9 +133,12 @@ async function resolveRefs(fields: {
   if (!Number.isInteger(projectId)) {
     errors.projectId = ["Choose a project."];
   } else {
-    const [row] = await sql<{ id: number }[]>`
-      SELECT id::int FROM projects WHERE id = ${projectId}
-    `;
+    // Selecting only the pk is enough: the question is whether the row exists,
+    // not what it holds.
+    const row = await prisma.projects.findUnique({
+      where: { id: toId(projectId) },
+      select: { id: true },
+    });
 
     if (!row) {
       errors.projectId = ["That project no longer exists."];
@@ -116,9 +149,10 @@ async function resolveRefs(fields: {
     if (!Number.isInteger(assigneeId)) {
       errors.assigneeId = ["Choose a valid assignee."];
     } else {
-      const [row] = await sql<{ id: number }[]>`
-        SELECT id::int FROM users WHERE id = ${assigneeId}
-      `;
+      const row = await prisma.users.findUnique({
+        where: { id: toId(assigneeId) },
+        select: { id: true },
+      });
 
       if (!row) {
         errors.assigneeId = ["That assignee no longer exists."];
@@ -164,10 +198,9 @@ export async function createProject(
 
   try {
     // created_at is NOT NULL with no default, so the server sets it.
-    await sql`
-      INSERT INTO projects (name, description, created_at)
-      VALUES (${name}, ${description}, now())
-    `;
+    await prisma.projects.create({
+      data: { name, description, created_at: new Date() },
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create project." };
@@ -198,16 +231,16 @@ export async function updateProject(
   const { name, description } = validatedFields.data;
 
   try {
-    // RETURNING distinguishes "no such row" from "row updated", so a stale
-    // form cannot report success for a project that is already gone.
-    const updated = await sql<{ id: number }[]>`
-      UPDATE projects
-      SET name = ${name}, description = ${description}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    // `updateMany` rather than `update` because it reports a count instead of
+    // throwing when nothing matched, which distinguishes "no such row" from
+    // "row updated" so a stale form cannot report success for a project that is
+    // already gone.
+    const { count } = await prisma.projects.updateMany({
+      where: { id: toId(id) },
+      data: { name, description },
+    });
 
-    if (updated.length === 0) {
+    if (count === 0) {
       return { message: "That project no longer exists." };
     }
   } catch (error) {
@@ -226,26 +259,23 @@ export async function deleteProject(
   _formData: FormData,
 ): Promise<State> {
   try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM projects WHERE id = ${id} RETURNING id
-    `;
+    // Same reasoning as the update above: a count, not a throw, so "already
+    // gone" is reported rather than mistaken for a database failure.
+    const { count } = await prisma.projects.deleteMany({
+      where: { id: toId(id) },
+    });
 
-    if (deleted.length === 0) {
+    if (count === 0) {
       return { message: "That project no longer exists." };
     }
   } catch (error) {
     // tasks.project_id is ON DELETE RESTRICT, so a project that still has
-    // tasks cannot be removed. 23001 is restrict_violation; 23503 is what
-    // NO ACTION raises, and both mean the same thing here. This is a rule the
-    // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
-
-    if (code === "23001" || code === "23503") {
-      const [row] = await sql<{ count: number }[]>`
-        SELECT COUNT(*)::int AS count FROM tasks WHERE project_id = ${id}
-      `;
-
-      const count = row?.count ?? 0;
+    // tasks cannot be removed. This is a rule the user can act on, so it is
+    // reported rather than thrown.
+    if (isForeignKeyViolation(error)) {
+      const count = await prisma.tasks.count({
+        where: { project_id: toId(id) },
+      });
 
       return {
         message:
@@ -283,10 +313,9 @@ export async function createUser(
   const { name, email } = validatedFields.data;
 
   try {
-    await sql`
-      INSERT INTO users (display_name, email)
-      VALUES (${name}, ${email})
-    `;
+    await prisma.users.create({
+      data: { display_name: name, email },
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create user." };
@@ -317,16 +346,14 @@ export async function updateUser(
   const { name, email } = validatedFields.data;
 
   try {
-    // RETURNING distinguishes "no such row" from "row updated", so a stale form
-    // cannot report success for a member who is already gone.
-    const updated = await sql<{ id: number }[]>`
-      UPDATE users
-      SET display_name = ${name}, email = ${email}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    // A count rather than a throw, so a stale form cannot report success for a
+    // member who is already gone.
+    const { count } = await prisma.users.updateMany({
+      where: { id: toId(id) },
+      data: { display_name: name, email },
+    });
 
-    if (updated.length === 0) {
+    if (count === 0) {
       return { message: "That user no longer exists." };
     }
   } catch (error) {
@@ -347,11 +374,11 @@ export async function deleteUser(
   _formData: FormData,
 ): Promise<State> {
   try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM users WHERE id = ${id} RETURNING id
-    `;
+    const { count } = await prisma.users.deleteMany({
+      where: { id: toId(id) },
+    });
 
-    if (deleted.length === 0) {
+    if (count === 0) {
       return { message: "That user no longer exists." };
     }
   } catch (error) {
@@ -363,23 +390,13 @@ export async function deleteUser(
     //   tasks.assignee_id   ON DELETE SET NULL — the delete succeeds and the
     //                                          tasks become unassigned.
     //
-    // So a failure here is always the comments restriction: 23001 is
-    // restrict_violation and 23503 is what NO ACTION raises. This is a rule the
+    // So a failure here is always the comments restriction. This is a rule the
     // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
-
-    if (code === "23001" || code === "23503") {
-      const [commentRows, taskRows] = await Promise.all([
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
-        `,
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
-        `,
+    if (isForeignKeyViolation(error)) {
+      const [commentCount, taskCount] = await Promise.all([
+        prisma.comments.count({ where: { author_id: toId(id) } }),
+        prisma.tasks.count({ where: { assignee_id: toId(id) } }),
       ]);
-
-      const commentCount = commentRows[0]?.count ?? 0;
-      const taskCount = taskRows[0]?.count ?? 0;
 
       return {
         message:
@@ -435,14 +452,21 @@ export async function createTask(
   const { title, description, status } = validatedFields.data;
 
   try {
-    await sql`
-      INSERT INTO tasks (
-        project_id, assignee_id, title, description, status, created_at, updated_at
-      )
-      VALUES (
-        ${projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
-      )
-    `;
+    // One `now` for both columns so they are equal by construction, which is
+    // what the contract means by "both equal at insert".
+    const now = new Date();
+
+    await prisma.tasks.create({
+      data: {
+        project_id: toId(projectId),
+        assignee_id: assigneeId === null ? null : toId(assigneeId),
+        title,
+        description,
+        status,
+        created_at: now,
+        updated_at: now,
+      },
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to create task." };
@@ -458,7 +482,7 @@ export async function createTask(
  * spec/queries.md — "Update task" by primary key, with `updated_at` set in the
  * statement rather than by a DB default or an ORM side effect. An update counts
  * as successful only if the intended row now holds the intended value, which
- * RETURNING confirms.
+ * the matched-row count confirms.
  */
 export async function updateTask(
   id: number,
@@ -492,9 +516,10 @@ export async function updateTask(
       : Number(assigneeRaw);
 
   if (assigneeId !== null) {
-    const [assignee] = await sql<{ id: number }[]>`
-      SELECT id::int FROM users WHERE id = ${assigneeId}
-    `;
+    const assignee = await prisma.users.findUnique({
+      where: { id: toId(assigneeId) },
+      select: { id: true },
+    });
 
     if (!assignee) {
       return {
@@ -506,28 +531,30 @@ export async function updateTask(
 
   // Read the project first so the redirect can revalidate the board the task
   // is leaving, or joining.
-  const [existing] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${id}
-  `;
+  const existing = await prisma.tasks.findUnique({
+    where: { id: toId(id) },
+    select: { project_id: true },
+  });
 
   if (!existing) {
     return { message: "That task no longer exists." };
   }
 
   try {
-    const updated = await sql<{ id: number }[]>`
-      UPDATE tasks
-      SET
-        title = ${title},
-        description = ${description},
-        status = ${status},
-        assignee_id = ${assigneeId},
-        updated_at = now()
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    // updated_at is set here rather than by a DB default or an ORM side effect,
+    // and the count confirms the intended row really was the one updated.
+    const { count } = await prisma.tasks.updateMany({
+      where: { id: toId(id) },
+      data: {
+        title,
+        description,
+        status,
+        assignee_id: assigneeId === null ? null : toId(assigneeId),
+        updated_at: new Date(),
+      },
+    });
 
-    if (updated.length === 0) {
+    if (count === 0) {
       return { message: "That task no longer exists." };
     }
   } catch (error) {
@@ -538,7 +565,9 @@ export async function updateTask(
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath(`/tasks/${id}`);
-  revalidatePath(`/projects/${existing.project_id}`);
+  // `project_id` is a BigInt in the schema, so it is rendered from the row
+  // rather than interpolated as one.
+  revalidatePath(`/projects/${Number(existing.project_id)}`);
 
   redirect(`/tasks/${id}`);
 }
@@ -554,20 +583,23 @@ export async function deleteTask(
 ): Promise<State> {
   // Read the project first, both to revalidate its board and because the
   // contract redirects there after a delete.
-  const [existing] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${id}
-  `;
+  const existing = await prisma.tasks.findUnique({
+    where: { id: toId(id) },
+    select: { project_id: true },
+  });
 
   if (!existing) {
     return { message: "That task no longer exists." };
   }
 
-  try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM tasks WHERE id = ${id} RETURNING id
-    `;
+  const projectId = Number(existing.project_id);
 
-    if (deleted.length === 0) {
+  try {
+    const { count } = await prisma.tasks.deleteMany({
+      where: { id: toId(id) },
+    });
+
+    if (count === 0) {
       return { message: "That task no longer exists." };
     }
   } catch (error) {
@@ -577,11 +609,11 @@ export async function deleteTask(
 
   revalidatePath("/");
   revalidatePath("/tasks");
-  revalidatePath(`/projects/${existing.project_id}`);
+  revalidatePath(`/projects/${projectId}`);
 
   // Straight to the board: the detail page for this id is now not-found, so
   // redirecting there would land the user on a dead URL.
-  redirect(`/projects/${existing.project_id}`);
+  redirect(`/projects/${projectId}`);
 }
 
 /**
@@ -641,9 +673,10 @@ export async function createTaskWithComment(
   // The author is a FK like the assignee, so an id that matches no row fails the
   // insert. Checking first turns that into a field error rather than a thrown
   // Postgres error the user cannot act on.
-  const [author] = await sql<{ id: number }[]>`
-    SELECT id::int FROM users WHERE id = ${commentAuthorId}
-  `;
+  const author = await prisma.users.findUnique({
+    where: { id: toId(commentAuthorId) },
+    select: { id: true },
+  });
 
   if (!author) {
     return {
@@ -653,23 +686,34 @@ export async function createTaskWithComment(
   }
 
   try {
-    await sql.begin(async (tx) => {
-      const [row] = await tx<{ id: number }[]>`
-        INSERT INTO tasks (
-          project_id, assignee_id, title, description, status, created_at, updated_at
-        )
-        VALUES (
-          ${projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
-        )
-        RETURNING id::int AS id
-      `;
+    // One `now` for both timestamps, so the task's created_at and updated_at are
+    // equal by construction, as a plain create makes them.
+    const now = new Date();
 
-      // Inside the same transaction, so a failure here throws and the task
-      // insert above is rolled back with it.
-      await tx`
-        INSERT INTO comments (task_id, author_id, body, created_at)
-        VALUES (${row.id}, ${commentAuthorId}, ${commentBody}, now())
-      `;
+    // An interactive transaction, so the comment insert can reference the task
+    // the insert above just produced. Any throw rolls both back together.
+    await prisma.$transaction(async (tx) => {
+      const row = await tx.tasks.create({
+        data: {
+          project_id: toId(projectId),
+          assignee_id: assigneeId === null ? null : toId(assigneeId),
+          title,
+          description,
+          status,
+          created_at: now,
+          updated_at: now,
+        },
+        select: { id: true },
+      });
+
+      await tx.comments.create({
+        data: {
+          task_id: row.id,
+          author_id: toId(commentAuthorId),
+          body: commentBody,
+          created_at: now,
+        },
+      });
     });
   } catch (error) {
     console.error("Database Error:", error);
@@ -711,12 +755,17 @@ export async function createComment(
 
   // The task and the author are both foreign keys. Checking first turns an
   // unknown id into a field error the user can act on, rather than a thrown
-  // Postgres error.
-  const [[task], [author]] = await Promise.all([
-    sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
-    sql<
-      { id: number }[]
-    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+  // Postgres error. The task is selected with its project so the board can be
+  // revalidated below without a second round trip.
+  const [task, author] = await Promise.all([
+    prisma.tasks.findUnique({
+      where: { id: toId(taskId) },
+      select: { id: true, project_id: true },
+    }),
+    prisma.users.findUnique({
+      where: { id: toId(commentAuthorId) },
+      select: { id: true },
+    }),
   ]);
 
   if (!task) {
@@ -731,10 +780,14 @@ export async function createComment(
   }
 
   try {
-    await sql`
-      INSERT INTO comments (task_id, author_id, body, created_at)
-      VALUES (${taskId}, ${commentAuthorId}, ${commentBody}, now())
-    `;
+    await prisma.comments.create({
+      data: {
+        task_id: toId(taskId),
+        author_id: toId(commentAuthorId),
+        body: commentBody,
+        created_at: new Date(),
+      },
+    });
   } catch (error) {
     console.error("Database Error:", error);
     return { message: "Database Error: Failed to add the comment." };
@@ -744,14 +797,7 @@ export async function createComment(
   // are now stale.
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/tasks");
-
-  const [row] = await sql<{ project_id: number }[]>`
-    SELECT project_id::int FROM tasks WHERE id = ${taskId}
-  `;
-
-  if (row) {
-    revalidatePath(`/projects/${row.project_id}`);
-  }
+  revalidatePath(`/projects/${Number(task.project_id)}`);
 
   // No redirect: the user stays on the task detail page and sees the comment
   // they just wrote in the list above the form.
