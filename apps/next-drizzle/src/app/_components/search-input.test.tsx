@@ -6,14 +6,35 @@ import { SearchInput } from "./search-input";
 // how back/forward and shared links arrive. vi.hoisted is required: the
 // mock factory is lifted above these declarations, so it would otherwise
 // close over them before initialisation.
-const mocks = vi.hoisted(() => ({
-  replace: vi.fn(),
-  params: new URLSearchParams(),
-  pathname: "/projects",
-}));
+//
+// `router` is a single object created once, and `replace` is the same `vi.fn`
+// the assertions use. That is load-bearing: `SearchInput` lists `router` in a
+// useEffect dependency array, so a mock returning `{ replace: mocks.replace }`
+// inline hands back a *new* identity on every render. The effect then re-runs
+// after every commit, calls startTransition — which guarantees another render —
+// and builds another router object, forever. The effect's
+// `query === urlQuery` guard cannot break the cycle, because the mocked
+// `replace` is a no-op that never updates the mocked search params, so
+// `urlQuery` stays "" and the guard never fires.
+//
+// Under fake timers the loop never yields to the event loop, so the worker
+// pinned V8 in garbage collection until it was SIGABRT'd — which is why the
+// whole file reported nothing rather than timing out, and why the
+// "collapses a burst of typing into a single navigation" assertion could never
+// have passed.
+const mocks = vi.hoisted(() => {
+  const replace = vi.fn();
+
+  return {
+    replace,
+    router: { replace },
+    params: new URLSearchParams(),
+    pathname: "/projects",
+  };
+});
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mocks.replace }),
+  useRouter: () => mocks.router,
   usePathname: () => mocks.pathname,
   useSearchParams: () => mocks.params,
 }));
