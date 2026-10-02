@@ -19,7 +19,7 @@ import { Client, escapeIdentifier } from "pg";
 
 import { schemaPath } from "../../src/db/spec-dir";
 import { e2eDatabaseUrl } from "../../src/lib/connection-string";
-import { fixtureDirectory, loadRawRows } from "../fixtures/load";
+import { loadRawRows } from "../fixtures/load";
 
 export const E2E_DATABASE = "architecture_next_drizzle_e2e";
 export const E2E_PORT = 3100;
