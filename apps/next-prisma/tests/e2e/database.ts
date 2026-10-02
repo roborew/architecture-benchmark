@@ -11,12 +11,15 @@
 // The dataset is `tests/fixtures/correctness/*.csv`, shared with the unit
 // fixtures via tests/fixtures/load.ts. Nothing here is imported by the app
 // itself: this file is test infrastructure only.
+//
+// Connections go through `createClient` from `src/lib/db`, which is built on
+// `pg` — the same driver Prisma uses — so the project has one Postgres client
+// rather than two.
 
-import { existsSync, createReadStream } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 
-import postgres from "postgres";
+import { createClient } from "../../src/lib/db";
 
 import { schemaPath } from "../../src/db/spec-dir";
 import { fixtureDirectory } from "../fixtures/load";
@@ -55,27 +58,9 @@ export function e2eConnectionString(): string {
   return url.toString();
 }
 
-/**
- * Strips the Prisma-only `?schema=public` before handing a URL to `postgres.js`.
- *
- * The harness derives every connection string from the developer's
- * `POSTGRES_URL`, which is shared with Prisma and therefore carries that
- * parameter. `postgres.js` forwards unrecognised query parameters to the
- * server as startup GUCs, so Postgres refuses the connection with
- * `unrecognized configuration parameter "schema"` (42704). The schema is
- * `public` regardless, so dropping the parameter changes nothing but the
- * refusal.
- */
-function forPostgresJs(connectionString: string): string {
-  const url = new URL(connectionString);
-  url.searchParams.delete("schema");
-
-  return url.toString();
-}
-
 /** Connection string for the maintenance database, used to CREATE/DROP DATABASE. */
 function adminConnectionString(): string {
-  const url = new URL(forPostgresJs(e2eConnectionString()));
+  const url = new URL(e2eConnectionString());
   url.pathname = "/postgres";
 
   return url.toString();
@@ -88,20 +73,26 @@ function adminConnectionString(): string {
  * the app is under active migration and a stale column would be a confusing
  * failure. `FORCE` also terminates stragglers if a previous dev server is
  * still connected.
+ *
+ * `CREATE DATABASE` cannot run inside a transaction or a pool that is bound to
+ * the target database, hence the separate one-shot admin client.
  */
 export async function resetDatabase(): Promise<void> {
-  const admin = postgres(adminConnectionString(), { ssl: false });
+  const admin = createClient(adminConnectionString());
 
   try {
-    await admin.unsafe(`
-      drop database if exists ${E2E_DATABASE} with (force)
-    `);
-    await admin.unsafe(`create database ${E2E_DATABASE}`);
+    // The database name is an identifier, not a bind parameter — Postgres does
+    // not accept one in DROP/CREATE DATABASE. It comes from a module constant,
+    // never from user input.
+    await admin.unsafe(
+      `drop database if exists "${E2E_DATABASE}" with (force)`,
+    );
+    await admin.unsafe(`create database "${E2E_DATABASE}"`);
   } finally {
     await admin.end();
   }
 
-  const sql = postgres(forPostgresJs(e2eConnectionString()), { ssl: false });
+  const sql = createClient(e2eConnectionString());
 
   try {
     await sql.file(schemaPath);
@@ -110,37 +101,81 @@ export async function resetDatabase(): Promise<void> {
   }
 }
 
+/**
+ * Splits one CSV file into its column names and row objects.
+ *
+ * Deliberately the same shape the vitest fixture loader produces, so the two
+ * seeders cannot disagree about what a row is. Values are passed to Postgres as
+ * bind parameters, so no escaping is needed and a value containing a comma
+ * would still be handled correctly.
+ */
+function parseCsv(file: string): { columns: string[]; rows: string[][] } {
+  const [header, ...lines] = readFileSync(
+    path.join(fixtureDirectory, file),
+    "utf8",
+  )
+    // Normalise CRLF before splitting, or the last column would be named
+    // `email\r` and every insert would fail on an unknown column.
+    .replace(/\r\n/g, "\n")
+    .trimEnd()
+    .split("\n");
+
+  return {
+    columns: header.split(","),
+    rows: lines.map((line) => line.split(",")),
+  };
+}
+
 /** Load the shared fixture into the e2e database. */
 export async function seedDatabase(): Promise<void> {
-  const sql = postgres(forPostgresJs(e2eConnectionString()), { ssl: false });
+  const sql = createClient(e2eConnectionString());
 
   try {
-    // `COPY ... FROM STDIN` streams the fixture CSVs straight in, which is both
-    // the fastest path and the one `src/db/seed.ts` already uses for the dev
-    // database — so the two seeders cannot diverge in behaviour. The fixture
-    // header rows already match the schema column names exactly, which is the
-    // same contract spec/seed-spec.md relies on.
+    // Insertion order respects the foreign keys: users and projects before
+    // tasks, tasks before comments.
     //
     // The profile is the shared `spec/snapshots/correctness/` fixture, not a
     // copy kept inside this app.
-    //
-    // Insertion order respects the foreign keys.
     const tables = ["users", "projects", "tasks", "comments"] as const;
 
     await sql.begin(async (tx) => {
       for (const table of tables) {
-        const writable =
-          await tx`copy ${tx(table)} from stdin with (format csv, header true)`.writable();
-        await pipeline(
-          createReadStream(path.join(fixtureDirectory, `${table}.csv`)),
-          writable,
+        const { columns, rows } = parseCsv(`${table}.csv`);
+
+        if (rows.length === 0) continue;
+
+        // One multi-row INSERT rather than `COPY ... FROM STDIN`: the fixture is
+        // three projects and six tasks, so the streaming protocol would buy
+        // nothing and would need a second driver to speak it.
+        //
+        // Identifiers are quoted rather than bound because Postgres has no bind
+        // slot for a column name; the values themselves are all bound, so the
+        // fixture's contents are never concatenated into the statement.
+        const columnList = tx.identifier(columns).__raw;
+        // Placeholders are numbered across the whole statement, not per row:
+        // `VALUES ($1,$2,$3),($4,$5,$6)` needs six distinct slots, so the
+        // counter must keep running as tuples are emitted.
+        const tuples = rows
+          .map((_, rowIndex) => {
+            const slots = columns.map(
+              (_, columnIndex) =>
+                `$${rowIndex * columns.length + columnIndex + 1}`,
+            );
+            return `(${slots.join(", ")})`;
+          })
+          .join(", ");
+        const values = rows.flat();
+
+        await tx.query(
+          `INSERT INTO "${table}" (${columnList}) VALUES ${tuples}`,
+          values,
         );
       }
 
       // The fixture carries explicit ids, which bypass the identity sequences.
       // Advance them past the loaded rows or the next live insert collides.
       for (const table of tables) {
-        await tx`select setval(pg_get_serial_sequence(${table}, 'id'), coalesce((select max(id) from ${tx(table)}), 1))`;
+        await tx`select setval(pg_get_serial_sequence(${table}, 'id'), coalesce((select max(id) from ${tx.identifier(table)}), 1))`;
       }
     });
   } finally {
@@ -150,10 +185,12 @@ export async function seedDatabase(): Promise<void> {
 
 /** Remove the e2e database entirely. Best-effort: never fails the run. */
 export async function dropDatabase(): Promise<void> {
-  const admin = postgres(adminConnectionString(), { ssl: false });
+  const admin = createClient(adminConnectionString());
 
   try {
-    await admin.unsafe(`drop database if exists ${E2E_DATABASE} with (force)`);
+    await admin.unsafe(
+      `drop database if exists "${E2E_DATABASE}" with (force)`,
+    );
   } catch (error) {
     console.warn(
       `[e2e] could not drop ${E2E_DATABASE}: ${

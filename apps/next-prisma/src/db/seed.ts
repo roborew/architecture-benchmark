@@ -14,15 +14,8 @@
 // digests the benchmark rig verifies.
 
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
-
 
 import { sql } from "@/lib/db";
 
@@ -99,13 +92,7 @@ async function verifyDigests(
 ): Promise<void> {
   for (const file of files) {
     const hash = createHash("sha256");
-
-    for await (const chunk of createReadStream(
-      path.join(profileDirectory, file.name),
-    )) {
-      hash.update(chunk as Buffer);
-    }
-
+    hash.update(readFileSync(path.join(profileDirectory, file.name)));
     const actual = hash.digest("hex");
     if (actual !== file.sha256) {
       throw new Error(
@@ -120,17 +107,19 @@ async function verifyDigests(
   console.log(`Verified ${files.length} fixture digests`);
 }
 
-/** Stream one CSV file into an open `COPY ... FROM STDIN` connection. */
-async function copyFile(
-  tx: postgres.TransactionSql,
-  table: Table,
-  filePath: string,
-): Promise<void> {
-  // `header true` makes Postgres skip the CSV header row. The table name is
-  // passed as an identifier, so it is escaped rather than interpolated.
-  const writable =
-    await tx`copy ${tx(table)} from stdin with (format csv, header true)`.writable();
-  await pipeline(createReadStream(filePath), writable);
+/**
+ * Splits one fixture CSV into its column names and row value arrays.
+ *
+ * CRLF is normalised first so the last column is not named `email\r`. Values
+ * are handed to Postgres as bind parameters, so no value needs escaping.
+ */
+function parseCsv(filePath: string): { columns: string[]; rows: string[][] } {
+  const [header, ...lines] = readFileSync(filePath, "utf8")
+    .replace(/\r\n/g, "\n")
+    .trimEnd()
+    .split("\n");
+
+  return { columns: header.split(","), rows: lines.map((l) => l.split(",")) };
 }
 
 async function main(): Promise<void> {
@@ -145,7 +134,7 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       // Truncating the leaves with CASCADE clears the whole graph in one
       // statement, in FK-safe order.
-      await tx`truncate table ${tx(["comments", "tasks", "projects", "users"])} restart identity cascade`;
+      await tx`truncate table ${tx.identifier(["comments", "tasks", "projects", "users"])} restart identity cascade`;
 
       for (const table of TABLES) {
         const file = manifest.files.find(
@@ -156,7 +145,34 @@ async function main(): Promise<void> {
           throw new Error(`Profile "${profile}" is missing ${table}.csv`);
         }
 
-        await copyFile(tx, table, path.join(profileDirectory, file.name));
+        // One multi-row INSERT rather than `COPY ... FROM STDIN`. The benchmark
+        // profiles are sized for volume, but correctness of the loaded rows is
+        // what this script exists to guarantee, and a bound-parameter insert is
+        // both transaction-safe and driver-agnostic. Column names are quoted
+        // because Postgres has no bind slot for an identifier; values are bound.
+        const { columns, rows } = parseCsv(
+          path.join(profileDirectory, file.name),
+        );
+
+        if (rows.length === 0) continue;
+
+        // Placeholders are numbered across the whole statement, not per row:
+        // `VALUES ($1,$2,$3),($4,$5,$6)` needs six distinct slots.
+        const tuples = rows
+          .map((_, rowIndex) => {
+            const slots = columns.map(
+              (_, columnIndex) =>
+                `$${rowIndex * columns.length + columnIndex + 1}`,
+            );
+            return `(${slots.join(", ")})`;
+          })
+          .join(", ");
+
+        await tx.query(
+          `INSERT INTO ${tx.identifier(table).__raw} (${tx.identifier(columns).__raw}) ` +
+            `VALUES ${tuples}`,
+          rows.flat(),
+        );
       }
 
       // Fixture rows carry explicit ids, which bypass the identity sequences.
@@ -164,12 +180,15 @@ async function main(): Promise<void> {
       for (const table of TABLES) {
         await tx`select setval(
           pg_get_serial_sequence(${table}, 'id'),
-          coalesce((select max(id) from ${tx(table)}), 1)
+          coalesce((select max(id) from ${tx.identifier(table)}), 1)
         )`;
       }
 
       for (const table of TABLES) {
-        const [row] = await tx`select count(*)::int as count from ${tx(table)}`;
+        const { rows: counted } = await tx.query(
+          `select count(*)::int as count from ${tx.identifier(table).__raw}`,
+        );
+        const row = counted[0] as { count: number };
         const expected = manifest.rowCounts[table];
 
         if (row.count !== expected) {
