@@ -1,5 +1,7 @@
 "use client";
 
+// ^-- so the Provider can be mounted from the server component root layout
+
 import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
@@ -14,10 +16,10 @@ export const { TRPCProvider, useTRPC } = createTRPCContext<AppRouter>();
 let browserQueryClient: QueryClient;
 
 function getQueryClient() {
-  // Server: fresh client per request.
+  // Server: always a new query client.
   if (typeof window === "undefined") return makeQueryClient();
-  // Browser: singleton, NOT useState. If React suspends during initial render a
-  // useState-held client is thrown away and the query is re-fetched.
+  // Browser: reuse the one client. This is important, so we do not re-make a new
+  // client if React suspends during the initial render.
   browserQueryClient ??= makeQueryClient();
   return browserQueryClient;
 }
@@ -33,10 +35,14 @@ function getUrl() {
 }
 
 export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
+  // NOTE: avoid useState for the query client — without a Suspense boundary
+  // above it, React discards a state-held client on the initial render.
   const queryClient = getQueryClient();
 
   const [trpcClient] = useState(() =>
     createTRPCClient<AppRouter>({
+      // No transformer: src/lib/types.ts already stringifies timestamps, so
+      // plain JSON round-trips every value. See trpc/init.ts.
       links: [httpBatchLink({ url: getUrl() })],
     }),
   );

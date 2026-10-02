@@ -341,64 +341,6 @@ export async function updateUser(
   redirect(`/users/${id}`);
 }
 
-export async function deleteUser(
-  id: number,
-  _prevState: State,
-  _formData: FormData,
-): Promise<State> {
-  try {
-    const deleted = await sql<{ id: number }[]>`
-      DELETE FROM users WHERE id = ${id} RETURNING id
-    `;
-
-    if (deleted.length === 0) {
-      return { message: "That user no longer exists." };
-    }
-  } catch (error) {
-    // Two different FKs behave differently here, and the difference is the
-    // whole point of the message:
-    //
-    //   comments.author_id  ON DELETE RESTRICT — the delete is refused and
-    //                                          nothing changes.
-    //   tasks.assignee_id   ON DELETE SET NULL — the delete succeeds and the
-    //                                          tasks become unassigned.
-    //
-    // So a failure here is always the comments restriction: 23001 is
-    // restrict_violation and 23503 is what NO ACTION raises. This is a rule the
-    // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
-
-    if (code === "23001" || code === "23503") {
-      const [commentRows, taskRows] = await Promise.all([
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
-        `,
-        sql<{ count: number }[]>`
-          SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
-        `,
-      ]);
-
-      const commentCount = commentRows[0]?.count ?? 0;
-      const taskCount = taskRows[0]?.count ?? 0;
-
-      return {
-        message:
-          `This person still has ${commentCount} ` +
-          `${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
-          `${taskCount === 1 ? "task" : "tasks"}. Remove ` +
-          `${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
-      };
-    }
-
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to delete user." };
-  }
-
-  revalidatePath("/");
-  revalidatePath("/users");
-  redirect("/users");
-}
-
 /**
  * spec/queries.md — "Create task": insert one row, with the server setting
  * `created_at` and `updated_at` explicitly and equal. Both columns are NOT NULL
