@@ -1,12 +1,17 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { screen, within } from "@testing-library/react";
+
 import { UserDetail } from "./user-detail";
+import { renderWithTrpc } from "@tests/helpers/trpc-harness";
 import { makeUser, makeTaskWithProject } from "@tests/fixtures/builders";
 
-// The delete control is a Client Component with its own form, so it is stubbed
-// here and asserted on in delete-user-button.test.tsx.
-vi.mock("@/lib/actions", () => ({
-  deleteUser: vi.fn(async () => ({})),
+// DeleteUserButton is a Client Component with its own form. It used to be
+// stubbed by mocking `@/lib/actions`; it now holds a tRPC mutation, so it is
+// rendered inside the harness instead. Its behaviour is asserted on in
+// delete-user-button.test.tsx.
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 describe("UserDetail", () => {
@@ -16,7 +21,7 @@ describe("UserDetail", () => {
       email: "detail@example.test",
     });
 
-    render(<UserDetail person={person} tasks={[]} />);
+    renderWithTrpc(<UserDetail person={person} tasks={[]} />);
 
     expect(
       screen.getByRole("heading", { name: person.name }),
@@ -28,7 +33,7 @@ describe("UserDetail", () => {
     // Distinct values so each figure is individually assertable.
     const person = makeUser({ assignedTaskCount: 7, commentCount: 4 });
 
-    render(<UserDetail person={person} tasks={[]} />);
+    renderWithTrpc(<UserDetail person={person} tasks={[]} />);
 
     // "Assigned tasks" appears twice by design, as the stat card label
     // and as the table heading, so the counts are asserted instead.
@@ -47,7 +52,7 @@ describe("UserDetail", () => {
       status: "in progress",
     });
 
-    render(<UserDetail person={makeUser()} tasks={[task]} />);
+    renderWithTrpc(<UserDetail person={makeUser()} tasks={[task]} />);
 
     // The reference shows Project here but omits Comments.
     expect(
@@ -66,7 +71,7 @@ describe("UserDetail", () => {
   it("links each assigned task to its detail page", () => {
     const task = makeTaskWithProject({ id: 88, title: "Linked task" });
 
-    render(<UserDetail person={makeUser()} tasks={[task]} />);
+    renderWithTrpc(<UserDetail person={makeUser()} tasks={[task]} />);
 
     const row = screen.getByRole("row", { name: new RegExp(task.title) });
 
@@ -77,7 +82,7 @@ describe("UserDetail", () => {
   });
 
   it("shows an empty state when the person has no assigned tasks", () => {
-    render(<UserDetail person={makeUser()} tasks={[]} />);
+    renderWithTrpc(<UserDetail person={makeUser()} tasks={[]} />);
 
     expect(
       screen.getByText("No tasks are assigned to this person."),
@@ -87,7 +92,7 @@ describe("UserDetail", () => {
   it("offers an edit link to this member's own edit page", () => {
     // Not /users/new: that would create a second member instead of editing
     // the one on screen.
-    render(<UserDetail person={makeUser({ id: 12 })} tasks={[]} />);
+    renderWithTrpc(<UserDetail person={makeUser({ id: 12 })} tasks={[]} />);
 
     expect(screen.getByRole("link", { name: "Edit user" })).toHaveAttribute(
       "href",
@@ -96,7 +101,7 @@ describe("UserDetail", () => {
   });
 
   it("offers a delete control naming the member", () => {
-    render(
+    renderWithTrpc(
       <UserDetail
         person={makeUser({ id: 12, name: "Ada Lovelace" })}
         tasks={[]}

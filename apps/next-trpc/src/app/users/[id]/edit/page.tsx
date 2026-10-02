@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { UserForm } from "@/app/users/new/_components/user-form";
-import { getUser } from "@/lib/data";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function EditUserPage({
   params,
@@ -10,7 +10,11 @@ export default async function EditUserPage({
 
   // `Number` yields NaN for anything non-numeric, and a NaN lookup finds no
   // row, so both paths land on the not-found page.
-  const person = Number.isInteger(personId) ? await getUser(personId) : null;
+  const person = Number.isInteger(personId)
+    ? await getQueryClient().fetchQuery(
+        trpc.users.byId.queryOptions({ id: personId }),
+      )
+    : null;
 
   if (!person) {
     notFound();

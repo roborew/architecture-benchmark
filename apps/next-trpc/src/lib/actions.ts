@@ -17,25 +17,6 @@ const ProjectSchema = z.object({
 });
 
 /**
- * `users.email` has no UNIQUE constraint (spec/schema.sql) and
- * spec/contract.md requires none, so no uniqueness rule is imposed here — two
- * members may legitimately share an address. The address is still shape-checked
- * because the form declares `type="email"` and the server should agree.
- */
-const UserSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "User name is required.")
-    .max(200, "User name must be 200 characters or fewer."),
-  email: z
-    .string()
-    .trim()
-    .min(1, "Email is required.")
-    .email("Enter a valid email address."),
-});
-
-/**
  * The task fields a create or update form submits.
  *
  * `assigneeId` is optional on purpose: the schema's `assignee_id` is nullable
@@ -262,83 +243,6 @@ export async function deleteProject(
   revalidatePath("/");
   revalidatePath("/projects");
   redirect("/projects");
-}
-
-export async function createUser(
-  prevState: State,
-  formData: FormData,
-): Promise<State> {
-  const validatedFields = UserSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-  });
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create user.",
-    };
-  }
-
-  const { name, email } = validatedFields.data;
-
-  try {
-    await sql`
-      INSERT INTO users (display_name, email)
-      VALUES (${name}, ${email})
-    `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to create user." };
-  }
-
-  revalidatePath("/");
-  revalidatePath("/users");
-  redirect("/users");
-}
-
-export async function updateUser(
-  id: number,
-  prevState: State,
-  formData: FormData,
-): Promise<State> {
-  const validatedFields = UserSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-  });
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to update user.",
-    };
-  }
-
-  const { name, email } = validatedFields.data;
-
-  try {
-    // RETURNING distinguishes "no such row" from "row updated", so a stale form
-    // cannot report success for a member who is already gone.
-    const updated = await sql<{ id: number }[]>`
-      UPDATE users
-      SET display_name = ${name}, email = ${email}
-      WHERE id = ${id}
-      RETURNING id
-    `;
-
-    if (updated.length === 0) {
-      return { message: "That user no longer exists." };
-    }
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to update user." };
-  }
-
-  revalidatePath("/");
-  revalidatePath("/users");
-  // Back to the detail page rather than the list: the edit control lives there,
-  // so the user keeps the context they navigated from.
-  redirect(`/users/${id}`);
 }
 
 /**

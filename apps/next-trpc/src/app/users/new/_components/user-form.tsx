@@ -1,17 +1,26 @@
 "use client";
 
-// One form for both creating and editing a workspace member. As with
-// ProjectForm, `person` is the single switch: which action runs, whether the
-// fields start populated, and what the headings say.
+// One form for both creating and editing a workspace member. `person` is the
+// single switch: which mutation runs, whether the fields start populated, and
+// what the headings say.
 //
-// A Client Component because `useActionState` supplies the validation state and
-// the pending flag. The action itself still runs on the server.
+// A Client Component because the mutation is an imperative call. This replaced a
+// `useActionState` form, so two things changed shape:
+//
+//   1. There is no <form action={...}> any more — a mutation is a function call,
+//      so the form submits through onSubmit and needs JS to submit at all.
+//   2. There is no action-supplied state, so the { errors, message } the action
+//      used to return is held in `state` below. The JSX that renders it is
+//      unchanged, which is the point: tRPC's error contract is the same shape.
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import type { User } from "@/lib/types";
-import { createUser, updateUser, type State } from "@/lib/actions";
+import type { ActionResult, FieldErrors } from "@/trpc/result";
+import { useTRPC } from "@/trpc/client";
 import {
   cancelClass,
   createClass,
@@ -19,23 +28,72 @@ import {
   labelClass,
 } from "@/lib/form-styles";
 
-const initialState: State = {};
+type FormState = { errors?: FieldErrors; message?: string | null };
 
 export function UserForm({ person }: { person?: User }) {
   const isEdit = person !== undefined;
 
-  // `updateUser` takes the id first; binding it leaves the
-  // (previousState, formData) signature `useActionState` expects.
-  const action = isEdit ? updateUser.bind(null, person.id) : createUser;
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const router = useRouter();
 
-  const [state, formAction, pending] = useActionState(action, initialState);
+  // The mutation's reply, held locally — the stand-in for what `useActionState`
+  // used to hand this component.
+  const [state, setState] = useState<FormState>({});
 
-  // Controlled rather than `defaultValue`. React resets an uncontrolled form
-  // once the action it submitted to settles, so a rejected submit would blank
-  // the fields the user just typed — exactly the moment they most need to see
-  // what went wrong. State also survives a re-render after the action returns.
+  // Controlled rather than `defaultValue`, so a rejected submit leaves the typed
+  // values in place — exactly the moment the user most needs to see what went
+  // wrong.
   const [name, setName] = useState(person?.name ?? "");
   const [email, setEmail] = useState(person?.email ?? "");
+
+  // `mutationOptions()` builds the options object; TanStack's useMutation runs
+  // it. The proxy has no `.useMutation()` — that was the old @trpc/react-query
+  // API. Both are constructed unconditionally so the hook order is stable.
+  const created = useMutation(trpc.users.create.mutationOptions());
+  const updated = useMutation(trpc.users.update.mutationOptions());
+  const pending = isEdit ? updated.isPending : created.isPending;
+
+  /**
+   * Shared by both mutations. A refused mutation is expected user error, not an
+   * exception, so it renders instead of throwing — the procedure returns
+   * { ok: false } and the form shows the field message.
+   *
+   * On success the Server Action used to call revalidatePath("/") and
+   * revalidatePath("/users") before redirecting. Those become query
+   * invalidations, and the redirect becomes router.push.
+   */
+  async function settle(result: ActionResult, destination: string) {
+    if (!result.ok) {
+      setState({ errors: result.errors, message: result.message });
+      return;
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries(trpc.users.list.queryFilter()),
+      queryClient.invalidateQueries(trpc.users.byId.queryFilter()),
+    ]);
+
+    router.push(destination);
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState({});
+
+    if (isEdit && person) {
+      updated.mutate(
+        { id: person.id, name, email },
+        { onSuccess: (result) => settle(result, `/users/${person.id}`) },
+      );
+      return;
+    }
+
+    created.mutate(
+      { name, email },
+      { onSuccess: (result) => settle(result, "/users") },
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -54,7 +112,7 @@ export function UserForm({ person }: { person?: User }) {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
-        <form action={formAction} className="max-w-2xl p-5">
+        <form onSubmit={handleSubmit} className="max-w-2xl p-5">
           {state.message ? (
             <p
               role="alert"

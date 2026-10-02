@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UserDetail } from "./_components/user-detail";
-import { getUser, getUserTasks } from "@/lib/data";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function UserDetailPage({
   params,
@@ -11,7 +11,11 @@ export default async function UserDetailPage({
   // Scoped by id rather than by display name: the fixture page filtered the
   // in-memory rows on `assigneeName`, which would give two members sharing a
   // name each other's tasks.
-  const person = Number.isInteger(personId) ? await getUser(personId) : null;
+  const person = Number.isInteger(personId)
+    ? await getQueryClient().fetchQuery(
+        trpc.users.byId.queryOptions({ id: personId }),
+      )
+    : null;
 
   if (!person) {
     return (
@@ -32,7 +36,9 @@ export default async function UserDetailPage({
     );
   }
 
-  const tasks = await getUserTasks(person.id);
+  const tasks = await getQueryClient().fetchQuery(
+    trpc.users.tasks.queryOptions({ id: person.id }),
+  );
 
   return <UserDetail person={person} tasks={tasks} />;
 }
