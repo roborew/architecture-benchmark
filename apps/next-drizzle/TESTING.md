@@ -65,8 +65,8 @@ deliberately _not_ used for tests: they are sized for benchmark volume and use
 Integration and e2e run against **their own database**, never the developer's:
 
 ```
-architecture_next_actions      ← your dev database (seeded from spec/snapshots/small)
-architecture_next_actions_e2e  ← created, migrated, seeded, then dropped
+architecture_next_drizzle      ← your dev database (seeded from spec/snapshots/small)
+architecture_next_drizzle_e2e  ← created, migrated, seeded, then dropped
 ```
 
 The connection string is derived from `POSTGRES_URL` with only the database name
@@ -75,9 +75,25 @@ refuses to start if the URL does not point at the `_e2e` database
 (`assertNotDevDatabase`), so a misconfiguration fails loudly instead of writing
 to real dev data.
 
+Both tiers drop the database when they finish — Playwright through
+`globalTeardown`, the integration tier through the `teardown` export of its
+`globalSetup` — so a run leaves nothing behind on the server.
+
 The e2e server also uses its own build directory (`NEXT_DIST_DIR=.next-e2e`,
 port `3100`) because Next.js takes a lock on `.next` and would otherwise refuse
-to start while `pnpm dev` was running.
+to start while `pnpm dev` is running. That directory is ignored by both ESLint
+and git.
+
+## The driver
+
+Everything — the app, the test database lifecycle, the migrate and seed scripts —
+goes through **`pg` (node-postgres)**. It is the driver Drizzle's node-postgres
+adapter wraps, so there is exactly one Postgres client in the process and one
+place a connection is configured.
+
+`tests/integration/pg-only.integration.test.ts` fails if the `postgres`
+(postgres.js) package is imported or re-declared, so it cannot creep back one
+`pnpm add` at a time.
 
 ## Running
 
@@ -93,10 +109,10 @@ pnpm test:data          # regenerate src/test/data.ts from the CSVs
 
 ## What is not covered
 
-- The app is mid-migration: `/projects` reads Postgres via `src/lib/data.ts`,
-  while `/projects/[id]`, `/tasks` and `/users` still read
-  `@tests/fixtures/data`. Both are exercised, but only the former against real
-  SQL. When a page moves to `lib/data`, add an integration test for it in the
-  same change — and delete its `@tests/fixtures/data` import.
 - `search-input.test.tsx` crashes its Vitest worker with SIGABRT. This predates
   this setup and is unrelated to it.
+- The seeding scripts use batched multi-row `INSERT` rather than
+  `COPY … FROM STDIN`, because `pg` has no writable-stream API for `COPY`. At
+  the largest fixture profile (1,000 rows per table) this is not measurable, but
+  a much larger benchmark profile would want `pg-copy-streams` or a single
+  `\copy` issued via `psql`.
