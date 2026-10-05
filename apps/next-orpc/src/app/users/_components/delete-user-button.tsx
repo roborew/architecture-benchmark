@@ -14,30 +14,35 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import type { ActionResult } from "@/lib/result";
 import type { User } from "@/lib/types";
-import type { ActionResult } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import { orpc } from "@/orpc/client";
 
 export function DeleteUserButton({ person }: { person: User }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
 
-  // `trpc.users.delete.mutationOptions()` builds the options object and TanStack's
-  // useMutation runs it. There is no `trpc.users.delete.useMutation()` in
-  // @trpc/tanstack-react-query — that was the old @trpc/react-query API.
+  // `orpc.users.delete.mutationOptions()` builds the options object and TanStack's
+  // useMutation runs it. The `orpc` object is imported directly — oRPC has no
+  // `useTRPC()` equivalent and mounts no provider of its own, so there is no hook
+  // to call and no wrapper above this component.
   const deleteUser = useMutation(
-    trpc.users.delete.mutationOptions({
+    orpc.users.delete.mutationOptions({
       onSuccess: async (result: ActionResult) => {
         if (!result.ok) {
           setMessage(result.message ?? "Failed to delete user.");
           return;
         }
 
-        // queryClient + queryFilter(), NOT trpc.useUtils() — the utils proxy does
-        // not exist in @trpc/tanstack-react-query.
-        await queryClient.invalidateQueries(trpc.users.list.queryFilter());
+        // Invalidate the whole `users` namespace. This replaces tRPC's
+        // `trpc.users.list.queryFilter()`: oRPC exposes one partial-match key
+        // builder per router, and `orpc.users.key()` covers `list` and `byId`
+        // together — the detail page can be showing the row this delete removed.
+        //
+        // The braces are required: `.key()` returns an OperationKey tuple, so it
+        // is passed as the `queryKey` property of a filter object.
+        await queryClient.invalidateQueries({ queryKey: orpc.users.key() });
         router.push("/users");
       },
       onError: () => setMessage("Database Error: Failed to delete user."),

@@ -2,13 +2,30 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 
 import { UserDetail } from "./user-detail";
-import { renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { renderWithOrpc } from "@tests/helpers/orpc-harness";
 import { makeUser, makeTaskWithProject } from "@tests/fixtures/builders";
 
 // DeleteUserButton is a Client Component with its own form. It used to be
-// stubbed by mocking `@/lib/actions`; it now holds a tRPC mutation, so it is
-// rendered inside the harness instead. Its behaviour is asserted on in
+// stubbed by mocking `@/lib/actions`; it now holds a mutation, so it is rendered
+// inside the harness instead. Its behaviour is asserted on in
 // delete-user-button.test.tsx.
+//
+// The vi.mock must live in THIS file, not the harness: it is hoisted above the
+// imports, so a mock registered from inside the helper would land after this
+// file's `@/orpc/client` import had already captured the real client. The
+// factory is inlined for the same reason — referencing an imported helper would
+// hit a temporal dead zone. See tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -21,7 +38,7 @@ describe("UserDetail", () => {
       email: "detail@example.test",
     });
 
-    renderWithTrpc(<UserDetail person={person} tasks={[]} />);
+    renderWithOrpc(<UserDetail person={person} tasks={[]} />);
 
     expect(
       screen.getByRole("heading", { name: person.name }),
@@ -33,7 +50,7 @@ describe("UserDetail", () => {
     // Distinct values so each figure is individually assertable.
     const person = makeUser({ assignedTaskCount: 7, commentCount: 4 });
 
-    renderWithTrpc(<UserDetail person={person} tasks={[]} />);
+    renderWithOrpc(<UserDetail person={person} tasks={[]} />);
 
     // "Assigned tasks" appears twice by design, as the stat card label
     // and as the table heading, so the counts are asserted instead.
@@ -52,7 +69,7 @@ describe("UserDetail", () => {
       status: "in progress",
     });
 
-    renderWithTrpc(<UserDetail person={makeUser()} tasks={[task]} />);
+    renderWithOrpc(<UserDetail person={makeUser()} tasks={[task]} />);
 
     // The reference shows Project here but omits Comments.
     expect(
@@ -71,7 +88,7 @@ describe("UserDetail", () => {
   it("links each assigned task to its detail page", () => {
     const task = makeTaskWithProject({ id: 88, title: "Linked task" });
 
-    renderWithTrpc(<UserDetail person={makeUser()} tasks={[task]} />);
+    renderWithOrpc(<UserDetail person={makeUser()} tasks={[task]} />);
 
     const row = screen.getByRole("row", { name: new RegExp(task.title) });
 
@@ -82,7 +99,7 @@ describe("UserDetail", () => {
   });
 
   it("shows an empty state when the person has no assigned tasks", () => {
-    renderWithTrpc(<UserDetail person={makeUser()} tasks={[]} />);
+    renderWithOrpc(<UserDetail person={makeUser()} tasks={[]} />);
 
     expect(
       screen.getByText("No tasks are assigned to this person."),
@@ -92,7 +109,7 @@ describe("UserDetail", () => {
   it("offers an edit link to this member's own edit page", () => {
     // Not /users/new: that would create a second member instead of editing
     // the one on screen.
-    renderWithTrpc(<UserDetail person={makeUser({ id: 12 })} tasks={[]} />);
+    renderWithOrpc(<UserDetail person={makeUser({ id: 12 })} tasks={[]} />);
 
     expect(screen.getByRole("link", { name: "Edit user" })).toHaveAttribute(
       "href",
@@ -101,7 +118,7 @@ describe("UserDetail", () => {
   });
 
   it("offers a delete control naming the member", () => {
-    renderWithTrpc(
+    renderWithOrpc(
       <UserDetail
         person={makeUser({ id: 12, name: "Ada Lovelace" })}
         tasks={[]}

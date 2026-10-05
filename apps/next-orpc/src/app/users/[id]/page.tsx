@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UserDetail } from "./_components/user-detail";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function UserDetailPage({
   params,
@@ -13,7 +13,7 @@ export default async function UserDetailPage({
   // name each other's tasks.
   const person = Number.isInteger(personId)
     ? await getQueryClient().fetchQuery(
-        trpc.users.byId.queryOptions({ id: personId }),
+        orpc.users.byId.queryOptions({ input: { id: personId } }),
       )
     : null;
 
@@ -37,7 +37,7 @@ export default async function UserDetailPage({
   }
 
   const tasks = await getQueryClient().fetchQuery(
-    trpc.users.tasks.queryOptions({ id: person.id }),
+    orpc.users.tasks.queryOptions({ input: { id: person.id } }),
   );
 
   return <UserDetail person={person} tasks={tasks} />;

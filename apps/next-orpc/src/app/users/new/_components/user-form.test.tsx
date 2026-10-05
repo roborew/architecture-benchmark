@@ -3,13 +3,29 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { UserForm } from "./user-form";
-import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { rejected, renderWithOrpc } from "@tests/helpers/orpc-harness";
 import { makeUser } from "@tests/fixtures/builders";
 
-// The form used to receive a Server Action and render whatever `useActionState`
-// handed back. It now holds a tRPC mutation, so the procedure is exercised
-// through the harness and its `{ ok: false }` reply is what the form renders.
+// The form holds a mutation rather than receiving a Server Action, so the
+// procedure is exercised through the harness and its `{ ok: false }` reply is
+// what the form renders.
 //
+// The vi.mock must live in THIS file, not the harness: it is hoisted above the
+// imports, so a mock registered from inside the helper would land after this
+// file's `@/orpc/client` import had already captured the real client. The
+// factory is inlined for the same reason — referencing an imported helper would
+// hit a temporal dead zone. See tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
 // What is asserted here is still the form's own contract: which procedure runs,
 // with what, and what it renders from the reply. The procedure's behaviour is
 // covered against a real database in
@@ -23,20 +39,20 @@ vi.mock("next/navigation", () => ({
 
 describe("UserForm", () => {
   it("renders labelled name and email fields", () => {
-    renderWithTrpc(<UserForm />);
+    renderWithOrpc(<UserForm />);
 
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
   });
 
   it("uses an email input for the address", () => {
-    renderWithTrpc(<UserForm />);
+    renderWithOrpc(<UserForm />);
 
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
   });
 
   it("renders a cancel link and a create button", () => {
-    renderWithTrpc(<UserForm />);
+    renderWithOrpc(<UserForm />);
 
     expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute(
       "href",
@@ -48,7 +64,7 @@ describe("UserForm", () => {
   });
 
   it("submits through a form, so the fields are one submit away", () => {
-    const { container } = renderWithTrpc(<UserForm />);
+    const { container } = renderWithOrpc(<UserForm />);
 
     // The `name` attributes no longer carry the values to the server — the
     // mutation is called with a typed object — but the form element is still
@@ -60,14 +76,14 @@ describe("UserForm", () => {
 
   it("marks the name as required in the markup", () => {
     // The server re-checks, but a required field is cheaper to fail on.
-    renderWithTrpc(<UserForm />);
+    renderWithOrpc(<UserForm />);
 
     expect(screen.getByLabelText("Name")).toBeRequired();
   });
 
   it("calls users.create with the typed values", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(<UserForm />);
+    const { calls } = renderWithOrpc(<UserForm />);
 
     await user.type(screen.getByLabelText("Name"), "Ada Lovelace");
     await user.type(screen.getByLabelText("Email"), "ada@example.test");
@@ -87,7 +103,7 @@ describe("UserForm", () => {
     // blocks bad input first.
     async function submitValidForm() {
       const user = userEvent.setup();
-      renderWithTrpc(<UserForm />, () =>
+      renderWithOrpc(<UserForm />, () =>
         rejected({ email: ["Enter a valid email address."] }),
       );
 
@@ -98,7 +114,7 @@ describe("UserForm", () => {
 
     it("shows the procedure's message in an alert", async () => {
       const user = userEvent.setup();
-      renderWithTrpc(<UserForm />, () =>
+      renderWithOrpc(<UserForm />, () =>
         rejected(
           { email: ["Enter a valid email address."] },
           "Missing fields. Failed to create user.",
@@ -128,7 +144,7 @@ describe("UserForm", () => {
 
     it("marks the name invalid when the name failed validation", async () => {
       const user = userEvent.setup();
-      renderWithTrpc(<UserForm />, () =>
+      renderWithOrpc(<UserForm />, () =>
         rejected({ name: ["User name is required."] }),
       );
 
@@ -147,7 +163,7 @@ describe("UserForm", () => {
 
     it("leaves the other field unmarked when only one failed", async () => {
       const user = userEvent.setup();
-      renderWithTrpc(<UserForm />, () =>
+      renderWithOrpc(<UserForm />, () =>
         rejected({ name: ["User name is required."] }),
       );
 
@@ -173,7 +189,7 @@ describe("UserForm", () => {
 
     it("keeps what was typed when the submit is refused", async () => {
       const user = userEvent.setup();
-      renderWithTrpc(<UserForm />, () =>
+      renderWithOrpc(<UserForm />, () =>
         rejected({ name: ["User name is required."] }),
       );
 
@@ -191,14 +207,14 @@ describe("UserForm", () => {
     const person = makeUser({ id: 42, name: "Ada Lovelace" });
 
     it("prefills the fields from the stored row", () => {
-      renderWithTrpc(<UserForm person={person} />);
+      renderWithOrpc(<UserForm person={person} />);
 
       expect(screen.getByLabelText("Name")).toHaveValue("Ada Lovelace");
       expect(screen.getByLabelText("Email")).toHaveValue(person.email);
     });
 
     it("heads the page and the button for an edit", () => {
-      renderWithTrpc(<UserForm person={person} />);
+      renderWithOrpc(<UserForm person={person} />);
 
       expect(
         screen.getByRole("heading", { name: "Edit user" }),
@@ -209,7 +225,7 @@ describe("UserForm", () => {
     });
 
     it("cancels back to the member's own page", () => {
-      renderWithTrpc(<UserForm person={person} />);
+      renderWithOrpc(<UserForm person={person} />);
 
       expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute(
         "href",
@@ -219,7 +235,7 @@ describe("UserForm", () => {
 
     it("calls users.update with the edited values", async () => {
       const user = userEvent.setup();
-      const { calls } = renderWithTrpc(<UserForm person={person} />);
+      const { calls } = renderWithOrpc(<UserForm person={person} />);
 
       await user.clear(screen.getByLabelText("Name"));
       await user.type(screen.getByLabelText("Name"), "Ada King");
@@ -237,7 +253,7 @@ describe("UserForm", () => {
 
     it("does not call the create procedure when editing", async () => {
       const user = userEvent.setup();
-      const { calls } = renderWithTrpc(<UserForm person={person} />);
+      const { calls } = renderWithOrpc(<UserForm person={person} />);
 
       await user.click(screen.getByRole("button", { name: "Save changes" }));
 
