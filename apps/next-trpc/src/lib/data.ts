@@ -9,8 +9,21 @@ import type {
   TaskWithProject,
   User,
 } from "@/lib/types";
+import type { ActionResult } from "./result";
+import { fieldErrors } from "./result";
+import { z } from "zod";
+
 import { decodeCursor, encodeCursor } from "./cursor";
 import { sql } from "./db";
+
+// This module is the only place that talks to Postgres. Reads (`get*`) throw on
+// failure, because a page that cannot load is a broken page. Writes (`create*`,
+// `update*`, `delete*`) return an `ActionResult` instead, because a refused write
+// is usually ordinary user error the form has to render — see lib/result.ts.
+//
+// Every write keeps its own `try`/`catch` and never rethrows, so a caller cannot
+// forget to handle a fault and so the user-visible message lives beside the
+// statement that can actually produce it.
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
@@ -587,4 +600,155 @@ export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user's tasks.");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+//
+// From here on the module owns every statement that changes a row. The routers in
+// src/trpc/routers/ are left as the transport: they check the input's shape and
+// return whatever comes back here, unchanged.
+// ---------------------------------------------------------------------------
+
+/**
+ * `users.email` has no UNIQUE constraint (spec/schema.sql) and spec/contract.md
+ * requires none, so no uniqueness rule is imposed — two members may legitimately
+ * share an address. The address is still shape-checked because the form declares
+ * `type="email"` and the server should agree.
+ */
+const UserSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "User name is required.")
+    .max(200, "User name must be 200 characters or fewer."),
+  email: z
+    .string()
+    .trim()
+    .min(1, "Email is required.")
+    .email("Enter a valid email address."),
+});
+
+export async function createUser(input: {
+  name: string;
+  email: string;
+}): Promise<ActionResult> {
+  const parsed = UserSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create user.",
+    };
+  }
+
+  const { name, email } = parsed.data;
+
+  try {
+    // RETURNING id so the client can navigate to the row it just created and so a
+    // persisted id is provably allocated (spec/contract.md).
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO users (display_name, email)
+      VALUES (${name}, ${email})
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to create user." };
+  }
+}
+
+export async function updateUser(input: {
+  id: number;
+  name: string;
+  email: string;
+}): Promise<ActionResult> {
+  const { id } = input;
+  const parsed = UserSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to update user.",
+    };
+  }
+
+  const { name, email } = parsed.data;
+
+  try {
+    // RETURNING distinguishes "no such row" from "row updated", so a stale form
+    // cannot report success for a member who is already gone.
+    const updated = await sql<{ id: number }[]>`
+      UPDATE users
+      SET display_name = ${name}, email = ${email}
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return { ok: false, message: "That user no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to update user." };
+  }
+
+  return { ok: true, id };
+}
+
+export async function deleteUser(id: number): Promise<ActionResult> {
+  try {
+    const deleted = await sql<{ id: number }[]>`
+      DELETE FROM users WHERE id = ${id} RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return { ok: false, message: "That user no longer exists." };
+    }
+  } catch (error) {
+    // Two different FKs behave differently here, and the difference is the whole
+    // point of the message:
+    //
+    //   comments.author_id  ON DELETE RESTRICT — the delete is refused and
+    //                                          nothing changes.
+    //   tasks.assignee_id   ON DELETE SET NULL — the delete succeeds and the
+    //                                          tasks become unassigned.
+    //
+    // So a failure here is always the comments restriction: 23001 is
+    // restrict_violation and 23503 is what NO ACTION raises. This is a rule the
+    // user can act on, so it is reported rather than thrown.
+    const code = (error as { code?: string }).code;
+
+    if (code === "23001" || code === "23503") {
+      const [commentRows, taskRows] = await Promise.all([
+        sql<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
+        `,
+        sql<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
+        `,
+      ]);
+
+      const commentCount = commentRows[0]?.count ?? 0;
+      const taskCount = taskRows[0]?.count ?? 0;
+
+      return {
+        ok: false,
+        message:
+          `This person still has ${commentCount} ` +
+          `${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
+          `${taskCount === 1 ? "task" : "tasks"}. Remove ` +
+          `${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
+      };
+    }
+
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to delete user." };
+  }
+
+  return { ok: true, id };
 }

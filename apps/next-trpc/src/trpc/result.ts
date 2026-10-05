@@ -1,33 +1,14 @@
-// The tRPC replacement for the `State` type that Server Actions returned.
+// The write contract used to live here, when every mutation lived in a router and
+// this module described what the transport returned.
 //
-// A Server Action signals "validation failed" by resolving to `{ errors }`. tRPC
-// has a different instinct: an unexpected failure is a `TRPCError`, and the client
-// catches it. But expected validation failures are not exceptional — an empty name
-// is ordinary user error, and the UI already renders a field-level message and an
-// `aria-invalid` attribute for it. So mutations return a discriminated union and
-// let the client narrow with `if (!result.ok)`, rather than abusing the error
-// channel and re-deriving field paths on the client.
-//
-// Consequence: the existing error markup in the forms keeps working unchanged,
-// because `errors` is still `{ fieldName: string[] }`.
+// It now lives in src/lib/result.ts, because it describes what the DATA LAYER
+// returns: src/lib/data.ts produces these values and the routers pass them
+// through untouched. Re-exported here so the components that consume a mutation's
+// reply keep importing it from the transport they call through.
 
-/** Matches the shape of `zod`'s `.flatten().fieldErrors`. */
-export type FieldErrors = Record<string, string[] | undefined>;
-
-/** The mutation committed. `id` is the row that was written. */
-export type ActionOk = { ok: true; id: number };
-
-/**
- * The mutation was refused and changed nothing.
- *
- * `errors` is set when the cause is a specific field, `message` when it is not
- * (a stale id, a database fault, an FK restriction). Either may be absent, but
- * the caller must render something — these are user-visible per spec/contract.md.
- */
-export type ActionErr = {
-  ok: false;
-  errors?: FieldErrors;
-  message?: string;
-};
-
-export type ActionResult = ActionOk | ActionErr;
+export type {
+  ActionErr,
+  ActionOk,
+  ActionResult,
+  FieldErrors,
+} from "@/lib/result";
