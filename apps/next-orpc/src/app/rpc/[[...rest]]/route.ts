@@ -1,7 +1,6 @@
 // The oRPC endpoint. Serves the whole router, so it is a catch-all segment.
 //
-// The counterpart to src/app/api/trpc/[trpc]/route.ts. Note the path moved from
-// /api/trpc to /rpc, which is where oRPC's own examples put it; the client's
+// Note the path is /rpc, which is where oRPC's own examples put it; the client's
 // `url: "/rpc"` in src/orpc/client.tsx must match the `prefix` below exactly, and
 // moving either one without the other is the failure mode here.
 //

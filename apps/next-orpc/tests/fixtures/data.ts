@@ -166,7 +166,6 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Draft navigation model",
     "projectName": "Website redesign",
     "status": "in progress",
-    "assigneeId": 1,
     "assigneeName": "Robin Andrew",
     "updatedAt": "2026-09-29T08:00:00Z"
   },
@@ -175,7 +174,6 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Confirm breakpoint rules",
     "projectName": "Website redesign",
     "status": "todo",
-    "assigneeId": 2,
     "assigneeName": "Alex Morgan",
     "updatedAt": "2026-09-28T11:20:00Z"
   },
@@ -184,7 +182,6 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Build profile screen",
     "projectName": "Mobile application",
     "status": "in progress",
-    "assigneeId": 1,
     "assigneeName": "Robin Andrew",
     "updatedAt": "2026-09-28T09:30:00Z"
   }

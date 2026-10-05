@@ -2,24 +2,23 @@
 
 // ^-- so the Provider can be mounted from the server component root layout
 
-// The browser/SSR client. Compare src/trpc/client.tsx.
+// The browser/SSR client.
 //
-// The differences are mostly mechanical, and each one is a v2 API change rather
-// than a design change:
+// The differences from a tRPC client are mostly mechanical, and each one is an
+// oRPC v2 API change rather than a design change:
 //
-//   * `createTRPCContext<AppRouter>()` / `useTRPC()` are gone. oRPC needs no
-//     provider hook: `orpc` below is a plain object of option builders, so
-//     components call `orpc.users.list.queryOptions(...)` instead of
-//     `useTRPC().users.list.queryOptions(...)`.
-//   * `RPCLink` splits the endpoint into `origin` + `url`. The v1 single `url`
-//     form is gone; `url` is now a path prefix and MUST match the route
-//     handler's prefix below.
+//   * There is no `createTRPCContext`/`useTRPC()` pair. oRPC needs no provider
+//     hook: `orpc` below is a plain object of option builders, so components
+//     call `orpc.users.list.queryOptions(...)` directly.
+//   * `RPCLink` splits the endpoint into `origin` + `url`. The single `url` form
+//     is gone; `url` is now a path prefix and MUST match the route handler's
+//     prefix below.
 //   * `httpBatchLink` becomes `BatchLinkPlugin`. See the batching note further
 //     down before re-enabling it.
 //
-// Because there is no provider hook, this module's job is narrower than the tRPC
-// one's: build the client, expose the option builders, and mount the TanStack
-// Query provider the app already had.
+// Because there is no provider hook, this module's job is narrower: build the
+// client, expose the option builders, and mount the TanStack Query provider the
+// app already had.
 
 import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -92,7 +91,7 @@ export const client: RouterClient<AppRouter> = createORPCClient(link);
  *
  * Note the shape difference from tRPC: input lives under an `input` key rather
  * than being passed positionally, and the key builders (`.key()`, `.queryKey()`)
- * are how you invalidate, not `trpc.users.list.path`.
+ * are how you invalidate, not a hand-built path array.
  */
 export const orpc = createTanstackQueryUtils(client);
 

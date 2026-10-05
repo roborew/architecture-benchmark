@@ -606,7 +606,7 @@ export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
 // Writes
 //
 // From here on the module owns every statement that changes a row. The routers in
-// src/trpc/routers/ are left as the transport: they check the input's shape and
+// src/orpc/routers/ are left as the transport: they check the input's shape and
 // return whatever comes back here, unchanged.
 // ---------------------------------------------------------------------------
 

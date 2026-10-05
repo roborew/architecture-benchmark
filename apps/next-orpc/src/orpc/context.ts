@@ -1,10 +1,10 @@
 /**
  * The initial context every procedure receives.
  *
- * Deliberately empty, and this mirrors src/trpc/init.ts: the router is
- * contextless because nothing per-request is threaded through yet. A client
- * reaches the router over HTTP and never observes a server context, so there is
- * nothing honest to put here.
+ * Deliberately empty, and deliberately so: the router is contextless because
+ * nothing per-request is threaded through yet. A client reaches the router over
+ * HTTP and never observes a server context, so there is nothing honest to put
+ * here.
  *
  * To add auth later:
  *

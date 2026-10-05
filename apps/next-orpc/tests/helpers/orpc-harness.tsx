@@ -141,8 +141,7 @@ export function makeOrpcUtils(respond: Responder): {
  * Renders `ui` with a QueryClientProvider and a terminated `orpc` client.
  *
  * Only a QueryClientProvider is mounted: oRPC has no provider of its own, so
- * there is nothing else to wrap with. That is a genuine simplification over
- * trpc-harness.tsx, which had to mount a TRPCProvider as well.
+ * there is nothing else to wrap with.
  *
  * Requires `vi.mock("@/orpc/client", () => orpcMock())` in the calling test
  * file — see the note at the top of this file.

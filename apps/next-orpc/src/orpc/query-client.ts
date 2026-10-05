@@ -1,11 +1,9 @@
 // The query client, and the one place oRPC touches TanStack Query's internals.
 //
-// Compare src/trpc/query-client.ts. tRPC needed no serializer because it spoke
-// plain JSON, and src/lib/types.ts already stringifies every timestamp so that
-// round-trips. That reasoning still holds here, so the `RPCJsonSerializer` below
-// is configured with *no* custom handlers: it is the default v2 setup that makes
-// query-key hashing, dehydration and hydration agree with what oRPC puts on the
-// wire.
+// The serializer is configured with NO custom handlers, which is deliberate.
+// This app's data layer already stringifies every timestamp (see
+// src/lib/types.ts), so plain JSON round-trips every value and there is nothing
+// extra to teach the cache about.
 //
 // It is still worth having rather than leaving the client unconfigured, because
 // the moment a procedure returns something JSON cannot represent — a Date, a Map,

@@ -91,11 +91,25 @@ export const TaskRowSchema = TaskWithProjectSchema.extend({
   updatedAtRaw: z.string(),
 });
 
-/** Mirrors `DashboardTask`: a task without its project id, description or count. */
-export const DashboardTaskSchema = TaskWithProjectSchema.omit({
-  projectId: true,
-  description: true,
-  commentCount: true,
+/**
+ * Mirrors `DashboardTask` in src/lib/types.ts, which lists exactly the columns
+ * `getRecentTasks` selects: id, title, projectName, status, assigneeName and
+ * updatedAt.
+ *
+ * This was previously derived as
+ * `TaskWithProjectSchema.omit({ projectId, description, commentCount })`, which
+ * kept `assigneeId` — a column the query has never selected. `next build` caught
+ * it: prerendering "/" failed with "Output validation failed" because the row
+ * genuinely has no `assigneeId`. The type has been narrowed alongside this
+ * schema so the two agree.
+ */
+export const DashboardTaskSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  projectName: z.string(),
+  status: TaskStatusSchema,
+  assigneeName: z.string(),
+  updatedAt: z.string(),
 });
 
 /** Mirrors `Comment`. */
