@@ -1,32 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
 import { makeProject } from "@tests/fixtures/builders";
 
 import { ProjectForm } from "./project-form";
 
-// The form is a Client Component, so the actions it imports must exist as
-// callable stubs before it renders. They are asserted against in the action
-// tests; here they only need to be substitutable.
-const createProject = vi.fn(async () => ({}));
-const updateProject = vi.fn(async () => ({}));
+// The form now holds a tRPC mutation rather than calling a Server Action, so the
+// procedure is exercised through the harness instead of being mocked. The
+// procedure's own behaviour is covered against a real database in
+// tests/integration/project-router.integration.test.ts.
 
-vi.mock("@/lib/actions", () => ({
-  createProject: (...args: unknown[]) => createProject(...(args as [])),
-  updateProject: (...args: unknown[]) => updateProject(...(args as [])),
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
 }));
 
 describe("ProjectForm (create)", () => {
   it("renders labelled name and description fields", () => {
-    render(<ProjectForm />);
+    renderWithTrpc(<ProjectForm />);
 
     expect(screen.getByLabelText("Project name")).toBeInTheDocument();
     expect(screen.getByLabelText("Description")).toBeInTheDocument();
   });
 
   it("renders a cancel link and a create button", () => {
-    render(<ProjectForm />);
+    renderWithTrpc(<ProjectForm />);
 
     expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute(
       "href",
@@ -38,30 +39,48 @@ describe("ProjectForm (create)", () => {
   });
 
   it("starts with empty fields", () => {
-    render(<ProjectForm />);
+    renderWithTrpc(<ProjectForm />);
 
     expect(screen.getByLabelText("Project name")).toHaveValue("");
     expect(screen.getByLabelText("Description")).toHaveValue("");
   });
 
-  it("submits through a form carrying the named fields", () => {
-    const { container } = render(<ProjectForm />);
-
-    const form = container.querySelector("form");
-    expect(form).not.toBeNull();
-
-    // The action reads these exact names, so a rename here silently drops the
-    // field rather than failing loudly.
-    expect(form?.querySelector('[name="name"]')).not.toBeNull();
-    expect(form?.querySelector('[name="description"]')).not.toBeNull();
-  });
-
   it("heads the page as a new project", () => {
-    render(<ProjectForm />);
+    renderWithTrpc(<ProjectForm />);
 
     expect(
       screen.getByRole("heading", { name: "New project", level: 1 }),
     ).toBeInTheDocument();
+  });
+
+  it("calls projects.create with the typed fields", async () => {
+    const user = userEvent.setup();
+    const { calls } = renderWithTrpc(<ProjectForm />);
+
+    await user.type(screen.getByLabelText("Project name"), "Website redesign");
+    await user.type(
+      screen.getByLabelText("Description"),
+      "Refresh the public website.",
+    );
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(calls).toContainEqual({
+      path: "projects.create",
+      input: {
+        name: "Website redesign",
+        description: "Refresh the public website.",
+      },
+    });
+  });
+
+  it("leaves for the list once the create succeeds", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(<ProjectForm />);
+
+    await user.type(screen.getByLabelText("Project name"), "Website redesign");
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/projects"));
   });
 });
 
@@ -72,7 +91,7 @@ describe("ProjectForm (edit)", () => {
       description: "Refresh the public website.",
     });
 
-    render(<ProjectForm project={project} />);
+    renderWithTrpc(<ProjectForm project={project} />);
 
     expect(screen.getByLabelText("Project name")).toHaveValue(project.name);
     expect(screen.getByLabelText("Description")).toHaveValue(
@@ -81,7 +100,7 @@ describe("ProjectForm (edit)", () => {
   });
 
   it("heads the page as an edit and offers a save button", () => {
-    render(<ProjectForm project={makeProject()} />);
+    renderWithTrpc(<ProjectForm project={makeProject()} />);
 
     expect(
       screen.getByRole("heading", { name: "Edit project", level: 1 }),
@@ -92,23 +111,38 @@ describe("ProjectForm (edit)", () => {
   });
 
   it("names the project in the breadcrumb", () => {
-    render(<ProjectForm project={makeProject({ name: "Named project" })} />);
+    renderWithTrpc(
+      <ProjectForm project={makeProject({ name: "Named project" })} />,
+    );
 
     expect(screen.getByText("Projects / Named project")).toBeInTheDocument();
+  });
+
+  it("calls projects.update with the project's id", async () => {
+    const project = makeProject({ id: 42, name: "Named project" });
+
+    const user = userEvent.setup();
+    const { calls } = renderWithTrpc(<ProjectForm project={project} />);
+
+    await user.clear(screen.getByLabelText("Project name"));
+    await user.type(screen.getByLabelText("Project name"), "Renamed");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(calls).toContainEqual({
+      path: "projects.update",
+      input: { id: 42, name: "Renamed", description: project.description },
+    });
   });
 });
 
 describe("ProjectForm (rejected submit)", () => {
-  it("keeps what was typed when the action reports a validation error", async () => {
-    // React resets an uncontrolled form once the action settles, so a rejected
-    // submit would blank the fields — precisely when the user needs to see what
-    // they entered alongside the error.
-    createProject.mockResolvedValueOnce({
-      errors: { name: ["Project name is required."] },
-    });
-
+  it("keeps what was typed when the procedure reports a validation error", async () => {
+    // A rejected submit must not blank the fields — precisely when the user needs
+    // to see what they entered alongside the error.
     const user = userEvent.setup();
-    render(<ProjectForm />);
+    renderWithTrpc(<ProjectForm />, () =>
+      rejected({ name: ["Project name is required."] }),
+    );
 
     await user.type(screen.getByLabelText("Project name"), "Website redesign");
     await user.type(
@@ -125,6 +159,36 @@ describe("ProjectForm (rejected submit)", () => {
     );
     expect(screen.getByLabelText("Description")).toHaveValue(
       "Refresh the public website.",
+    );
+  });
+
+  it("does not navigate away when the procedure refuses", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(<ProjectForm />, () =>
+      rejected({}, "Database Error: Failed to create project."),
+    );
+
+    await user.type(screen.getByLabelText("Project name"), "Website redesign");
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Database Error: Failed to create project.",
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("marks the offending field invalid for assistive technology", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(<ProjectForm />, () =>
+      rejected({ name: ["Project name is required."] }),
+    );
+
+    await user.type(screen.getByLabelText("Project name"), "Website redesign");
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByLabelText("Project name")).toHaveAttribute(
+      "aria-invalid",
+      "true",
     );
   });
 });

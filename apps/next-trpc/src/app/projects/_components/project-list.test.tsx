@@ -1,12 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { ProjectList } from "./project-list";
+import { renderWithTrpc } from "@tests/helpers/trpc-harness";
 import { makeProject } from "@tests/fixtures/builders";
 
-// The row's delete control is a Client Component importing the action.
-vi.mock("@/lib/actions", () => ({
-  deleteProject: vi.fn(async () => ({})),
+// The row's delete control holds a tRPC mutation and navigates on success, so the
+// list is rendered through the harness (which supplies the provider) and
+// `useRouter` is stubbed. Nothing here exercises the delete itself — see
+// delete-project-button.test.tsx for that.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
 }));
+
+// A render that keeps the harness's `container` shape without the caller having
+// to care that the wrapper is the one doing the rendering.
+const render = (ui: React.ReactElement) => renderWithTrpc(ui);
 
 describe("ProjectList", () => {
   it("renders a row for each project plus a header", () => {
@@ -102,7 +110,7 @@ describe("ProjectList", () => {
     ).toBeInTheDocument();
   });
 
-  it("submits delete through a form so it works without JavaScript", () => {
+  it("submits delete through a form so the control is one focusable element", () => {
     const project = makeProject({ id: 7, name: "Deletable project" });
 
     const { container } = render(<ProjectList projects={[project]} />);
