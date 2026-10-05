@@ -26,11 +26,36 @@ import type { ActionResult, State } from "@/lib/actions";
 
 export const initialActionState: State = {};
 
-/** A server function as this hook calls it: form input in, outcome out. */
-type ActionFn<Args extends unknown[]> = (...args: Args) => Promise<ActionResult>;
+/**
+ * A bound server function: takes the form's FormData and resolves to the
+ * action's outcome.
+ */
+type ActionFn = (formData: FormData) => Promise<ActionResult>;
 
-export function useServerAction<Args extends unknown[]>(
-  action: ActionFn<Args>,
+/**
+ * Appends a bound id to the form's own fields.
+ *
+ * FormData is only serialisable as the top-level payload of a POST body, so an
+ * id cannot ride alongside it as a sibling property — it has to be a field of
+ * the same FormData. That is also what a plain form POST carrying a hidden
+ * input would have done.
+ *
+ * The incoming FormData is copied rather than mutated: it is the one React
+ * handed the form, and a component may still read it after submit.
+ */
+export function withId(
+  formData: FormData,
+  field: string,
+  id: number,
+): FormData {
+  const next = new FormData(formData);
+  next.set(field, String(id));
+
+  return next;
+}
+
+export function useServerAction(
+  action: ActionFn,
 ): [state: State, formAction: (formData: FormData) => void, pending: boolean] {
   const router = useRouter();
   const [state, setState] = useState<State>(initialActionState);
@@ -39,7 +64,7 @@ export function useServerAction<Args extends unknown[]>(
   const formAction = useCallback(
     (formData: FormData) => {
       startTransition(async () => {
-        const result = await action(...([formData] as Args));
+        const result = await action(formData);
 
         // A validation failure is not a successful mutation, so it must not
         // invalidate: the route's data is still correct, and re-running the

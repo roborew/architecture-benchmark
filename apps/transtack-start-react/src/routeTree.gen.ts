@@ -10,61 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AboutRouteImport } from './routes/about'
-import { Route as TasksRouteImport } from './routes/tasks'
-import { Route as TasksIndexRouteImport } from './routes/tasks/index'
+import { Route as HealthzRouteImport } from './routes/healthz'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
+const HealthzRoute = HealthzRouteImport.update({
+  id: '/healthz',
+  path: '/healthz',
   getParentRoute: () => rootRouteImport,
-} as any)
-const TasksRoute = TasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TasksIndexRoute = TasksIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => TasksRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/tasks': typeof TasksRouteWithChildren
-  '/tasks/': typeof TasksIndexRoute
+  '/healthz': typeof HealthzRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/tasks': typeof TasksIndexRoute
+  '/healthz': typeof HealthzRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/tasks': typeof TasksRouteWithChildren
-  '/tasks/': typeof TasksIndexRoute
+  '/healthz': typeof HealthzRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/tasks' | '/tasks/'
+  fullPaths: '/' | '/healthz'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/tasks'
-  id: '__root__' | '/' | '/about' | '/tasks' | '/tasks/'
+  to: '/' | '/healthz'
+  id: '__root__' | '/' | '/healthz'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
-  TasksRoute: typeof TasksRouteWithChildren
+  HealthzRoute: typeof HealthzRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -76,44 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
+    '/healthz': {
+      id: '/healthz'
+      path: '/healthz'
+      fullPath: '/healthz'
+      preLoaderRoute: typeof HealthzRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/tasks': {
-      id: '/tasks'
-      path: '/tasks'
-      fullPath: '/tasks'
-      preLoaderRoute: typeof TasksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/tasks/': {
-      id: '/tasks/'
-      path: '/'
-      fullPath: '/tasks/'
-      preLoaderRoute: typeof TasksIndexRouteImport
-      parentRoute: typeof TasksRoute
     }
   }
 }
 
-interface TasksRouteChildren {
-  TasksIndexRoute: typeof TasksIndexRoute
-}
-
-const TasksRouteChildren: TasksRouteChildren = {
-  TasksIndexRoute: TasksIndexRoute,
-}
-
-const TasksRouteWithChildren = TasksRoute._addFileChildren(TasksRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
-  TasksRoute: TasksRouteWithChildren,
+  HealthzRoute: HealthzRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

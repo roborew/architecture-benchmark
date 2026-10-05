@@ -1,8 +1,7 @@
-"use client";
+import { useRouter, useLocation } from "@tanstack/react-router";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { useDebouncedValue } from "@/hooks/use-debounced";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -21,8 +20,10 @@ export function SearchInput({
   label?: string;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { pathname, searchStr } = useLocation();
+  // The param name is a prop, so the query is read off the raw search string
+  // rather than a statically-typed `useSearch()` object.
+  const searchParams = new URLSearchParams(searchStr);
   const urlQuery = searchParams.get(param) ?? "";
 
   const [value, setValue] = useState(urlQuery);
@@ -51,16 +52,20 @@ export function SearchInput({
     if (query === urlQuery.trim()) return;
     if (query.length > 0 && query.length < MIN_LENGTH) return;
 
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchStr);
     if (query) params.set(param, query);
     else params.delete(param);
 
     const qs = params.toString();
     lastPushed.current = query;
     startTransition(() => {
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      router.navigate({
+        to: qs ? `${pathname}?${qs}` : pathname,
+        replace: true,
+        resetScroll: false,
+      });
     });
-  }, [debounced, value, urlQuery, param, pathname, searchParams, router]);
+  }, [debounced, value, urlQuery, param, pathname, searchStr, router]);
 
   return (
     <label className="relative block">
