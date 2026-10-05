@@ -752,3 +752,143 @@ export async function deleteUser(id: number): Promise<ActionResult> {
 
   return { ok: true, id };
 }
+
+// ---------------------------------------------------------------------------
+// Projects writes
+// ---------------------------------------------------------------------------
+
+const ProjectSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Project name is required.")
+    // The schema puts no limit on projects.name, but tasks.title caps at 200.
+    .max(200, "Project name must be 200 characters or fewer."),
+  description: z.string().trim(),
+});
+
+export async function createProject(input: {
+  name: string;
+  /** Optional: the column defaults to '' and an absent description is legal. */
+  description?: string;
+}): Promise<ActionResult> {
+  const parsed = ProjectSchema.safeParse({
+    name: input.name,
+    description: input.description ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create project.",
+    };
+  }
+
+  const { name, description } = parsed.data;
+
+  try {
+    // created_at is NOT NULL with no default, so the server sets it. RETURNING id
+    // so the client has the row it just created.
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO projects (name, description, created_at)
+      VALUES (${name}, ${description}, now())
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to create project.",
+    };
+  }
+}
+
+export async function updateProject(input: {
+  id: number;
+  name: string;
+  description?: string;
+}): Promise<ActionResult> {
+  const { id } = input;
+  const parsed = ProjectSchema.safeParse({
+    name: input.name,
+    description: input.description ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to update project.",
+    };
+  }
+
+  const { name, description } = parsed.data;
+
+  try {
+    // RETURNING distinguishes "no such row" from "row updated", so a stale form
+    // cannot report success for a project that is already gone.
+    const updated = await sql<{ id: number }[]>`
+      UPDATE projects
+      SET name = ${name}, description = ${description}
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return { ok: false, message: "That project no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to update project.",
+    };
+  }
+
+  return { ok: true, id };
+}
+
+export async function deleteProject(id: number): Promise<ActionResult> {
+  try {
+    const deleted = await sql<{ id: number }[]>`
+      DELETE FROM projects WHERE id = ${id} RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return { ok: false, message: "That project no longer exists." };
+    }
+  } catch (error) {
+    // tasks.project_id is ON DELETE RESTRICT, so a project that still has tasks
+    // cannot be removed. 23001 is restrict_violation; 23503 is what NO ACTION
+    // raises, and both mean the same thing here. This is a rule the user can act
+    // on, so it is reported rather than thrown.
+    const code = (error as { code?: string }).code;
+
+    if (code === "23001" || code === "23503") {
+      const [row] = await sql<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count FROM tasks WHERE project_id = ${id}
+      `;
+
+      const count = row?.count ?? 0;
+
+      return {
+        ok: false,
+        message:
+          count === 1
+            ? "This project still has 1 task. Delete it before deleting the project."
+            : `This project still has ${count} tasks. Delete them before deleting the project.`,
+      };
+    }
+
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to delete project.",
+    };
+  }
+
+  return { ok: true, id };
+}
