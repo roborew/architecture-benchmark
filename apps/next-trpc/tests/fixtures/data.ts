@@ -58,6 +58,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Draft navigation model",
       "description": "Map the navigation structure for the public and authenticated product areas.",
       "status": "in progress",
+      "assigneeId": 1,
       "assigneeName": "Robin Andrew",
       "commentCount": 2,
       "updatedAt": "2026-09-29T08:00:00Z"
@@ -68,6 +69,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Confirm breakpoint rules",
       "description": "Agree the breakpoints the shared layout tokens are generated from.",
       "status": "todo",
+      "assigneeId": 2,
       "assigneeName": "Alex Morgan",
       "commentCount": 0,
       "updatedAt": "2026-09-28T11:20:00Z"
@@ -78,6 +80,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Prepare content inventory",
       "description": "Collect the copy and imagery currently live across the public pages.",
       "status": "done",
+      "assigneeId": 3,
       "assigneeName": "Sam Taylor",
       "commentCount": 0,
       "updatedAt": "2026-09-27T16:45:00Z"
@@ -90,6 +93,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Review API response shapes",
       "description": "Check the client expectations against the shapes the service returns.",
       "status": "todo",
+      "assigneeId": 2,
       "assigneeName": "Alex Morgan",
       "commentCount": 1,
       "updatedAt": "2026-09-26T10:00:00Z"
@@ -100,6 +104,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Build profile screen",
       "description": "Implement the profile screen for existing workspace members.",
       "status": "in progress",
+      "assigneeId": 1,
       "assigneeName": "Robin Andrew",
       "commentCount": 0,
       "updatedAt": "2026-09-28T09:30:00Z"
@@ -112,6 +117,7 @@ export const projectTasks: Record<number, Task[]> = {
       "title": "Write migration checklist",
       "description": "List the steps and owners for moving to the new platform.",
       "status": "todo",
+      "assigneeId": 3,
       "assigneeName": "Sam Taylor",
       "commentCount": 0,
       "updatedAt": "2026-09-23T11:20:00Z"
@@ -160,6 +166,7 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Draft navigation model",
     "projectName": "Website redesign",
     "status": "in progress",
+    "assigneeId": 1,
     "assigneeName": "Robin Andrew",
     "updatedAt": "2026-09-29T08:00:00Z"
   },
@@ -168,6 +175,7 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Confirm breakpoint rules",
     "projectName": "Website redesign",
     "status": "todo",
+    "assigneeId": 2,
     "assigneeName": "Alex Morgan",
     "updatedAt": "2026-09-28T11:20:00Z"
   },
@@ -176,6 +184,7 @@ export const dashboardRecentTasks: DashboardTask[] = [
     "title": "Build profile screen",
     "projectName": "Mobile application",
     "status": "in progress",
+    "assigneeId": 1,
     "assigneeName": "Robin Andrew",
     "updatedAt": "2026-09-28T09:30:00Z"
   }

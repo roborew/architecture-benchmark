@@ -9,27 +9,16 @@
 // the live module from there would freeze the developer's URL into the query
 // layer, so the string helpers have to be importable on their own.
 
-/**
- * Query parameters that belong to a Prisma-style URL and mean nothing to Postgres.
- *
- * `?schema=public` names the Prisma *client's* search path. It is not a libpq
- * connection option, so `postgres.js` and `node-postgres` both forward it to the
- * server as a startup parameter and the connection is refused outright with
- * `unrecognized configuration parameter "schema"` — before a single test runs.
- *
- * The schema is `public` either way, so dropping it changes nothing about where
- * the tables live. The URL is shared across the app variants in this repo, so it
- * is stripped here rather than by editing each variant's (git-ignored) `.env`.
- */
-const PRISMA_ONLY_PARAMS = ["schema"];
-
-/** A connection string with any driver-foreign query parameters removed. */
+/** A connection string with driver-foreign query parameters removed. */
 export function normaliseConnectionString(raw: string): string {
   const url = new URL(raw);
 
-  for (const param of PRISMA_ONLY_PARAMS) {
-    url.searchParams.delete(param);
-  }
+  // `?schema=public` is not a libpq connection option, and both postgres.js and
+  // node-postgres forward any parameter they do not recognise to the server as a
+  // startup parameter — which Postgres rejects with `unrecognized configuration
+  // parameter` (42704). The schema is `public` either way, so dropping it changes
+  // nothing about where the tables live.
+  url.searchParams.delete("schema");
 
   return url.toString();
 }

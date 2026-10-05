@@ -2,11 +2,7 @@ import Link from "next/link";
 import { DashboardStats } from "./_components/dashboard-stats";
 import { RecentTasks } from "./_components/recent-tasks";
 import { DashboardProjects } from "./_components/dashboard-projects";
-import {
-  getDashboardProjects,
-  getDashboardStats,
-  getRecentTasks,
-} from "@/lib/data";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 const outlineAction =
   "inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50";
@@ -38,10 +34,11 @@ export default async function Home() {
   // Three independent aggregates, so they run concurrently rather than in
   // sequence. Reading them rather than importing a fixture is what makes a task
   // created moments ago show up here.
+  const queryClient = getQueryClient();
   const [stats, recentTasks, projects] = await Promise.all([
-    getDashboardStats(),
-    getRecentTasks(),
-    getDashboardProjects(),
+    queryClient.fetchQuery(trpc.tasks.dashboardStats.queryOptions()),
+    queryClient.fetchQuery(trpc.tasks.recent.queryOptions()),
+    queryClient.fetchQuery(trpc.projects.dashboard.queryOptions()),
   ]);
 
   return (

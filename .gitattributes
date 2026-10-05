@@ -1,0 +1,9 @@
+# Snapshot and schema fixtures are hashed byte-for-byte against the digests
+# recorded in spec/snapshots/<profile>/manifest.json. A CRLF rewrite on checkout
+# changes those bytes and the seed aborts with a digest mismatch, so Git must
+# treat them as opaque and never normalise line endings.
+spec/snapshots/**/*.csv -text
+
+# spec/schema.sql is normative: the rig diffs every variant's live schema
+# against it. A CRLF rewrite there shows up as a phantom whitespace-only diff.
+spec/**/*.sql -text

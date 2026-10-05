@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProjectDetail } from "@/app/projects/_components/project-detail";
-import { getProject, getProjectTasks } from "@/lib/data";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function ProjectDetailPage({
   params,
@@ -18,7 +18,9 @@ export default async function ProjectDetailPage({
 
   const projectId = Number(id);
   const project = Number.isInteger(projectId)
-    ? await getProject(projectId)
+    ? await getQueryClient().fetchQuery(
+        trpc.projects.byId.queryOptions({ id: projectId }),
+      )
     : null;
   if (!project) {
     return (
@@ -57,11 +59,14 @@ export default async function ProjectDetailPage({
   // Over-fetch by one row to learn whether more exist: the extra row is dropped
   // before rendering, so the page still shows at most `PAGE_SIZE` tasks.
   const PAGE = 25;
-  const fetched = await getProjectTasks(project.id, {
-    status: appliedStatus,
-    cursor,
-    limit: PAGE + 1,
-  });
+  const fetched = await getQueryClient().fetchQuery(
+    trpc.projects.tasks.queryOptions({
+      id: project.id,
+      status: appliedStatus,
+      cursor,
+      limit: PAGE + 1,
+    }),
+  );
 
   const tasks = fetched.slice(0, PAGE);
   const hasMore = fetched.length > PAGE;

@@ -9,8 +9,21 @@ import type {
   TaskWithProject,
   User,
 } from "@/lib/types";
+import type { ActionResult } from "./result";
+import { fieldErrors } from "./result";
+import { z } from "zod";
+
 import { decodeCursor, encodeCursor } from "./cursor";
 import { sql } from "./db";
+
+// This module is the only place that talks to Postgres. Reads (`get*`) throw on
+// failure, because a page that cannot load is a broken page. Writes (`create*`,
+// `update*`, `delete*`) return an `ActionResult` instead, because a refused write
+// is usually ordinary user error the form has to render — see lib/result.ts.
+//
+// Every write keeps its own `try`/`catch` and never rethrows, so a caller cannot
+// forget to handle a fault and so the user-visible message lives beside the
+// statement that can actually produce it.
 
 const escapeLike = (term: string) => term.replace(/[\\%_]/g, "\\$&");
 
@@ -78,6 +91,10 @@ const TASK_PROJECTION_FIELDS = sql`
     t.title,
     t.description,
     t.status,
+    -- The id as well as the name: the edit form has to prefill the assignee
+    -- select, and a display name cannot round-trip a select that holds ids.
+    -- users.display_name is not unique either, so two members can share one.
+    t.assignee_id::int AS "assigneeId",
     COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
     COUNT(c.id)::int AS "commentCount",
     to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"
@@ -582,5 +599,738 @@ export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
   } catch (error) {
     console.error("Database Error:", error);
     throw new Error("Failed to fetch the user's tasks.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+//
+// From here on the module owns every statement that changes a row. The routers in
+// src/trpc/routers/ are left as the transport: they check the input's shape and
+// return whatever comes back here, unchanged.
+// ---------------------------------------------------------------------------
+
+/**
+ * `users.email` has no UNIQUE constraint (spec/schema.sql) and spec/contract.md
+ * requires none, so no uniqueness rule is imposed — two members may legitimately
+ * share an address. The address is still shape-checked because the form declares
+ * `type="email"` and the server should agree.
+ */
+const UserSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "User name is required.")
+    .max(200, "User name must be 200 characters or fewer."),
+  email: z
+    .string()
+    .trim()
+    .min(1, "Email is required.")
+    .email("Enter a valid email address."),
+});
+
+export async function createUser(input: {
+  name: string;
+  email: string;
+}): Promise<ActionResult> {
+  const parsed = UserSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create user.",
+    };
+  }
+
+  const { name, email } = parsed.data;
+
+  try {
+    // RETURNING id so the client can navigate to the row it just created and so a
+    // persisted id is provably allocated (spec/contract.md).
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO users (display_name, email)
+      VALUES (${name}, ${email})
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to create user." };
+  }
+}
+
+export async function updateUser(input: {
+  id: number;
+  name: string;
+  email: string;
+}): Promise<ActionResult> {
+  const { id } = input;
+  const parsed = UserSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to update user.",
+    };
+  }
+
+  const { name, email } = parsed.data;
+
+  try {
+    // RETURNING distinguishes "no such row" from "row updated", so a stale form
+    // cannot report success for a member who is already gone.
+    const updated = await sql<{ id: number }[]>`
+      UPDATE users
+      SET display_name = ${name}, email = ${email}
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return { ok: false, message: "That user no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to update user." };
+  }
+
+  return { ok: true, id };
+}
+
+export async function deleteUser(id: number): Promise<ActionResult> {
+  try {
+    const deleted = await sql<{ id: number }[]>`
+      DELETE FROM users WHERE id = ${id} RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return { ok: false, message: "That user no longer exists." };
+    }
+  } catch (error) {
+    // Two different FKs behave differently here, and the difference is the whole
+    // point of the message:
+    //
+    //   comments.author_id  ON DELETE RESTRICT — the delete is refused and
+    //                                          nothing changes.
+    //   tasks.assignee_id   ON DELETE SET NULL — the delete succeeds and the
+    //                                          tasks become unassigned.
+    //
+    // So a failure here is always the comments restriction: 23001 is
+    // restrict_violation and 23503 is what NO ACTION raises. This is a rule the
+    // user can act on, so it is reported rather than thrown.
+    const code = (error as { code?: string }).code;
+
+    if (code === "23001" || code === "23503") {
+      const [commentRows, taskRows] = await Promise.all([
+        sql<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
+        `,
+        sql<{ count: number }[]>`
+          SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
+        `,
+      ]);
+
+      const commentCount = commentRows[0]?.count ?? 0;
+      const taskCount = taskRows[0]?.count ?? 0;
+
+      return {
+        ok: false,
+        message:
+          `This person still has ${commentCount} ` +
+          `${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
+          `${taskCount === 1 ? "task" : "tasks"}. Remove ` +
+          `${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
+      };
+    }
+
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to delete user." };
+  }
+
+  return { ok: true, id };
+}
+
+// ---------------------------------------------------------------------------
+// Projects writes
+// ---------------------------------------------------------------------------
+
+const ProjectSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Project name is required.")
+    // The schema puts no limit on projects.name, but tasks.title caps at 200.
+    .max(200, "Project name must be 200 characters or fewer."),
+  description: z.string().trim(),
+});
+
+export async function createProject(input: {
+  name: string;
+  /** Optional: the column defaults to '' and an absent description is legal. */
+  description?: string;
+}): Promise<ActionResult> {
+  const parsed = ProjectSchema.safeParse({
+    name: input.name,
+    description: input.description ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create project.",
+    };
+  }
+
+  const { name, description } = parsed.data;
+
+  try {
+    // created_at is NOT NULL with no default, so the server sets it. RETURNING id
+    // so the client has the row it just created.
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO projects (name, description, created_at)
+      VALUES (${name}, ${description}, now())
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to create project.",
+    };
+  }
+}
+
+export async function updateProject(input: {
+  id: number;
+  name: string;
+  description?: string;
+}): Promise<ActionResult> {
+  const { id } = input;
+  const parsed = ProjectSchema.safeParse({
+    name: input.name,
+    description: input.description ?? "",
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to update project.",
+    };
+  }
+
+  const { name, description } = parsed.data;
+
+  try {
+    // RETURNING distinguishes "no such row" from "row updated", so a stale form
+    // cannot report success for a project that is already gone.
+    const updated = await sql<{ id: number }[]>`
+      UPDATE projects
+      SET name = ${name}, description = ${description}
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return { ok: false, message: "That project no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to update project.",
+    };
+  }
+
+  return { ok: true, id };
+}
+
+export async function deleteProject(id: number): Promise<ActionResult> {
+  try {
+    const deleted = await sql<{ id: number }[]>`
+      DELETE FROM projects WHERE id = ${id} RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return { ok: false, message: "That project no longer exists." };
+    }
+  } catch (error) {
+    // tasks.project_id is ON DELETE RESTRICT, so a project that still has tasks
+    // cannot be removed. 23001 is restrict_violation; 23503 is what NO ACTION
+    // raises, and both mean the same thing here. This is a rule the user can act
+    // on, so it is reported rather than thrown.
+    const code = (error as { code?: string }).code;
+
+    if (code === "23001" || code === "23503") {
+      const [row] = await sql<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count FROM tasks WHERE project_id = ${id}
+      `;
+
+      const count = row?.count ?? 0;
+
+      return {
+        ok: false,
+        message:
+          count === 1
+            ? "This project still has 1 task. Delete it before deleting the project."
+            : `This project still has ${count} tasks. Delete them before deleting the project.`,
+      };
+    }
+
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to delete project.",
+    };
+  }
+
+  return { ok: true, id };
+}
+
+// ---------------------------------------------------------------------------
+// Tasks writes
+// ---------------------------------------------------------------------------
+
+/**
+ * The task fields a create or update submits.
+ *
+ * The title bound matches the CHECK (char_length BETWEEN 1 AND 200) in
+ * spec/schema.sql, so the same limit is enforced in the form and the database.
+ */
+const TaskSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title is required.")
+    .max(200, "Title must be 200 characters or fewer."),
+  // An omitted description is legal (the column defaults to ''), so it is
+  // normalised to "" rather than reported as a validation failure.
+  description: z.preprocess(
+    (value) => (value === null || value === undefined ? "" : value),
+    z.string().trim(),
+  ),
+  status: z.enum(["todo", "in progress", "done"], {
+    message: "Choose a valid status.",
+  }),
+});
+
+/**
+ * A comment submitted on its own, or as the first comment of a new task.
+ *
+ * The 1000-character bound matches the CHECK on `comments.body` in
+ * spec/schema.sql, so the form and the database enforce the same limit.
+ */
+const CommentSchema = z.object({
+  commentBody: z
+    .string()
+    .trim()
+    .min(1, "Comment is required.")
+    .max(1000, "Comment must be 1000 characters or fewer."),
+  commentAuthorId: z.number().int().positive(),
+});
+
+/**
+ * Checks the project and assignee a task references, before any insert.
+ *
+ * Both are foreign keys, so an id that matches no row would otherwise fail the
+ * statement with a Postgres error the user cannot act on. Checking first turns it
+ * into a field error against the select they filled in.
+ *
+ * Only worth doing once the field shapes are known to be good — a malformed
+ * status should not send us to the database for a second opinion.
+ */
+async function checkTaskRefs({
+  projectId,
+  assigneeId,
+}: {
+  projectId: number;
+  assigneeId: number | null;
+}): Promise<Record<string, string[]>> {
+  const errors: Record<string, string[]> = {};
+
+  const [project] = await sql<{ id: number }[]>`
+    SELECT id::int FROM projects WHERE id = ${projectId}
+  `;
+
+  if (!project) {
+    errors.projectId = ["That project no longer exists."];
+  }
+
+  // An absent assignee is always fine: unassigned is a legal state.
+  if (assigneeId !== null) {
+    const [assignee] = await sql<{ id: number }[]>`
+      SELECT id::int FROM users WHERE id = ${assigneeId}
+    `;
+
+    if (!assignee) {
+      errors.assigneeId = ["That assignee no longer exists."];
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Checks only the assignee, for the update path.
+ *
+ * An update cannot move a task between projects — `projectId` is not accepted at
+ * all — so the project's existence is not in question. Only the assignee can
+ * change, and only it can be dangling.
+ */
+async function checkAssigneeRef(
+  assigneeId: number | null,
+): Promise<Record<string, string[]>> {
+  if (assigneeId === null) return {};
+
+  const [assignee] = await sql<{ id: number }[]>`
+    SELECT id::int FROM users WHERE id = ${assigneeId}
+  `;
+
+  return assignee ? {} : { assigneeId: ["That assignee no longer exists."] };
+}
+
+/** The stored `project_id` of a task, or `null` when no row matches. */
+async function projectOfTask(taskId: number) {
+  const [row] = await sql<{ project_id: number }[]>`
+    SELECT project_id::int FROM tasks WHERE id = ${taskId}
+  `;
+
+  return row ?? null;
+}
+
+export async function createTask(input: {
+  title: string;
+  description?: string;
+  status: string;
+  projectId: number;
+  /** `null` means unassigned — spec/contract.md gives no other way to say it. */
+  assigneeId?: number | null;
+}): Promise<ActionResult> {
+  const parsed = TaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create task.",
+    };
+  }
+
+  const { title, description, status } = parsed.data;
+  const assigneeId = input.assigneeId ?? null;
+
+  const errors = await checkTaskRefs({
+    projectId: input.projectId,
+    assigneeId,
+  });
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      ok: false,
+      errors,
+      message: "Missing fields. Failed to create task.",
+    };
+  }
+
+  try {
+    // created_at and updated_at are NOT NULL with no default, so the server sets
+    // both explicitly and to the same instant.
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO tasks (
+        project_id, assignee_id, title, description, status, created_at, updated_at
+      )
+      VALUES (
+        ${input.projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
+      )
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to create task." };
+  }
+}
+
+/**
+ * spec/queries.md — "Update task" by primary key, with `updated_at` set in the
+ * statement rather than by a DB default or an ORM side effect. An update counts as
+ * successful only if the intended row now holds the intended value, which
+ * RETURNING confirms.
+ *
+ * `projectId` is deliberately not accepted. spec/contract.md lists the update
+ * form's fields as title, status, assignee and description only — a task belongs
+ * to its project for its lifetime, so accepting one would allow moving a task
+ * behind a form that never offers the choice.
+ */
+export async function updateTask(input: {
+  id: number;
+  title: string;
+  description?: string;
+  status: string;
+  assigneeId?: number | null;
+}): Promise<ActionResult> {
+  const { id } = input;
+  const parsed = TaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to update task.",
+    };
+  }
+
+  const { title, description, status } = parsed.data;
+  const assigneeId = input.assigneeId ?? null;
+
+  const errors = await checkAssigneeRef(assigneeId);
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      ok: false,
+      errors,
+      message: "Missing fields. Failed to update task.",
+    };
+  }
+
+  // Read the project so the client knows which board to revalidate — the task is
+  // leaving it or joining it. Also the only way to tell "no such task" apart from
+  // "task updated", before the UPDATE has run.
+  const existing = await projectOfTask(id);
+
+  if (!existing) {
+    return { ok: false, message: "That task no longer exists." };
+  }
+
+  try {
+    // RETURNING distinguishes "no such row" from "row updated", so a stale form
+    // cannot report success for a task that is already gone.
+    const updated = await sql<{ id: number }[]>`
+      UPDATE tasks
+      SET
+        title = ${title},
+        description = ${description},
+        status = ${status},
+        assignee_id = ${assigneeId},
+        updated_at = now()
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return { ok: false, message: "That task no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to update task." };
+  }
+
+  return { ok: true, id };
+}
+
+/**
+ * spec/queries.md — "Delete task" under the documented cascade: the task's comments
+ * go with it via `comments.task_id` ON DELETE CASCADE.
+ */
+export async function deleteTask(id: number): Promise<ActionResult> {
+  // Read the project first: the client redirects to that board afterwards, and the
+  // task's detail page is not-found once the row is gone.
+  const existing = await projectOfTask(id);
+
+  if (!existing) {
+    return { ok: false, message: "That task no longer exists." };
+  }
+
+  try {
+    const deleted = await sql<{ id: number }[]>`
+      DELETE FROM tasks WHERE id = ${id} RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return { ok: false, message: "That task no longer exists." };
+    }
+  } catch (error) {
+    console.error("Database Error:", error);
+    return { ok: false, message: "Database Error: Failed to delete task." };
+  }
+
+  return { ok: true, id };
+}
+
+/**
+ * spec/queries.md — "Create with initial comment": one transaction inserting the
+ * task then its comment, with any failure rolling back both.
+ *
+ * The transaction matters because the task insert alone would otherwise succeed
+ * and leave a task whose first comment was never written — a partial state the
+ * contract says must never be observable.
+ */
+export async function createTaskWithComment(input: {
+  title: string;
+  description?: string;
+  status: string;
+  projectId: number;
+  assigneeId?: number | null;
+  commentBody: string;
+  commentAuthorId: number;
+}): Promise<ActionResult> {
+  const parsed = TaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to create the task.",
+    };
+  }
+
+  // The comment has its own bound (char_length BETWEEN 1 AND 1000), enforced by
+  // its own schema so the message lands on the comment field.
+  const comment = CommentSchema.safeParse({
+    commentBody: input.commentBody,
+    commentAuthorId: input.commentAuthorId,
+  });
+
+  if (!comment.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(comment.error),
+      message: "Missing fields. Failed to create the task.",
+    };
+  }
+
+  const { title, description, status } = parsed.data;
+  const assigneeId = input.assigneeId ?? null;
+
+  const errors = await checkTaskRefs({
+    projectId: input.projectId,
+    assigneeId,
+  });
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      ok: false,
+      errors,
+      message: "Missing fields. Failed to create the task.",
+    };
+  }
+
+  // The author is a FK like the assignee, so an id that matches no row fails the
+  // insert. Checking first turns that into a field error the user can act on.
+  const [author] = await sql<{ id: number }[]>`
+    SELECT id::int FROM users WHERE id = ${input.commentAuthorId}
+  `;
+
+  if (!author) {
+    return {
+      ok: false,
+      errors: { commentAuthorId: ["That comment author no longer exists."] },
+      message: "Missing fields. Failed to create the task.",
+    };
+  }
+
+  try {
+    const [row] = await sql.begin(async (tx) => {
+      const [task] = await tx<{ id: number }[]>`
+        INSERT INTO tasks (
+          project_id, assignee_id, title, description, status, created_at, updated_at
+        )
+        VALUES (
+          ${input.projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
+        )
+        RETURNING id::int AS id
+      `;
+
+      // Inside the same transaction, so a failure here throws and the task insert
+      // above is rolled back with it.
+      await tx`
+        INSERT INTO comments (task_id, author_id, body, created_at)
+        VALUES (${task.id}, ${input.commentAuthorId}, ${comment.data.commentBody}, now())
+      `;
+
+      return [task];
+    });
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to create the task.",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comments writes
+// ---------------------------------------------------------------------------
+
+/**
+ * Adds a comment to an existing task.
+ *
+ * Separate from `createTaskWithComment` because a comment on an existing task is a
+ * single insert — the atomicity that form needs comes from being one transaction
+ * with the task insert, which this path has no part in.
+ */
+export async function createComment(input: {
+  taskId: number;
+  commentBody: string;
+  commentAuthorId: number;
+}): Promise<ActionResult> {
+  const { taskId } = input;
+  const parsed = CommentSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: fieldErrors(parsed.error),
+      message: "Missing fields. Failed to add the comment.",
+    };
+  }
+
+  const { commentBody, commentAuthorId } = parsed.data;
+
+  // The task and the author are both foreign keys. Checking first turns an unknown
+  // id into a field error the user can act on, rather than a thrown Postgres error.
+  const [[task], [author]] = await Promise.all([
+    sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
+    sql<
+      { id: number }[]
+    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+  ]);
+
+  if (!task) {
+    return { ok: false, message: "That task no longer exists." };
+  }
+
+  if (!author) {
+    return {
+      ok: false,
+      errors: { commentAuthorId: ["That comment author no longer exists."] },
+      message: "Missing fields. Failed to add the comment.",
+    };
+  }
+
+  try {
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO comments (task_id, author_id, body, created_at)
+      VALUES (${taskId}, ${commentAuthorId}, ${commentBody}, now())
+      RETURNING id::int AS id
+    `;
+
+    return { ok: true, id: row.id };
+  } catch (error) {
+    console.error("Database Error:", error);
+    return {
+      ok: false,
+      message: "Database Error: Failed to add the comment.",
+    };
   }
 }

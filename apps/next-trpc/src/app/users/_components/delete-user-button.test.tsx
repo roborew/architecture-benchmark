@@ -1,25 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { DeleteUserButton } from "./delete-user-button";
+import {
+  accepted,
+  rejected,
+  renderWithTrpc,
+} from "@tests/helpers/trpc-harness";
 import { makeUser } from "@tests/fixtures/builders";
 
-// Mirrors DeleteProjectButton: a form whose bound action does the work, plus an
-// alert region for the message the action returns when a foreign key blocks the
-// delete. The action's behaviour is covered against a real database in
-// src/lib/user-actions.integration.test.ts.
+// The control now holds a tRPC mutation rather than calling a Server Action, so
+// the procedure is exercised through the harness instead of being mocked. The
+// procedure's own behaviour is still covered against a real database in
+// tests/integration/user-router.integration.test.ts.
 
-const deleteUser = vi.fn(async () => ({}));
+const push = vi.fn();
 
-vi.mock("@/lib/actions", () => ({
-  deleteUser: (...args: unknown[]) => deleteUser(...(args as [])),
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
 }));
-
-beforeEach(() => {
-  deleteUser.mockClear();
-  deleteUser.mockResolvedValue({});
-});
 
 describe("DeleteUserButton", () => {
   const person = makeUser({ id: 7, name: "Alex Morgan" });
@@ -27,7 +27,7 @@ describe("DeleteUserButton", () => {
   it("names the member in its accessible label", () => {
     // Two members can share a display name, so the control has to identify its
     // row — otherwise a screen-reader user hears the same label twice.
-    render(<DeleteUserButton person={person} />);
+    renderWithTrpc(<DeleteUserButton person={person} />);
 
     const button = screen.getByRole("button", { name: /Delete Alex Morgan/ });
 
@@ -35,45 +35,49 @@ describe("DeleteUserButton", () => {
     expect(button).toHaveAccessibleName(/7/);
   });
 
-  it("submits a form, so the delete works without client state", () => {
-    const { container } = render(<DeleteUserButton person={person} />);
+  it("submits a form, so the control is a single focusable element", () => {
+    const { container } = renderWithTrpc(<DeleteUserButton person={person} />);
 
     expect(container.querySelector("form")).not.toBeNull();
   });
 
-  it("submits the delete when activated", async () => {
+  it("calls users.delete with the member's id", async () => {
     const user = userEvent.setup();
-    render(<DeleteUserButton person={person} />);
+    const { calls } = renderWithTrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
     );
 
-    expect(deleteUser).toHaveBeenCalled();
+    expect(calls).toContainEqual({
+      path: "users.delete",
+      input: { id: person.id },
+    });
   });
 
-  it("reports the message the action returned", async () => {
+  it("reports the message the procedure returned", async () => {
     // A member who authored comments cannot be deleted; the reason has to reach
     // the screen rather than being swallowed.
-    deleteUser.mockResolvedValue({
-      message: "This person still has 2 comments and 2 tasks.",
-    });
-
     const user = userEvent.setup();
-    render(<DeleteUserButton person={person} />);
+    renderWithTrpc(<DeleteUserButton person={person} />, () =>
+      rejected(
+        {},
+        "This person still has 2 comments and 2 tasks. Remove the comments before deleting.",
+      ),
+    );
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This person still has 2 comments and 2 tasks.",
+      "This person still has 2 comments",
     );
   });
 
-  it("shows no alert when the action reported no problem", async () => {
+  it("shows no alert when the procedure reported no problem", async () => {
     const user = userEvent.setup();
-    render(<DeleteUserButton person={person} />);
+    renderWithTrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
@@ -82,26 +86,41 @@ describe("DeleteUserButton", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("disables itself while the delete is in flight", async () => {
-    let settle: (value: Record<string, never>) => void = () => {};
-    deleteUser.mockReturnValueOnce(
-      new Promise((resolve) => {
-        settle = resolve;
-      }),
-    );
-
+  it("leaves the page when the delete succeeds", async () => {
     const user = userEvent.setup();
-    render(<DeleteUserButton person={person} />);
+    renderWithTrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
     );
 
-    // A second click would submit the delete twice.
-    expect(
-      screen.getByRole("button", { name: /Delete Alex Morgan/ }),
-    ).toBeDisabled();
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/users"));
+  });
 
-    settle({});
+  it("disables itself while the delete is in flight", async () => {
+    let release: (value: unknown) => void = () => {};
+    renderWithTrpc(
+      <DeleteUserButton person={person} />,
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: /Delete Alex Morgan/ }),
+    );
+
+    // The control carries an aria-label naming its row, and an aria-label
+    // overrides the text content as the accessible name — so the row is found by
+    // that label and the pending wording is asserted as text.
+    const button = await screen.findByRole("button", {
+      name: /Delete Alex Morgan/,
+    });
+    expect(button).toHaveTextContent("Deleting…");
+    expect(button).toBeDisabled();
+
+    release(accepted());
   });
 });

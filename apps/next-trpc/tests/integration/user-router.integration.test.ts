@@ -1,52 +1,50 @@
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createUser, deleteUser, updateUser, type State } from "@/lib/actions";
 import { getUser, getUsers } from "@/lib/data";
 import { sql } from "@/lib/db";
+import { appRouter } from "@/trpc/routers/_app";
 
 // The people write path, judged by its persisted result rather than by the
-// action's return value alone (spec/contract.md). `users.email` has no UNIQUE
-// constraint (spec/schema.sql), so duplicate addresses are legal and must not
-// be rejected — the schema is the authority, not a nicety the app invented.
+// procedure's return value alone (spec/contract.md). `users.email` has no UNIQUE
+// constraint (spec/schema.sql), so duplicate addresses are legal and must not be
+// rejected — the schema is the authority, not a nicety the app invented.
+//
+// Procedures are invoked through a caller rather than the Server Actions these
+// replaced. One consequence makes this file much simpler: a successful mutation
+// used to end in `redirect()`, which threw outside a Next request context, so
+// every success case needed `await expect(...).rejects.toThrow()` and then a
+// read-back. A procedure returns `{ ok: true, id }` instead, so the id it
+// reports is the id the test asserts against.
 
 afterAll(async () => {
   await sql.end();
 });
 
-function form(name: string, email: string) {
-  const data = new FormData();
-  data.append("name", name);
-  data.append("email", email);
+const caller = appRouter.createCaller({});
 
-  return data;
-}
-
-/**
- * Runs an action expected to succeed. A successful mutation ends in
- * `revalidatePath` + `redirect`, which throw outside a Next request context;
- * either way the row is committed, which is what each test then reads back.
- */
-async function run(action: Promise<State>): Promise<void> {
-  try {
-    await action;
-  } catch {
-    // Expected: the action unwound after writing.
-  }
+/** Narrows a refused result so the field errors are readable. */
+function refusal(result: Awaited<ReturnType<typeof caller.users.create>>) {
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected the procedure to refuse");
+  return result;
 }
 
 /**
  * Creates a member and returns the stored row.
  *
- * Looks the row up by id rather than by the submitted name, so a test may pass
- * an untrimmed value and still find what the server persisted.
+ * Reads the row back by the id the procedure reported, rather than diffing the
+ * list by name, so a test may pass an untrimmed value and still find what was
+ * actually persisted.
  */
 async function makeUser(name: string, email: string) {
-  const before = new Set((await getUsers()).map((u) => u.id));
+  const result = await caller.users.create({ name, email });
 
-  await run(createUser({}, form(name, email)));
+  if (!result.ok) {
+    throw new Error(`could not create ${name}: ${result.message}`);
+  }
 
-  const created = (await getUsers()).find((u) => !before.has(u.id));
-  expect(created, `could not create ${name}`).toBeDefined();
+  const created = await getUser(result.id);
+  expect(created, `could not read back ${name}`).not.toBeNull();
 
   return created!;
 }
@@ -55,7 +53,7 @@ async function removeUser(name: string) {
   await sql`DELETE FROM users WHERE display_name = ${name}`;
 }
 
-describe("createUser", () => {
+describe("users.create", () => {
   it("inserts a row that the read layer returns", async () => {
     const before = await getUsers();
 
@@ -75,30 +73,51 @@ describe("createUser", () => {
     await removeUser("Integration created");
   });
 
+  it("reports the allocated id", async () => {
+    // spec/contract.md: a create must leave a persisted id behind, not merely
+    // return success.
+    const result = await caller.users.create({
+      name: "Integration id",
+      email: "integration-id@example.test",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(await getUser(result.id)).not.toBeNull();
+
+    await removeUser("Integration id");
+  });
+
   it("rejects a blank name without inserting", async () => {
     const before = await getUsers();
 
-    const state = await createUser({}, form("   ", "blank@example.test"));
+    const result = refusal(
+      await caller.users.create({ name: "   ", email: "blank@example.test" }),
+    );
 
-    expect(state.errors?.name?.[0]).toBe("User name is required.");
+    expect(result.errors?.name?.[0]).toBe("User name is required.");
     expect(await getUsers()).toHaveLength(before.length);
   });
 
   it("rejects a blank email without inserting", async () => {
     const before = await getUsers();
 
-    const state = await createUser({}, form("No Email", "  "));
+    const result = refusal(
+      await caller.users.create({ name: "No Email", email: "  " }),
+    );
 
-    expect(state.errors?.email?.[0]).toBe("Email is required.");
+    expect(result.errors?.email?.[0]).toBe("Email is required.");
     expect(await getUsers()).toHaveLength(before.length);
   });
 
   it("rejects a malformed email address", async () => {
     const before = await getUsers();
 
-    const state = await createUser({}, form("Bad Email", "not-an-email"));
+    const result = refusal(
+      await caller.users.create({ name: "Bad Email", email: "not-an-email" }),
+    );
 
-    expect(state.errors?.email?.[0]).toBeDefined();
+    expect(result.errors?.email?.[0]).toBeDefined();
     expect(await getUsers()).toHaveLength(before.length);
   });
 
@@ -131,20 +150,20 @@ describe("createUser", () => {
   });
 });
 
-describe("updateUser", () => {
+describe("users.update", () => {
   it("updates the intended row and nothing else", async () => {
     const created = await makeUser(
       "Integration to edit",
       "before@example.test",
     );
 
-    await expect(
-      updateUser(
-        created.id,
-        {},
-        form("Integration edited", "after@example.test"),
-      ),
-    ).rejects.toThrow();
+    const result = await caller.users.update({
+      id: created.id,
+      name: "Integration edited",
+      email: "after@example.test",
+    });
+
+    expect(result.ok).toBe(true);
 
     const updated = await getUser(created.id);
     expect(updated?.name).toBe("Integration edited");
@@ -160,9 +179,11 @@ describe("updateUser", () => {
       (u) => u.email === "robin@example.test",
     )!;
 
-    await expect(
-      updateUser(robin.id, {}, form("Robin Andrew", "robin@example.test")),
-    ).rejects.toThrow();
+    await caller.users.update({
+      id: robin.id,
+      name: "Robin Andrew",
+      email: "robin@example.test",
+    });
 
     const after = await getUser(robin.id);
     expect(after?.assignedTaskCount).toBe(robin.assignedTaskCount);
@@ -175,38 +196,43 @@ describe("updateUser", () => {
       "keep@example.test",
     );
 
-    const state = await updateUser(
-      created.id,
-      {},
-      form("  ", "new@example.test"),
+    const result = refusal(
+      await caller.users.update({
+        id: created.id,
+        name: "  ",
+        email: "new@example.test",
+      }),
     );
 
-    expect(state.errors?.name?.[0]).toBe("User name is required.");
+    expect(result.errors?.name?.[0]).toBe("User name is required.");
     expect((await getUser(created.id))?.email).toBe("keep@example.test");
 
     await removeUser("Integration reject edit");
   });
 
   it("reports rather than claims success for a row that no longer exists", async () => {
-    const state = await updateUser(
-      999_999,
-      {},
-      form("Ghost", "ghost@example.test"),
+    const result = refusal(
+      await caller.users.update({
+        id: 999_999,
+        name: "Ghost",
+        email: "ghost@example.test",
+      }),
     );
 
-    expect(state.message).toBe("That user no longer exists.");
+    expect(result.message).toBe("That user no longer exists.");
   });
 });
 
-describe("deleteUser", () => {
+describe("users.delete", () => {
   it("removes a member who has no work attached", async () => {
     const created = await makeUser(
       "Integration to delete",
       "delete@example.test",
     );
 
-    await expect(deleteUser(created.id, {}, new FormData())).rejects.toThrow();
+    const result = await caller.users.delete({ id: created.id });
 
+    expect(result.ok).toBe(true);
     expect(await getUser(created.id)).toBeNull();
   });
 
@@ -224,9 +250,9 @@ describe("deleteUser", () => {
     `;
 
     try {
-      await expect(
-        deleteUser(created.id, {}, new FormData()),
-      ).rejects.toThrow();
+      const result = await caller.users.delete({ id: created.id });
+
+      expect(result.ok).toBe(true);
 
       const [row] = await sql<{ assignee_id: number | null }[]>`
         SELECT assignee_id FROM tasks WHERE id = ${task.id}
@@ -245,9 +271,9 @@ describe("deleteUser", () => {
       (u) => u.email === "alex@example.test",
     )!;
 
-    const state = await deleteUser(alex.id, {}, new FormData());
+    const result = refusal(await caller.users.delete({ id: alex.id }));
 
-    expect(state.message).toContain("still has 2 comments");
+    expect(result.message).toContain("still has 2 comments");
     expect(await getUser(alex.id)).not.toBeNull();
   });
 
@@ -256,16 +282,16 @@ describe("deleteUser", () => {
       (u) => u.email === "alex@example.test",
     )!;
 
-    const state = await deleteUser(alex.id, {}, new FormData());
+    const result = refusal(await caller.users.delete({ id: alex.id }));
 
     // Alex also has assigned tasks, so the message names both blockers.
-    expect(state.message).toContain("2 comments");
-    expect(state.message).toContain("2 tasks");
+    expect(result.message).toContain("2 comments");
+    expect(result.message).toContain("2 tasks");
   });
 
   it("reports rather than claims success for a row that no longer exists", async () => {
-    const state = await deleteUser(999_999, {}, new FormData());
+    const result = refusal(await caller.users.delete({ id: 999_999 }));
 
-    expect(state.message).toBe("That user no longer exists.");
+    expect(result.message).toBe("That user no longer exists.");
   });
 });

@@ -7,19 +7,23 @@
 // (spec/queries.md: one transaction, task and comment or neither). Merging them
 // would make every plain create pay for a comment field the user did not fill in.
 //
-// A Client Component because `useActionState` supplies the validation state and
-// the pending flags. The actions themselves still run on the server.
+// A Client Component because the mutations are imperative calls. This replaced
+// `useActionState` forms, so two things changed shape:
+//
+//   1. There is no <form action={...}> any more — a mutation is a function call,
+//      so the forms submit through onSubmit and need JS to submit at all.
+//   2. There is no action-supplied state, so the { errors, message } the actions
+//      used to return is held in `state` below. The JSX that renders it is
+//      unchanged, which is the point: tRPC's error contract is the same shape.
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import type { Project, Task, User } from "@/lib/types";
-import {
-  createTask,
-  createTaskWithComment,
-  updateTask,
-  type State,
-} from "@/lib/actions";
+import type { ActionResult, FieldErrors } from "@/trpc/result";
+import { useTRPC } from "@/trpc/client";
 import {
   cancelClass,
   createClass,
@@ -29,7 +33,7 @@ import {
   textareaClass,
 } from "@/lib/form-styles";
 
-const initialState: State = {};
+type FormState = { errors?: FieldErrors; message?: string | null };
 
 const STATUSES: { value: Task["status"]; label: string }[] = [
   { value: "todo", label: "To do" },
@@ -116,17 +120,19 @@ function AssigneeSelect({
 function StatusSelect({
   defaultValue,
   invalid,
+  idPrefix,
 }: {
   defaultValue: Task["status"];
   invalid?: boolean;
+  idPrefix: string;
 }) {
   return (
     <div>
-      <label htmlFor="task-status" className={labelClass}>
+      <label htmlFor={`${idPrefix}-status`} className={labelClass}>
         Status
       </label>
       <select
-        id="task-status"
+        id={`${idPrefix}-status`}
         name="status"
         defaultValue={defaultValue}
         aria-invalid={invalid ? true : undefined}
@@ -175,17 +181,83 @@ export function TaskForm({
 }) {
   const isEdit = task !== undefined;
 
-  // `updateTask` takes the id first; binding it leaves the
-  // (previousState, formData) signature `useActionState` expects.
-  const action = isEdit ? updateTask.bind(null, task.id) : createTask;
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const router = useRouter();
 
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, setState] = useState<FormState>({});
 
-  // Controlled rather than `defaultValue`: React resets an uncontrolled form
-  // once the action it submitted to settles, so a rejected submit would blank
-  // the fields the user just typed.
+  // Controlled rather than `defaultValue`: a rejected submit must not blank the
+  // fields the user just typed — precisely when they most need to see what went
+  // wrong.
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
+
+  // `mutationOptions()` builds the options object; TanStack's useMutation runs it.
+  // The proxy has no `.useMutation()` — that was the old @trpc/react-query API.
+  // Both are constructed unconditionally so the hook order is stable.
+  const created = useMutation(trpc.tasks.create.mutationOptions());
+  const updated = useMutation(trpc.tasks.update.mutationOptions());
+  const pending = isEdit ? updated.isPending : created.isPending;
+
+  /**
+   * Shared by both mutations. A refused mutation is expected user error, not an
+   * exception, so it renders instead of throwing — the procedure returns
+   * { ok: false } and the form shows the field message.
+   *
+   * On success the Server Actions used to call revalidatePath on the task list,
+   * this task's detail page and its project board before redirecting. Those become
+   * query invalidations, and the redirect becomes router.push.
+   */
+  async function settle(result: ActionResult, destination: string) {
+    if (!result.ok) {
+      setState({ errors: result.errors, message: result.message });
+      return;
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
+      queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
+      queryClient.invalidateQueries(trpc.tasks.byId.queryFilter()),
+    ]);
+
+    router.push(destination);
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState({});
+
+    const fields = new FormData(event.currentTarget);
+    // `assigneeId` is `number | null`, never undefined: spec/contract.md gives
+    // exactly one way to unassign, and that is an explicit empty choice.
+    const assigneeId = Number(fields.get("assigneeId")) || null;
+
+    if (isEdit && task) {
+      updated.mutate(
+        {
+          id: task.id,
+          title,
+          description,
+          status: fields.get("status") as string,
+          assigneeId,
+        },
+        { onSuccess: (result) => settle(result, `/tasks/${task.id}`) },
+      );
+      return;
+    }
+
+    created.mutate(
+      {
+        title,
+        description,
+        status: fields.get("status") as string,
+        projectId: Number(fields.get("projectId")),
+        assigneeId,
+      },
+      { onSuccess: (result) => settle(result, "/tasks") },
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
@@ -205,7 +277,7 @@ export function TaskForm({
 
       <div className="grid gap-5">
         <Panel>
-          <form action={formAction} data-testid="create-task-form">
+          <form onSubmit={handleSubmit} data-testid="create-task-form">
             <FormMessage message={state.message} />
 
             <label htmlFor="task-title" className={labelClass}>
@@ -273,7 +345,7 @@ export function TaskForm({
 
               <AssigneeSelect
                 people={people}
-                defaultValue={null}
+                defaultValue={task?.assigneeId ?? null}
                 invalid={Boolean(state.errors?.assigneeId)}
                 idPrefix="task"
               />
@@ -281,6 +353,7 @@ export function TaskForm({
               <StatusSelect
                 defaultValue={task?.status ?? "todo"}
                 invalid={Boolean(state.errors?.status)}
+                idPrefix="task"
               />
             </div>
 
@@ -327,14 +400,51 @@ function CreateWithCommentForm({
   projects: Project[];
   people: User[];
 }) {
-  const [state, formAction, pending] = useActionState(
-    createTaskWithComment,
-    initialState,
-  );
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  const [state, setState] = useState<FormState>({});
+
+  const created = useMutation(trpc.tasks.createWithComment.mutationOptions());
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState({});
+
+    const fields = new FormData(event.currentTarget);
+
+    created.mutate(
+      {
+        title: fields.get("title") as string,
+        description: "",
+        status: fields.get("status") as string,
+        projectId: Number(fields.get("projectId")),
+        assigneeId: Number(fields.get("assigneeId")) || null,
+        commentBody: fields.get("commentBody") as string,
+        commentAuthorId: Number(fields.get("commentAuthorId")),
+      },
+      {
+        onSuccess: async (result: ActionResult) => {
+          if (!result.ok) {
+            setState({ errors: result.errors, message: result.message });
+            return;
+          }
+
+          await Promise.all([
+            queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
+            queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
+          ]);
+
+          router.push("/tasks");
+        },
+      },
+    );
+  }
 
   return (
     <Panel>
-      <form action={formAction} data-testid="create-with-comment-form">
+      <form onSubmit={handleSubmit} data-testid="create-with-comment-form">
         <h2 className="mb-1 text-[15px] font-bold tracking-[-.02em] text-slate-800">
           New task with a first comment
         </h2>
@@ -409,12 +519,34 @@ function CreateWithCommentForm({
           </div>
         </div>
 
+        {/* spec/contract.md gives this form "the create-task fields plus
+            commentBody and commentAuthor". The status select was missing, so the
+            form submitted `status: null` and every submit was refused by the enum
+            — the atomic path could not be exercised at all from the browser. */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <StatusSelect
+            defaultValue="todo"
+            invalid={Boolean(state.errors?.status)}
+            idPrefix="cwc"
+          />
+        </div>
+
+        {state.errors?.status ? (
+          <p className="mt-2 text-[11px] font-semibold text-red-600">
+            {state.errors.status[0]}
+          </p>
+        ) : null}
+
         <div className="mt-5 flex items-center justify-end gap-2">
           <Link href="/tasks" className={cancelClass}>
             Cancel
           </Link>
-          <button type="submit" disabled={pending} className={createClass}>
-            {pending ? "Creating…" : "Create with comment"}
+          <button
+            type="submit"
+            disabled={created.isPending}
+            className={createClass}
+          >
+            {created.isPending ? "Creating…" : "Create with comment"}
           </button>
         </div>
       </form>

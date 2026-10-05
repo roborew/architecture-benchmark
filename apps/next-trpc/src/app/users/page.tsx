@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { UserTable } from "./_components/user-table";
-import { getUsers } from "@/lib/data";
 import { Suspense } from "react";
 import { SearchInput } from "../_components/search-input";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function UsersPage({
   searchParams,
@@ -11,7 +11,9 @@ export default async function UsersPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.q) ? params.q[0] : params.q;
-  const people = await getUsers(raw ?? "");
+  const people = await getQueryClient().fetchQuery(
+    trpc.users.list.queryOptions({ search: raw ?? "" }),
+  );
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">

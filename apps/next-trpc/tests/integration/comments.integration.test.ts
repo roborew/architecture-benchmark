@@ -1,17 +1,24 @@
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createComment, type State } from "@/lib/actions";
 import { getComments } from "@/lib/data";
 import { sql } from "@/lib/db";
+import { appRouter } from "@/trpc/routers/_app";
 import { loadComments, loadUsers } from "../fixtures/load";
 
 // spec/queries.md — task detail shows "the 10 most recent comments with author
 // names", ordered `created_at DESC, id DESC`. The bound is the point: an
 // unbounded read would load every comment a task ever accumulated.
+//
+// The write half drives `comments.create` rather than the createComment Server
+// Action it replaced. A successful action ended in revalidatePath/redirect, which
+// throw outside a Next request context, so each case wrapped it in a `try`/`catch`;
+// the procedure returns `{ ok: true, id }` and the throw goes away.
 
 afterAll(async () => {
   await sql.end();
 });
+
+const caller = appRouter.createCaller({});
 
 const fixtureComments = loadComments();
 const fixtureUsers = loadUsers();
@@ -19,22 +26,30 @@ const fixtureUsers = loadUsers();
 const userName = (id: number) =>
   fixtureUsers.find((u) => u.id === id)?.displayName ?? "";
 
-async function run(action: Promise<State>): Promise<void> {
-  try {
-    await action;
-  } catch {
-    // Expected: the action unwound after writing.
-  }
+/** Narrows a refused result so the field errors and message are readable. */
+function refusal(result: Awaited<ReturnType<typeof caller.comments.create>>) {
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected the procedure to refuse");
+  return result;
 }
 
-function form(fields: Record<string, string>) {
-  const data = new FormData();
+/** Adds a comment and returns the id the procedure reported. */
+async function makeComment(
+  taskId: number,
+  commentBody: string,
+  commentAuthorId: number,
+) {
+  const result = await caller.comments.create({
+    taskId,
+    commentBody,
+    commentAuthorId,
+  });
 
-  for (const [key, value] of Object.entries(fields)) {
-    data.append(key, value);
+  if (!result.ok) {
+    throw new Error(`could not add a comment: ${result.message}`);
   }
 
-  return data;
+  return result.id;
 }
 
 describe("getComments", () => {
@@ -114,13 +129,7 @@ describe("getComments", () => {
   });
 
   it("shows a newly added comment immediately", async () => {
-    await run(
-      createComment(
-        104,
-        {},
-        form({ commentBody: "Integration live", commentAuthorId: "1" }),
-      ),
-    );
+    const id = await makeComment(104, "Integration live", 1);
 
     try {
       const comments = await getComments(104);
@@ -128,7 +137,7 @@ describe("getComments", () => {
       expect(comments[0].body).toBe("Integration live");
       expect(comments[0].authorName).toBe(userName(1));
     } finally {
-      await sql`DELETE FROM comments WHERE body = 'Integration live'`;
+      await sql`DELETE FROM comments WHERE id = ${id}`;
     }
   });
 });
@@ -137,13 +146,7 @@ describe("createComment", () => {
   it("adds a comment that the read layer returns", async () => {
     const before = await getComments(104);
 
-    await run(
-      createComment(
-        104,
-        {},
-        form({ commentBody: "Integration added", commentAuthorId: "3" }),
-      ),
-    );
+    const id = await makeComment(104, "Integration added", 3);
 
     const after = await getComments(104);
 
@@ -151,69 +154,58 @@ describe("createComment", () => {
     expect(after[0].body).toBe("Integration added");
     expect(after[0].authorName).toBe(userName(3));
 
-    await sql`DELETE FROM comments WHERE body = 'Integration added'`;
+    await sql`DELETE FROM comments WHERE id = ${id}`;
   });
 
   it("sets created_at explicitly, since the column has no default", async () => {
-    await run(
-      createComment(
-        104,
-        {},
-        form({ commentBody: "Integration timed", commentAuthorId: "1" }),
-      ),
-    );
+    const id = await makeComment(104, "Integration timed", 1);
 
-    const [row] = await sql<{ id: number }[]>`
-      SELECT id::int FROM comments WHERE body = 'Integration timed'
-    `;
     const [created] = await sql<{ created_at: Date }[]>`
-      SELECT created_at FROM comments WHERE id = ${row.id}
+      SELECT created_at FROM comments WHERE id = ${id}
     `;
 
     expect(created?.created_at).toBeInstanceOf(Date);
 
-    await sql`DELETE FROM comments WHERE body = 'Integration timed'`;
+    await sql`DELETE FROM comments WHERE id = ${id}`;
   });
 
   it("trims the body", async () => {
-    await run(
-      createComment(
-        104,
-        {},
-        form({ commentBody: "  Integration trimmed  ", commentAuthorId: "1" }),
-      ),
-    );
+    const id = await makeComment(104, "  Integration trimmed  ", 1);
 
     const comments = await getComments(104);
 
     expect(comments[0].body).toBe("Integration trimmed");
 
-    await sql`DELETE FROM comments WHERE body = 'Integration trimmed'`;
+    await sql`DELETE FROM comments WHERE id = ${id}`;
   });
 
   it("rejects a blank body without inserting", async () => {
     const before = await getComments(104);
 
-    const state = await createComment(
-      104,
-      {},
-      form({ commentBody: "   ", commentAuthorId: "1" }),
+    const result = refusal(
+      await caller.comments.create({
+        taskId: 104,
+        commentBody: "   ",
+        commentAuthorId: 1,
+      }),
     );
 
-    expect(state.errors?.commentBody?.[0]).toBeDefined();
+    expect(result.errors?.commentBody?.[0]).toBeDefined();
     expect(await getComments(104)).toHaveLength(before.length);
   });
 
   it("rejects a body over the 1000-character bound the schema enforces", async () => {
     const before = await getComments(104);
 
-    const state = await createComment(
-      104,
-      {},
-      form({ commentBody: "x".repeat(1001), commentAuthorId: "1" }),
+    const result = refusal(
+      await caller.comments.create({
+        taskId: 104,
+        commentBody: "x".repeat(1001),
+        commentAuthorId: 1,
+      }),
     );
 
-    expect(state.errors?.commentBody?.[0]).toContain(
+    expect(result.errors?.commentBody?.[0]).toContain(
       "1000 characters or fewer",
     );
     expect(await getComments(104)).toHaveLength(before.length);
@@ -222,24 +214,28 @@ describe("createComment", () => {
   it("rejects an author that does not exist", async () => {
     const before = await getComments(104);
 
-    const state = await createComment(
-      104,
-      {},
-      form({ commentBody: "Integration ghost", commentAuthorId: "999999" }),
+    const result = refusal(
+      await caller.comments.create({
+        taskId: 104,
+        commentBody: "Integration ghost",
+        commentAuthorId: 999_999,
+      }),
     );
 
-    expect(state.errors?.commentAuthorId?.[0]).toBeDefined();
+    expect(result.errors?.commentAuthorId?.[0]).toBeDefined();
     expect(await getComments(104)).toHaveLength(before.length);
   });
 
   it("reports rather than claims success for a task that no longer exists", async () => {
-    const state = await createComment(
-      999_999,
-      {},
-      form({ commentBody: "Integration orphan", commentAuthorId: "1" }),
+    const result = refusal(
+      await caller.comments.create({
+        taskId: 999_999,
+        commentBody: "Integration orphan",
+        commentAuthorId: 1,
+      }),
     );
 
-    expect(state.message).toBe("That task no longer exists.");
+    expect(result.message).toBe("That task no longer exists.");
   });
 
   it("counts toward the task's comment count on the list", async () => {
@@ -248,19 +244,13 @@ describe("createComment", () => {
     // Seeded task 105 has no comments, so its count starts at zero.
     expect((await getTask(105))?.commentCount).toBe(0);
 
-    await run(
-      createComment(
-        105,
-        {},
-        form({ commentBody: "Integration counted", commentAuthorId: "1" }),
-      ),
-    );
+    const id = await makeComment(105, "Integration counted", 1);
 
     try {
       // The list and the detail run different queries; the count must agree.
       expect((await getTask(105))?.commentCount).toBe(1);
     } finally {
-      await sql`DELETE FROM comments WHERE body = 'Integration counted'`;
+      await sql`DELETE FROM comments WHERE id = ${id}`;
     }
   });
 });

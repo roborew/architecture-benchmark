@@ -19,6 +19,8 @@ export type Task = {
   title: string;
   description: string;
   status: TaskStatus;
+  /** The assignee's id, or null when unassigned. Prefills the edit form's select. */
+  assigneeId: number | null;
   assigneeName: string;
   commentCount: number;
   updatedAt: string;

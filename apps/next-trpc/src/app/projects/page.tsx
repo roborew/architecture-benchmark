@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ProjectList } from "./_components/project-list";
-import { getProjects } from "@/lib/data";
 import { Suspense } from "react";
 import { SearchInput } from "../_components/search-input";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function ProjectsPage({
   searchParams,
@@ -11,7 +11,9 @@ export default async function ProjectsPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.q) ? params.q[0] : params.q;
-  const projects = await getProjects((raw ?? "").trim());
+  const projects = await getQueryClient().fetchQuery(
+    trpc.projects.list.queryOptions({ search: (raw ?? "").trim() }),
+  );
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">

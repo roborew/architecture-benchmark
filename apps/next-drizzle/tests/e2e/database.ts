@@ -49,9 +49,9 @@ export function e2eConnectionString(): string {
     );
   }
 
-  // Normalised before the database name is swapped, so a Prisma-style
-  // `?schema=public` cannot reach node-postgres and abort the CREATE/DROP
-  // connection with `unrecognized configuration parameter`.
+  // Normalised before the database name is swapped, so a driver-foreign
+  // `?schema=` cannot reach node-postgres as a startup parameter and abort the
+  // CREATE/DROP connection with `unrecognized configuration parameter`.
   return e2eDatabaseUrl(base, E2E_DATABASE);
 }
 
