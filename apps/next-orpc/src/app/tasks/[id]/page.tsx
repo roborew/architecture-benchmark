@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TaskDetail } from "./_components/task-detail";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function TaskDetailPage({
   params,
@@ -13,7 +13,7 @@ export default async function TaskDetailPage({
   // than by title, which is what the in-memory fixture lookup did.
   const task = Number.isInteger(taskId)
     ? await getQueryClient().fetchQuery(
-        trpc.tasks.byId.queryOptions({ id: taskId }),
+        orpc.tasks.byId.queryOptions({ input: { id: taskId } }),
       )
     : null;
 
@@ -41,8 +41,12 @@ export default async function TaskDetailPage({
   // they run concurrently.
   const queryClient = getQueryClient();
   const [comments, people] = await Promise.all([
-    queryClient.fetchQuery(trpc.tasks.comments.queryOptions({ id: task.id })),
-    queryClient.fetchQuery(trpc.users.list.queryOptions({ search: "" })),
+    queryClient.fetchQuery(
+      orpc.tasks.comments.queryOptions({ input: { id: task.id } }),
+    ),
+    queryClient.fetchQuery(
+      orpc.users.list.queryOptions({ input: { search: "" } }),
+    ),
   ]);
 
   return <TaskDetail task={task} comments={comments} people={people} />;

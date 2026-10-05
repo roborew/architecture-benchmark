@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { TaskForm } from "@/app/tasks/new/_components/task-form";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function EditTaskPage({
   params,
@@ -12,7 +12,7 @@ export default async function EditTaskPage({
   // row, so both paths land on the not-found page.
   const task = Number.isInteger(taskId)
     ? await getQueryClient().fetchQuery(
-        trpc.tasks.byId.queryOptions({ id: taskId }),
+        orpc.tasks.byId.queryOptions({ input: { id: taskId } }),
       )
     : null;
 
@@ -25,8 +25,12 @@ export default async function EditTaskPage({
   // than a bare id.
   const queryClient = getQueryClient();
   const [people, projects] = await Promise.all([
-    queryClient.fetchQuery(trpc.users.list.queryOptions({ search: "" })),
-    queryClient.fetchQuery(trpc.projects.list.queryOptions({ search: "" })),
+    queryClient.fetchQuery(
+      orpc.users.list.queryOptions({ input: { search: "" } }),
+    ),
+    queryClient.fetchQuery(
+      orpc.projects.list.queryOptions({ input: { search: "" } }),
+    ),
   ]);
 
   return <TaskForm projects={projects} people={people} task={task} />;

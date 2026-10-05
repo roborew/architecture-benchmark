@@ -18,9 +18,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import type { ActionResult, FieldErrors } from "@/lib/result";
 import type { User } from "@/lib/types";
-import type { ActionResult, FieldErrors } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import { orpc } from "@/orpc/client";
 import {
   cancelClass,
   createClass,
@@ -33,7 +33,6 @@ type FormState = { errors?: FieldErrors; message?: string | null };
 export function UserForm({ person }: { person?: User }) {
   const isEdit = person !== undefined;
 
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -48,10 +47,11 @@ export function UserForm({ person }: { person?: User }) {
   const [email, setEmail] = useState(person?.email ?? "");
 
   // `mutationOptions()` builds the options object; TanStack's useMutation runs
-  // it. The proxy has no `.useMutation()` — that was the old @trpc/react-query
-  // API. Both are constructed unconditionally so the hook order is stable.
-  const created = useMutation(trpc.users.create.mutationOptions());
-  const updated = useMutation(trpc.users.update.mutationOptions());
+  // it. `orpc` is imported directly — oRPC has no `useTRPC()` equivalent and
+  // mounts no provider of its own, so there is no hook to call here. Both are
+  // constructed unconditionally so the hook order is stable.
+  const created = useMutation(orpc.users.create.mutationOptions());
+  const updated = useMutation(orpc.users.update.mutationOptions());
   const pending = isEdit ? updated.isPending : created.isPending;
 
   /**
@@ -69,10 +69,17 @@ export function UserForm({ person }: { person?: User }) {
       return;
     }
 
-    await Promise.all([
-      queryClient.invalidateQueries(trpc.users.list.queryFilter()),
-      queryClient.invalidateQueries(trpc.users.byId.queryFilter()),
-    ]);
+    // One partial-match key for the whole `users` namespace, replacing tRPC's
+    // separate `trpc.users.list.queryFilter()` and `trpc.users.byId.queryFilter()`.
+    // `orpc.users.key()` covers both procedures in a single call, and both need
+    // invalidating: a create changes the list, and an update changes the detail
+    // page this form redirects to.
+    //
+    // The braces are required. `.key()` returns an OperationKey — a
+    // `[path, options]` tuple — not a bare query key, so it goes in as the
+    // `queryKey` property of a filter object. Passing it positionally is a type
+    // error, not a silent no-op.
+    await queryClient.invalidateQueries({ queryKey: orpc.users.key() });
 
     router.push(destination);
   }

@@ -11,7 +11,7 @@ import {
   parsePageSize,
 } from "@/lib/pagination";
 import { TaskPagination } from "./_components/task-pagination";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 // The workspace-wide task list. Every filter is applied in the query rather
 // than in memory: the page used to slice an in-memory fixture, so a task
@@ -95,11 +95,15 @@ export default async function TasksPage({
   const queryClient = getQueryClient();
   const [tasks, total, projects, people] = await Promise.all([
     queryClient.fetchQuery(
-      trpc.tasks.list.queryOptions({ ...filters, limit: size + 1, cursor }),
+      orpc.tasks.list.queryOptions({
+        input: { ...filters, limit: size + 1, cursor },
+      }),
     ),
-    queryClient.fetchQuery(trpc.tasks.count.queryOptions(filters)),
-    queryClient.fetchQuery(trpc.projects.list.queryOptions({ search: "" })),
-    queryClient.fetchQuery(trpc.users.list.queryOptions({ search: "" })),
+    queryClient.fetchQuery(
+      orpc.tasks.count.queryOptions({ input: filters }),
+    ),
+    queryClient.fetchQuery(orpc.projects.list.queryOptions({ input: { search: "" } })),
+    queryClient.fetchQuery(orpc.users.list.queryOptions({ input: { search: "" } })),
   ]);
 
   // Over-fetched by one so `hasMore` costs no COUNT beyond the one already

@@ -108,7 +108,6 @@ export function makeRecentTask(
     title: "Fixture recent task",
     projectName: "Fixture project",
     status: "todo",
-    assigneeId: 9201,
     assigneeName: "Fixture Person",
     updatedAt: "Fixture day",
     ...overrides,

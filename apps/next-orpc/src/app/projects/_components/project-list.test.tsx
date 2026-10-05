@@ -1,20 +1,38 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { ProjectList } from "./project-list";
-import { renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { renderWithOrpc } from "@tests/helpers/orpc-harness";
 import { makeProject } from "@tests/fixtures/builders";
 
 // The row's delete control holds a tRPC mutation and navigates on success, so the
 // list is rendered through the harness (which supplies the provider) and
 // `useRouter` is stubbed. Nothing here exercises the delete itself — see
 // delete-project-button.test.tsx for that.
+// The component under test imports `orpc` from "@/orpc/client". It has to
+// be mocked here rather than in the harness, because vi.mock is hoisted above
+// this file's imports: a mock registered inside the helper would arrive after
+// the real client had already been captured. The factory is inlined for the
+// same reason — a hoisted factory cannot reference an imported binding. See
+// tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 // A render that keeps the harness's `container` shape without the caller having
 // to care that the wrapper is the one doing the rendering.
-const render = (ui: React.ReactElement) => renderWithTrpc(ui);
+const render = (ui: React.ReactElement) => renderWithOrpc(ui);
 
 describe("ProjectList", () => {
   it("renders a row for each project plus a header", () => {

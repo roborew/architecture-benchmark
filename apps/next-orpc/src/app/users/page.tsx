@@ -2,7 +2,7 @@ import Link from "next/link";
 import { UserTable } from "./_components/user-table";
 import { Suspense } from "react";
 import { SearchInput } from "../_components/search-input";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function UsersPage({
   searchParams,
@@ -12,7 +12,7 @@ export default async function UsersPage({
   const params = await searchParams;
   const raw = Array.isArray(params.q) ? params.q[0] : params.q;
   const people = await getQueryClient().fetchQuery(
-    trpc.users.list.queryOptions({ search: raw ?? "" }),
+    orpc.users.list.queryOptions({ input: { search: raw ?? "" } }),
   );
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">

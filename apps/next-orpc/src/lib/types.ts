@@ -45,10 +45,23 @@ export type ProjectTaskRow = TaskWithProject & {
 
 // The recent-tasks table lists a task without its project id, description or
 // comment count, but with its project name.
-export type DashboardTask = Omit<
-  TaskWithProject,
-  "projectId" | "description" | "commentCount"
->;
+/**
+ * A row from the dashboard's recent-tasks table.
+ *
+ * Deliberately NOT `Omit<TaskWithProject, ...>`: that type still carried
+ * `assigneeId`, but `getRecentTasks` has never selected that column, so the type
+ * overstated the row. Declaring the fields explicitly is what makes the contract
+ * honest, and it is what let oRPC's runtime output validation catch the
+ * mismatch — the schema in src/orpc/schemas.ts mirrors this shape exactly.
+ */
+export type DashboardTask = {
+  id: number;
+  title: string;
+  projectName: string;
+  status: TaskStatus;
+  assigneeName: string;
+  updatedAt: string;
+};
 
 export type Comment = {
   id: number;

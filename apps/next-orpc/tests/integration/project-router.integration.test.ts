@@ -2,7 +2,9 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { getProject, getProjects, getProjectTasks } from "@/lib/data";
 import { sql } from "@/lib/db";
-import { appRouter } from "@/trpc/routers/_app";
+import { createRouterClient } from "@orpc/server";
+
+import { router } from "@/orpc/routers/_app";
 
 // The projects write path, judged by its persisted result rather than by the
 // procedure's return value alone (spec/contract.md).
@@ -19,7 +21,9 @@ afterAll(async () => {
   await sql.end();
 });
 
-const caller = appRouter.createCaller({});
+// oRPC's equivalent of tRPC's `appRouter.createCaller({})`: an in-process
+// client, so the procedure runs directly with no HTTP hop.
+const caller = createRouterClient(router, { context: {} });
 
 /** Narrows a refused result so the field errors and message are readable. */
 function refusal(result: Awaited<ReturnType<typeof caller.projects.create>>) {

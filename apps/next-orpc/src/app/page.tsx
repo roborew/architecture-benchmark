@@ -2,7 +2,7 @@ import Link from "next/link";
 import { DashboardStats } from "./_components/dashboard-stats";
 import { RecentTasks } from "./_components/recent-tasks";
 import { DashboardProjects } from "./_components/dashboard-projects";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 const outlineAction =
   "inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50";
@@ -36,9 +36,9 @@ export default async function Home() {
   // created moments ago show up here.
   const queryClient = getQueryClient();
   const [stats, recentTasks, projects] = await Promise.all([
-    queryClient.fetchQuery(trpc.tasks.dashboardStats.queryOptions()),
-    queryClient.fetchQuery(trpc.tasks.recent.queryOptions()),
-    queryClient.fetchQuery(trpc.projects.dashboard.queryOptions()),
+    queryClient.fetchQuery(orpc.tasks.dashboardStats.queryOptions()),
+    queryClient.fetchQuery(orpc.tasks.recent.queryOptions()),
+    queryClient.fetchQuery(orpc.projects.dashboard.queryOptions()),
   ]);
 
   return (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ProjectDetail } from "@/app/projects/_components/project-detail";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function ProjectDetailPage({
   params,
@@ -19,7 +19,7 @@ export default async function ProjectDetailPage({
   const projectId = Number(id);
   const project = Number.isInteger(projectId)
     ? await getQueryClient().fetchQuery(
-        trpc.projects.byId.queryOptions({ id: projectId }),
+        orpc.projects.byId.queryOptions({ input: { id: projectId } }),
       )
     : null;
   if (!project) {
@@ -60,11 +60,13 @@ export default async function ProjectDetailPage({
   // before rendering, so the page still shows at most `PAGE_SIZE` tasks.
   const PAGE = 25;
   const fetched = await getQueryClient().fetchQuery(
-    trpc.projects.tasks.queryOptions({
-      id: project.id,
-      status: appliedStatus,
-      cursor,
-      limit: PAGE + 1,
+    orpc.projects.tasks.queryOptions({
+      input: {
+        id: project.id,
+        status: appliedStatus,
+        cursor,
+        limit: PAGE + 1,
+      },
     }),
   );
 

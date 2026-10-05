@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { rejected, renderWithOrpc } from "@tests/helpers/orpc-harness";
 import { makeProject, makeTask, makeUser } from "@tests/fixtures/builders";
 
 import { TaskForm } from "./task-form";
@@ -13,6 +13,24 @@ import { TaskForm } from "./task-form";
 // tests/integration/task-router.integration.test.ts.
 
 const push = vi.fn();
+
+// The component under test imports `orpc` from "@/orpc/client". It has to
+// be mocked here rather than in the harness, because vi.mock is hoisted above
+// this file's imports: a mock registered inside the helper would arrive after
+// the real client had already been captured. The factory is inlined for the
+// same reason — a hoisted factory cannot reference an imported binding. See
+// tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
@@ -42,7 +60,7 @@ function primaryForm() {
 
 describe("TaskForm (create)", () => {
   it("renders labelled fields for title, description and status", () => {
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByLabelText("Title")).toBeInTheDocument();
     expect(primaryForm().getByLabelText("Description")).toBeInTheDocument();
@@ -52,7 +70,7 @@ describe("TaskForm (create)", () => {
   });
 
   it("offers every project and every member in the selects", () => {
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     expect(
       primaryForm().getByRole("combobox", { name: "Project" }),
@@ -74,7 +92,7 @@ describe("TaskForm (create)", () => {
   it("offers an explicit unassigned choice", () => {
     // spec/contract.md gives exactly one way to unassign: a deliberate choice,
     // never the absence of one.
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     expect(
       within(
@@ -84,7 +102,7 @@ describe("TaskForm (create)", () => {
   });
 
   it("defaults the status to todo, per spec/contract.md", () => {
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByRole("combobox", { name: "Status" })).toHaveValue(
       "todo",
@@ -93,7 +111,7 @@ describe("TaskForm (create)", () => {
 
   it("calls tasks.create with the chosen project, assignee and status", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskForm projects={projects} people={people} />,
     );
 
@@ -129,7 +147,7 @@ describe("TaskForm (create)", () => {
     // models it as `number | null` — never an absent field, which would be a
     // second, indistinguishable state.
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskForm projects={projects} people={people} />,
     );
 
@@ -150,7 +168,7 @@ describe("TaskForm (create)", () => {
 
   it("leaves for the list once the create succeeds", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     await user.type(primaryForm().getByLabelText("Title"), "Ship it");
     await user.click(screen.getByRole("button", { name: "Create task" }));
@@ -159,7 +177,7 @@ describe("TaskForm (create)", () => {
   });
 
   it("cancels back to the tasks list", () => {
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByRole("link", { name: "Cancel" })).toHaveAttribute(
       "href",
@@ -170,7 +188,7 @@ describe("TaskForm (create)", () => {
 
 describe("TaskForm (create with comment)", () => {
   it("offers a separate form carrying the comment fields", () => {
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     // spec/contract.md requires both forms on this screen, and they are distinct
     // because only this one is atomic with its comment.
@@ -181,7 +199,7 @@ describe("TaskForm (create with comment)", () => {
   it("offers a status select, so the form can pass the enum the procedure requires", () => {
     // The form was missing this field, so every submit sent `status: null` and was
     // refused — the atomic path could not be exercised from the browser at all.
-    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+    renderWithOrpc(<TaskForm projects={projects} people={people} />);
 
     const form = within(screen.getByTestId("create-with-comment-form"));
 
@@ -190,7 +208,7 @@ describe("TaskForm (create with comment)", () => {
 
   it("submits the comment body and author together with the task", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskForm projects={projects} people={people} />,
     );
 
@@ -223,7 +241,7 @@ describe("TaskForm (create with comment)", () => {
 
   it("does not call the plain create from this form", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskForm projects={projects} people={people} />,
     );
 
@@ -247,7 +265,7 @@ describe("TaskForm (edit)", () => {
   });
 
   it("prefills every field from the stored task", () => {
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskForm projects={projects} people={people} task={task} />,
     );
 
@@ -266,7 +284,7 @@ describe("TaskForm (edit)", () => {
   });
 
   it("heads the page and the button for an edit", () => {
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskForm projects={projects} people={people} task={task} />,
     );
 
@@ -283,7 +301,7 @@ describe("TaskForm (edit)", () => {
     // and description only — a task belongs to its project for its lifetime, so
     // the mutation must not accept a move the form never offers.
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskForm projects={projects} people={people} task={task} />,
     );
 
@@ -305,7 +323,7 @@ describe("TaskForm (edit)", () => {
 
   it("hides the create forms while editing", () => {
     // An edit has no comment to create atomically — that is a create-only path.
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskForm projects={projects} people={people} task={task} />,
     );
 
@@ -318,7 +336,7 @@ describe("TaskForm (edit)", () => {
 describe("TaskForm (server-side validation)", () => {
   it("keeps what was typed when the procedure rejects the submit", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+    renderWithOrpc(<TaskForm projects={projects} people={people} />, () =>
       rejected({ title: ["Title is required."] }),
     );
 
@@ -332,7 +350,7 @@ describe("TaskForm (server-side validation)", () => {
 
   it("marks the assignee field invalid when the assignee is gone", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+    renderWithOrpc(<TaskForm projects={projects} people={people} />, () =>
       rejected({ assigneeId: ["That assignee no longer exists."] }),
     );
 
@@ -349,7 +367,7 @@ describe("TaskForm (server-side validation)", () => {
 
   it("reports a project that no longer exists against the select", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+    renderWithOrpc(<TaskForm projects={projects} people={people} />, () =>
       rejected({ projectId: ["That project no longer exists."] }),
     );
 

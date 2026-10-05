@@ -2,7 +2,9 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { getComments } from "@/lib/data";
 import { sql } from "@/lib/db";
-import { appRouter } from "@/trpc/routers/_app";
+import { createRouterClient } from "@orpc/server";
+
+import { router } from "@/orpc/routers/_app";
 import { loadComments, loadUsers } from "../fixtures/load";
 
 // spec/queries.md — task detail shows "the 10 most recent comments with author
@@ -18,7 +20,9 @@ afterAll(async () => {
   await sql.end();
 });
 
-const caller = appRouter.createCaller({});
+// oRPC's equivalent of tRPC's `appRouter.createCaller({})`: an in-process
+// client, so the procedure runs directly with no HTTP hop.
+const caller = createRouterClient(router, { context: {} });
 
 const fixtureComments = loadComments();
 const fixtureUsers = loadUsers();

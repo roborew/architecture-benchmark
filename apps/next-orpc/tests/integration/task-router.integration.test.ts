@@ -2,7 +2,9 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { getComments, getTask, getTasks } from "@/lib/data";
 import { sql } from "@/lib/db";
-import { appRouter } from "@/trpc/routers/_app";
+import { createRouterClient } from "@orpc/server";
+
+import { router } from "@/orpc/routers/_app";
 
 // spec/queries.md fixes the task write semantics: create sets created_at and
 // updated_at explicitly and equal, update must set updated_at in the statement
@@ -20,7 +22,9 @@ afterAll(async () => {
   await sql.end();
 });
 
-const caller = appRouter.createCaller({});
+// oRPC's equivalent of tRPC's `appRouter.createCaller({})`: an in-process
+// client, so the procedure runs directly with no HTTP hop.
+const caller = createRouterClient(router, { context: {} });
 
 /** Narrows a refused result so the field errors and message are readable. */
 function refusal(result: Awaited<ReturnType<typeof caller.tasks.create>>) {

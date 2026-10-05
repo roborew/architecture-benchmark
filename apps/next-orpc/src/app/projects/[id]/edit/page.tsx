@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ProjectForm } from "@/app/projects/_components/project-form";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function EditProjectPage({
   params,
@@ -12,7 +12,7 @@ export default async function EditProjectPage({
   // row, so both paths land on the not-found page.
   const project = Number.isInteger(projectId)
     ? await getQueryClient().fetchQuery(
-        trpc.projects.byId.queryOptions({ id: projectId }),
+        orpc.projects.byId.queryOptions({ input: { id: projectId } }),
       )
     : null;
 

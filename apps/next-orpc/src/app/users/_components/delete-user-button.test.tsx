@@ -5,15 +5,32 @@ import userEvent from "@testing-library/user-event";
 import { DeleteUserButton } from "./delete-user-button";
 import {
   accepted,
+  renderWithOrpc,
   rejected,
-  renderWithTrpc,
-} from "@tests/helpers/trpc-harness";
+} from "@tests/helpers/orpc-harness";
 import { makeUser } from "@tests/fixtures/builders";
 
-// The control now holds a tRPC mutation rather than calling a Server Action, so
-// the procedure is exercised through the harness instead of being mocked. The
+// The control holds a mutation rather than calling a Server Action, so the
+// procedure is exercised through the harness instead of being mocked. The
 // procedure's own behaviour is still covered against a real database in
 // tests/integration/user-router.integration.test.ts.
+//
+// The vi.mock must live in THIS file, not the harness: it is hoisted above the
+// imports, so a mock registered from inside the helper would land after this
+// file's `@/orpc/client` import had already captured the real client. The
+// factory is inlined for the same reason — referencing an imported helper would
+// hit a temporal dead zone. See tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
 
 const push = vi.fn();
 
@@ -27,7 +44,7 @@ describe("DeleteUserButton", () => {
   it("names the member in its accessible label", () => {
     // Two members can share a display name, so the control has to identify its
     // row — otherwise a screen-reader user hears the same label twice.
-    renderWithTrpc(<DeleteUserButton person={person} />);
+    renderWithOrpc(<DeleteUserButton person={person} />);
 
     const button = screen.getByRole("button", { name: /Delete Alex Morgan/ });
 
@@ -36,14 +53,14 @@ describe("DeleteUserButton", () => {
   });
 
   it("submits a form, so the control is a single focusable element", () => {
-    const { container } = renderWithTrpc(<DeleteUserButton person={person} />);
+    const { container } = renderWithOrpc(<DeleteUserButton person={person} />);
 
     expect(container.querySelector("form")).not.toBeNull();
   });
 
   it("calls users.delete with the member's id", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(<DeleteUserButton person={person} />);
+    const { calls } = renderWithOrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
@@ -59,7 +76,7 @@ describe("DeleteUserButton", () => {
     // A member who authored comments cannot be deleted; the reason has to reach
     // the screen rather than being swallowed.
     const user = userEvent.setup();
-    renderWithTrpc(<DeleteUserButton person={person} />, () =>
+    renderWithOrpc(<DeleteUserButton person={person} />, () =>
       rejected(
         {},
         "This person still has 2 comments and 2 tasks. Remove the comments before deleting.",
@@ -77,7 +94,7 @@ describe("DeleteUserButton", () => {
 
   it("shows no alert when the procedure reported no problem", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<DeleteUserButton person={person} />);
+    renderWithOrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
@@ -88,7 +105,7 @@ describe("DeleteUserButton", () => {
 
   it("leaves the page when the delete succeeds", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(<DeleteUserButton person={person} />);
+    renderWithOrpc(<DeleteUserButton person={person} />);
 
     await user.click(
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
@@ -99,7 +116,7 @@ describe("DeleteUserButton", () => {
 
   it("disables itself while the delete is in flight", async () => {
     let release: (value: unknown) => void = () => {};
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteUserButton person={person} />,
       () =>
         new Promise((resolve) => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { rejected, renderWithOrpc } from "@tests/helpers/orpc-harness";
 
 import { DeleteProjectButton } from "./delete-project-button";
 
@@ -13,6 +13,24 @@ import { DeleteProjectButton } from "./delete-project-button";
 
 const push = vi.fn();
 
+// The component under test imports `orpc` from "@/orpc/client". It has to
+// be mocked here rather than in the harness, because vi.mock is hoisted above
+// this file's imports: a mock registered inside the helper would arrive after
+// the real client had already been captured. The factory is inlined for the
+// same reason — a hoisted factory cannot reference an imported binding. See
+// tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
@@ -21,7 +39,7 @@ describe("DeleteProjectButton", () => {
   it("names the project in its accessible label", () => {
     // The accessible name names the project, so a screen-reader user moving
     // through the list hears which row this deletes.
-    renderWithTrpc(<DeleteProjectButton projectId={3} projectName="Website redesign" />);
+    renderWithOrpc(<DeleteProjectButton projectId={3} projectName="Website redesign" />);
 
     expect(
       screen.getByRole("button", { name: "Delete Website redesign" }),
@@ -29,7 +47,7 @@ describe("DeleteProjectButton", () => {
   });
 
   it("submits a form, so the control is a single focusable element", () => {
-    const { container } = renderWithTrpc(
+    const { container } = renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
     );
 
@@ -38,7 +56,7 @@ describe("DeleteProjectButton", () => {
 
   it("calls projects.delete with the project's id", async () => {
     const user = userEvent.setup();
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
     );
 
@@ -57,7 +75,7 @@ describe("DeleteProjectButton", () => {
     // cannot be deleted; the reason has to reach the screen rather than being
     // swallowed.
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
       () =>
         rejected(
@@ -77,7 +95,7 @@ describe("DeleteProjectButton", () => {
 
   it("stays on the page when the procedure refused", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
       () => rejected({}, "That project no longer exists."),
     );
@@ -94,7 +112,7 @@ describe("DeleteProjectButton", () => {
 
   it("shows no alert when the procedure reported no problem", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
     );
 
@@ -107,7 +125,7 @@ describe("DeleteProjectButton", () => {
 
   it("leaves the page when the delete succeeds", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
     );
 
@@ -120,7 +138,7 @@ describe("DeleteProjectButton", () => {
 
   it("disables itself while the delete is in flight", async () => {
     let release: (value: unknown) => void = () => {};
-    renderWithTrpc(
+    renderWithOrpc(
       <DeleteProjectButton projectId={3} projectName="Website redesign" />,
       () =>
         new Promise((resolve) => {
