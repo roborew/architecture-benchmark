@@ -93,10 +93,10 @@ pnpm test:data          # regenerate src/test/data.ts from the CSVs
 
 ## What is not covered
 
-- The app is mid-migration: `/projects` reads Postgres via `src/lib/data.ts`,
-  while `/projects/[id]`, `/tasks` and `/users` still read
-  `@tests/fixtures/data`. Both are exercised, but only the former against real
-  SQL. When a page moves to `lib/data`, add an integration test for it in the
-  same change — and delete its `@tests/fixtures/data` import.
+- Every domain has moved to tRPC: `src/lib/actions.ts` is gone, and both reads
+  and writes go through `src/trpc/routers/`. A procedure is exercised two ways —
+  the component tests drive it through `tests/helpers/trpc-harness.tsx`, and the
+  integration tests call it through `appRouter.createCaller({})` against the
+  seeded database. When a procedure changes, both are the places to update.
 - `search-input.test.tsx` crashes its Vitest worker with SIGABRT. This predates
   this setup and is unrelated to it.

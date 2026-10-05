@@ -7,12 +7,6 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      // Server actions take a positional `(prevState, formData)` shape because
-      // `useActionState` requires it, and several of them — the deletes in
-      // particular — have no form fields to read and no previous state to
-      // carry forward. Those parameters are real: the hook's generic inference
-      // reads their types. So an unused one is prefixed with `_` rather than
-      // dropped, and the ignore pattern is what makes that prefix count.
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -26,6 +20,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The e2e suite's own build directory (NEXT_DIST_DIR=.next-e2e). Listed in
+    // .gitignore; eslint needs it too or it lints generated bundles and reports
+    // their `require()` calls and `@ts-ignore`s as our own errors.
+    ".next-e2e/**",
   ]),
 ]);
 
