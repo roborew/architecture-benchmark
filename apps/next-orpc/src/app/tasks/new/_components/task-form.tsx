@@ -21,9 +21,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import type { ActionResult, FieldErrors } from "@/lib/result";
 import type { Project, Task, User } from "@/lib/types";
-import type { ActionResult, FieldErrors } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import { orpc } from "@/orpc/client";
 import {
   cancelClass,
   createClass,
@@ -181,7 +181,6 @@ export function TaskForm({
 }) {
   const isEdit = task !== undefined;
 
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -194,10 +193,10 @@ export function TaskForm({
   const [description, setDescription] = useState(task?.description ?? "");
 
   // `mutationOptions()` builds the options object; TanStack's useMutation runs it.
-  // The proxy has no `.useMutation()` — that was the old @trpc/react-query API.
+  // The proxy has no `.useMutation()` — that was the old @orpc/react-query API.
   // Both are constructed unconditionally so the hook order is stable.
-  const created = useMutation(trpc.tasks.create.mutationOptions());
-  const updated = useMutation(trpc.tasks.update.mutationOptions());
+  const created = useMutation(orpc.tasks.create.mutationOptions());
+  const updated = useMutation(orpc.tasks.update.mutationOptions());
   const pending = isEdit ? updated.isPending : created.isPending;
 
   /**
@@ -215,11 +214,10 @@ export function TaskForm({
       return;
     }
 
-    await Promise.all([
-      queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
-      queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
-      queryClient.invalidateQueries(trpc.tasks.byId.queryFilter()),
-    ]);
+    // One partial-match key for the whole `tasks` namespace, replacing tRPC's
+    // three separate filters. A create or update changes the list, the count and
+    // the detail page this form redirects to, and `.key()` covers all three.
+    await queryClient.invalidateQueries({ queryKey: orpc.tasks.key() });
 
     router.push(destination);
   }
@@ -400,13 +398,12 @@ function CreateWithCommentForm({
   projects: Project[];
   people: User[];
 }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
 
   const [state, setState] = useState<FormState>({});
 
-  const created = useMutation(trpc.tasks.createWithComment.mutationOptions());
+  const created = useMutation(orpc.tasks.createWithComment.mutationOptions());
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -431,10 +428,9 @@ function CreateWithCommentForm({
             return;
           }
 
-          await Promise.all([
-            queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
-            queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
-          ]);
+          // Same partial-match key as the edit form above. The new task's
+          // comment is part of the same write, so the tasks namespace covers it.
+          await queryClient.invalidateQueries({ queryKey: orpc.tasks.key() });
 
           router.push("/tasks");
         },

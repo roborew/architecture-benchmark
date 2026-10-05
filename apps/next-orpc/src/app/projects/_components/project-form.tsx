@@ -18,9 +18,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import type { ActionResult, FieldErrors } from "@/lib/result";
 import type { Project } from "@/lib/types";
-import type { ActionResult, FieldErrors } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import { orpc } from "@/orpc/client";
 import {
   cancelClass,
   createClass,
@@ -34,7 +34,6 @@ type FormState = { errors?: FieldErrors; message?: string | null };
 export function ProjectForm({ project }: { project?: Project }) {
   const isEdit = project !== undefined;
 
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -49,10 +48,10 @@ export function ProjectForm({ project }: { project?: Project }) {
   const [description, setDescription] = useState(project?.description ?? "");
 
   // `mutationOptions()` builds the options object; TanStack's useMutation runs
-  // it. The proxy has no `.useMutation()` — that was the old @trpc/react-query
+  // it. The proxy has no `.useMutation()` — that was the old @orpc/react-query
   // API. Both are constructed unconditionally so the hook order is stable.
-  const created = useMutation(trpc.projects.create.mutationOptions());
-  const updated = useMutation(trpc.projects.update.mutationOptions());
+  const created = useMutation(orpc.projects.create.mutationOptions());
+  const updated = useMutation(orpc.projects.update.mutationOptions());
   const pending = isEdit ? updated.isPending : created.isPending;
 
   /**
@@ -70,10 +69,11 @@ export function ProjectForm({ project }: { project?: Project }) {
       return;
     }
 
-    await Promise.all([
-      queryClient.invalidateQueries(trpc.projects.list.queryFilter()),
-      queryClient.invalidateQueries(trpc.projects.byId.queryFilter()),
-    ]);
+    // One partial-match key for the whole `projects` namespace, replacing tRPC's
+    // separate `list` and `byId` filters. Both need invalidating: a create
+    // changes the list, and an update changes the detail page this form
+    // redirects to.
+    await queryClient.invalidateQueries({ queryKey: orpc.projects.key() });
 
     router.push(destination);
   }

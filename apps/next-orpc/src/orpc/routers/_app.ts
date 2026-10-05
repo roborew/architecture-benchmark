@@ -1,38 +1,48 @@
 // The application router: every domain, assembled in one place.
 //
-// The direct counterpart to src/trpc/routers/_app.ts. Only `users` has been
-// migrated so far; the other three (projects, tasks, comments) still live behind
-// tRPC in src/trpc/routers/, and are added here one at a time as their contracts
-// land. Until then this router serves a subset of the API surface that
-// src/trpc/routers/_app.ts serves, which is expected mid-migration.
+// The direct counterpart to src/trpc/routers/_app.ts, and now covering the whole
+// surface rather than just `users`.
+//
+// One difference from the tRPC original: `os` here comes from the plain router
+// builder, not an implementer, because it takes already-implemented routers
+// rather than contracts. Each domain's own file used `implement(itsContract)`;
+// this file only composes the results.
 
-import { usersContract } from "../contract";
-import { usersRouter } from "./users";
-
-// `os` is the plain router builder from @orpc/server. Unlike `implement`, it
-// takes routers rather than contracts and infers their types — the right tool for
-// assembling already-implemented domains into a root.
 import { os } from "@orpc/server";
+
+import {
+  commentsContract,
+  projectsContract,
+  tasksContract,
+  usersContract,
+} from "../contract";
+import { commentsRouter } from "./comments";
+import { projectsRouter } from "./projects";
+import { tasksRouter } from "./tasks";
+import { usersRouter } from "./users";
 
 export const router = os.router({
   users: usersRouter,
+  projects: projectsRouter,
+  tasks: tasksRouter,
+  comments: commentsRouter,
 });
 
-// The full contract is exported alongside the router because the client needs a
-// type, and `RouterClient<typeof router>` is the one the docs recommend for a
-// server-side router. It is kept here so a single import gives both the runtime
-// router and the type its clients are checked against.
 export type AppRouter = typeof router;
 
 /**
  * The contract object as a whole.
  *
  * Not needed by the RPC client — `createORPCClient(link)` against `router` types
- * just fine — but this is what an OpenAPI Link or an `OpenAPIGenerator` would
- * consume, so it is assembled now while the shape is still being decided.
+ * just fine — but this is what an OpenAPI Link, an `OpenAPIGenerator` or an
+ * `OpenAPIHandler` consumes, so it is assembled from the same per-domain
+ * contracts the implementations are checked against.
  */
 export const contract = {
   users: usersContract,
+  projects: projectsContract,
+  tasks: tasksContract,
+  comments: commentsContract,
 };
 
 export type AppContract = typeof contract;

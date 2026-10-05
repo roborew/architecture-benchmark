@@ -14,8 +14,8 @@ import { useState } from "react";
 
 import type { Comment, TaskWithProject, User } from "@/lib/types";
 import { StatusBadge } from "@/app/_components/status-badge";
-import type { ActionResult, FieldErrors } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import type { ActionResult, FieldErrors } from "@/lib/result";
+import { orpc } from "@/orpc/client";
 import { initials } from "@/lib/initials";
 
 type FormState = { errors?: FieldErrors; message?: string | null };
@@ -46,7 +46,6 @@ function AddCommentForm({
   taskId: number;
   people: User[];
 }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   const [state, setState] = useState<FormState>({});
@@ -56,7 +55,7 @@ function AddCommentForm({
   const [body, setBody] = useState("");
 
   const added = useMutation(
-    trpc.comments.create.mutationOptions({
+    orpc.comments.create.mutationOptions({
       onSuccess: async (result: ActionResult) => {
         if (!result.ok) {
           setState({ errors: result.errors, message: result.message });
@@ -69,11 +68,13 @@ function AddCommentForm({
         setState({});
         setBody("");
 
+        // A new comment changes this page's comment list, the workspace list
+        // (it carries a comment count) and the project board, so all three
+        // namespaces are re-read. `.key()` is a partial match per router, so
+        // `orpc.tasks.key()` covers list, count, comments and byId at once.
         await Promise.all([
-          queryClient.invalidateQueries(trpc.tasks.comments.queryFilter()),
-          queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
-          queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
-          queryClient.invalidateQueries(trpc.projects.tasks.queryFilter()),
+          queryClient.invalidateQueries({ queryKey: orpc.tasks.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.projects.key() }),
         ]);
       },
       onError: () =>
@@ -174,23 +175,23 @@ function DeleteTaskButton({
   projectId: number;
   title: string;
 }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
 
   const deleted = useMutation(
-    trpc.tasks.delete.mutationOptions({
+    orpc.tasks.delete.mutationOptions({
       onSuccess: async (result: ActionResult) => {
         if (!result.ok) {
           setMessage(result.message ?? "Failed to delete task.");
           return;
         }
 
+        // Same three namespaces as the comment write above: the task is gone
+        // from the workspace list, the count, and the project board.
         await Promise.all([
-          queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
-          queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
-          queryClient.invalidateQueries(trpc.projects.tasks.queryFilter()),
+          queryClient.invalidateQueries({ queryKey: orpc.tasks.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.projects.key() }),
         ]);
 
         router.push(`/projects/${projectId}`);

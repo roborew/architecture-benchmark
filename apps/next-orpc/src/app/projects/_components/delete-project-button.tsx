@@ -14,8 +14,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { ActionResult } from "@/trpc/result";
-import { useTRPC } from "@/trpc/client";
+import type { ActionResult } from "@/lib/result";
+import { orpc } from "@/orpc/client";
 
 export function DeleteProjectButton({
   projectId,
@@ -24,25 +24,27 @@ export function DeleteProjectButton({
   projectId: number;
   projectName: string;
 }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
 
-  // `trpc.projects.delete.mutationOptions()` builds the options object and
-  // TanStack's useMutation runs it. There is no `trpc.projects.delete.useMutation()`
-  // in @trpc/tanstack-react-query — that was the old @trpc/react-query API.
+  // `orpc.projects.delete.mutationOptions()` builds the options object and
+  // TanStack's useMutation runs it. `orpc` is imported directly — oRPC has no
+  // `useTRPC()` equivalent and mounts no provider of its own.
   const deleteProject = useMutation(
-    trpc.projects.delete.mutationOptions({
+    orpc.projects.delete.mutationOptions({
       onSuccess: async (result: ActionResult) => {
         if (!result.ok) {
           setMessage(result.message ?? "Failed to delete project.");
           return;
         }
 
-        // queryClient + queryFilter(), NOT trpc.useUtils() — the utils proxy does
-        // not exist in @trpc/tanstack-react-query.
-        await queryClient.invalidateQueries(trpc.projects.list.queryFilter());
+        // Invalidate the whole `projects` namespace, replacing tRPC's
+        // `orpc.projects.list.queryFilter()`. `.key()` is a partial match, so
+        // the detail page is covered too — it can be showing the project this
+        // delete just removed. The braces are required: `.key()` returns an
+        // OperationKey tuple, not a bare query key.
+        await queryClient.invalidateQueries({ queryKey: orpc.projects.key() });
         router.push("/projects");
       },
       onError: () => setMessage("Database Error: Failed to delete project."),

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
+import { rejected, renderWithOrpc } from "@tests/helpers/orpc-harness";
 import {
   makeTaskWithProject,
   makeComment,
@@ -18,6 +18,24 @@ import { TaskDetail } from "./task-detail";
 // tests/integration/comments.integration.test.ts.
 
 const push = vi.fn();
+
+// The component under test imports `orpc` from "@/orpc/client". It has to
+// be mocked here rather than in the harness, because vi.mock is hoisted above
+// this file's imports: a mock registered inside the helper would arrive after
+// the real client had already been captured. The factory is inlined for the
+// same reason — a hoisted factory cannot reference an imported binding. See
+// tests/helpers/orpc-harness.tsx.
+vi.mock("@/orpc/client", () => ({
+  get orpc() {
+    const utils = (globalThis as { __orpcTestUtils?: unknown }).__orpcTestUtils;
+
+    if (!utils) {
+      throw new Error("orpc was read before renderWithOrpc ran.");
+    }
+
+    return utils;
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
@@ -35,7 +53,7 @@ describe("TaskDetail", () => {
       projectName: "Alpha",
     });
 
-    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithOrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     expect(
       screen.getByRole("heading", { name: task.title }),
@@ -48,7 +66,7 @@ describe("TaskDetail", () => {
   it("shows the description", () => {
     const task = makeTaskWithProject({ description: "Distinct description" });
 
-    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithOrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     expect(screen.getByText(task.description)).toBeInTheDocument();
   });
@@ -59,7 +77,7 @@ describe("TaskDetail", () => {
       updatedAt: "Some day",
     });
 
-    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithOrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     const details = screen.getByRole("region", { name: "Task details" });
 
@@ -76,7 +94,7 @@ describe("TaskDetail", () => {
       makeComment({ id: 2, body: "Second comment" }),
     ];
 
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail
         task={makeTaskWithProject()}
         comments={comments}
@@ -96,7 +114,7 @@ describe("TaskDetail", () => {
       createdAt: "Today, 09:42",
     });
 
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail
         task={makeTaskWithProject()}
         comments={[comment]}
@@ -112,7 +130,7 @@ describe("TaskDetail", () => {
   });
 
   it("renders the add-comment form with its fields", () => {
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
     );
 
@@ -126,7 +144,7 @@ describe("TaskDetail", () => {
   it("calls comments.create with the task id, body and author", async () => {
     const user = userEvent.setup();
     const task = makeTaskWithProject({ id: 77 });
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskDetail task={task} comments={[]} people={people} />,
     );
 
@@ -145,7 +163,7 @@ describe("TaskDetail", () => {
 
   it("keeps what was typed when the comment is rejected", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
       () => rejected({ commentBody: ["Comment is required."] }),
     );
@@ -161,7 +179,7 @@ describe("TaskDetail", () => {
     // The one case where blanking the field is right: the draft is now a comment
     // in the list above.
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
     );
 
@@ -175,7 +193,7 @@ describe("TaskDetail", () => {
 
   it("reports why a comment could not be added", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
       () => rejected({}, "That comment author no longer exists."),
     );
@@ -190,7 +208,7 @@ describe("TaskDetail", () => {
   it("offers a delete control that calls tasks.delete", async () => {
     const user = userEvent.setup();
     const task = makeTaskWithProject({ id: 77, title: "Doomed task" });
-    const { calls } = renderWithTrpc(
+    const { calls } = renderWithOrpc(
       <TaskDetail task={task} comments={[]} people={people} />,
     );
 
@@ -207,7 +225,7 @@ describe("TaskDetail", () => {
       projectId: 4,
     });
 
-    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithOrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     await user.click(screen.getByRole("button", { name: "Delete task" }));
 
@@ -218,7 +236,7 @@ describe("TaskDetail", () => {
 
   it("stays put and reports why when the delete is refused", async () => {
     const user = userEvent.setup();
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail
         task={makeTaskWithProject({ id: 77 })}
         comments={[]}
@@ -241,7 +259,7 @@ describe("TaskDetail", () => {
   it("links to the edit form for this task", () => {
     const task = makeTaskWithProject({ id: 77 });
 
-    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithOrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     // Not /tasks/new, which would create a second task instead.
     expect(screen.getByRole("link", { name: "Edit task" })).toHaveAttribute(
@@ -251,7 +269,7 @@ describe("TaskDetail", () => {
   });
 
   it("shows an empty state when there are no comments", () => {
-    renderWithTrpc(
+    renderWithOrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
     );
 

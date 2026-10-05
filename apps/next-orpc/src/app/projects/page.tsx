@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ProjectList } from "./_components/project-list";
 import { Suspense } from "react";
 import { SearchInput } from "../_components/search-input";
-import { getQueryClient, trpc } from "@/trpc/server";
+import { getQueryClient, orpc } from "@/orpc/server";
 
 export default async function ProjectsPage({
   searchParams,
@@ -12,7 +12,9 @@ export default async function ProjectsPage({
   const params = await searchParams;
   const raw = Array.isArray(params.q) ? params.q[0] : params.q;
   const projects = await getQueryClient().fetchQuery(
-    trpc.projects.list.queryOptions({ search: (raw ?? "").trim() }),
+    orpc.projects.list.queryOptions({
+      input: { search: (raw ?? "").trim() },
+    }),
   );
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
