@@ -13,7 +13,7 @@ export default async function UserDetailPage({
   // name each other's tasks.
   const person = Number.isInteger(personId)
     ? await getQueryClient().fetchQuery(
-        trpc.users.byId.queryOptions({ id: personId })
+        trpc.users.byId.queryOptions({ id: personId }),
       )
     : null;
 
