@@ -2,10 +2,13 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { fileURLToPath } from "node:url";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
 
 const ALIASES = {
-  "@": path.resolve(__dirname, "./src"),
-  "@tests": path.resolve(__dirname, "./tests"),
+  "@": path.resolve(root, "./src"),
+  "@tests": path.resolve(root, "./tests"),
 };
 
 // Two projects, split by what they need:
@@ -19,11 +22,13 @@ const ALIASES = {
 // Integration tests run against the isolated e2e database, which
 // tests/integration/database.ts creates and seeds for each run.
 export default defineConfig({
+  // Declared once here rather than per project: Vitest 5 has each inline
+  // project inherit the declaring config, so repeating it applies the React
+  // plugin twice and warns.
   plugins: [react()],
   test: {
     projects: [
       {
-        plugins: [react()],
         test: {
           name: "unit",
           environment: "jsdom",
@@ -35,7 +40,6 @@ export default defineConfig({
         },
       },
       {
-        plugins: [react()],
         test: {
           name: "integration",
           environment: "node",
