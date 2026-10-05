@@ -14,6 +14,9 @@ importers:
       '@orpc/contract':
         specifier: 2.0.0-beta.42
         version: 2.0.0-beta.42
+      '@orpc/json-schema':
+        specifier: 2.0.0-beta.42
+        version: 2.0.0-beta.42
       '@orpc/openapi':
         specifier: 2.0.0-beta.42
         version: 2.0.0-beta.42
