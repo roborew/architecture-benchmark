@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TaskDetail } from "./_components/task-detail";
-import { getComments, getTask, getUsers } from "@/lib/data";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 export default async function TaskDetailPage({
   params,
@@ -11,7 +11,11 @@ export default async function TaskDetailPage({
   // `Number` yields NaN for anything non-numeric, and a NaN lookup finds no
   // row, so both paths land on the not-found state below. Scoped by id rather
   // than by title, which is what the in-memory fixture lookup did.
-  const task = Number.isInteger(taskId) ? await getTask(taskId) : null;
+  const task = Number.isInteger(taskId)
+    ? await getQueryClient().fetchQuery(
+        trpc.tasks.byId.queryOptions({ id: taskId }),
+      )
+    : null;
 
   if (!task) {
     return (
@@ -35,9 +39,10 @@ export default async function TaskDetailPage({
   // The comment author select needs every member, not only those already on the
   // task — anyone in the workspace may comment. Both reads are independent, so
   // they run concurrently.
+  const queryClient = getQueryClient();
   const [comments, people] = await Promise.all([
-    getComments(task.id),
-    getUsers(),
+    queryClient.fetchQuery(trpc.tasks.comments.queryOptions({ id: task.id })),
+    queryClient.fetchQuery(trpc.users.list.queryOptions({ search: "" })),
   ]);
 
   return <TaskDetail task={task} comments={comments} people={people} />;

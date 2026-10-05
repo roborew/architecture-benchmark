@@ -1,30 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TaskDetail } from "./task-detail";
+
+import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
 import {
   makeTaskWithProject,
   makeComment,
   makeUser,
 } from "@tests/fixtures/builders";
 
-// Both actions are bound to a task id by the component, so React prepends that
-// id to the arguments it passes: (id, previousState, formData). Naming the
-// tuple is what makes `mock.calls` indexable rather than an empty tuple.
-type CreateArgs = [id: unknown, prevState: unknown, formData: FormData];
-type UpdateArgs = [id: unknown, prevState: unknown, formData: FormData];
+import { TaskDetail } from "./task-detail";
 
-/* eslint-disable @typescript-eslint/no-unused-vars -- the parameters above are
-   what make `mock.calls` indexable; it is intentional that they go unread. */
-const createComment = vi.fn(async (...args: CreateArgs) => ({}));
-const deleteTask = vi.fn(async (...args: UpdateArgs) => ({}));
-/* eslint-enable @typescript-eslint/no-unused-vars */
+// Both the add-comment form and the delete control now hold tRPC mutations rather
+// than calling Server Actions, so the procedures are exercised through the harness
+// and asserted on by path and input. Their own behaviour is covered against a real
+// database in tests/integration/task-router.integration.test.ts and
+// tests/integration/comments.integration.test.ts.
 
-vi.mock("@/lib/actions", () => ({
-  createComment: (id: unknown, prevState: unknown, formData: FormData) =>
-    createComment(id, prevState, formData),
-  deleteTask: (id: unknown, prevState: unknown, formData: FormData) =>
-    deleteTask(id, prevState, formData),
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
 }));
 
 const people = [
@@ -39,7 +35,7 @@ describe("TaskDetail", () => {
       projectName: "Alpha",
     });
 
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     expect(
       screen.getByRole("heading", { name: task.title }),
@@ -52,7 +48,7 @@ describe("TaskDetail", () => {
   it("shows the description", () => {
     const task = makeTaskWithProject({ description: "Distinct description" });
 
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     expect(screen.getByText(task.description)).toBeInTheDocument();
   });
@@ -63,7 +59,7 @@ describe("TaskDetail", () => {
       updatedAt: "Some day",
     });
 
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     const details = screen.getByRole("region", { name: "Task details" });
 
@@ -80,7 +76,7 @@ describe("TaskDetail", () => {
       makeComment({ id: 2, body: "Second comment" }),
     ];
 
-    render(
+    renderWithTrpc(
       <TaskDetail
         task={makeTaskWithProject()}
         comments={comments}
@@ -100,7 +96,7 @@ describe("TaskDetail", () => {
       createdAt: "Today, 09:42",
     });
 
-    render(
+    renderWithTrpc(
       <TaskDetail
         task={makeTaskWithProject()}
         comments={[comment]}
@@ -116,7 +112,7 @@ describe("TaskDetail", () => {
   });
 
   it("renders the add-comment form with its fields", () => {
-    render(
+    renderWithTrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
     );
 
@@ -127,11 +123,12 @@ describe("TaskDetail", () => {
     expect(screen.getByRole("button", { name: "Add comment" })).toBeEnabled();
   });
 
-  it("submits the comment body and author for this task", async () => {
+  it("calls comments.create with the task id, body and author", async () => {
     const user = userEvent.setup();
     const task = makeTaskWithProject({ id: 77 });
-
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    const { calls } = renderWithTrpc(
+      <TaskDetail task={task} comments={[]} people={people} />,
+    );
 
     await user.type(screen.getByLabelText("Add comment"), "A note");
     await user.selectOptions(
@@ -140,40 +137,47 @@ describe("TaskDetail", () => {
     );
     await user.click(screen.getByRole("button", { name: "Add comment" }));
 
-    expect(createComment).toHaveBeenCalled();
-
-    // The task id is bound first, so the FormData is the third argument.
-    const formData = createComment.mock.calls[0][2] as FormData;
-    expect(formData.get("commentBody")).toBe("A note");
-    expect(formData.get("commentAuthorId")).toBe("2");
+    expect(calls).toContainEqual({
+      path: "comments.create",
+      input: { taskId: 77, commentBody: "A note", commentAuthorId: 2 },
+    });
   });
 
   it("keeps what was typed when the comment is rejected", async () => {
-    createComment.mockResolvedValueOnce({
-      errors: { commentBody: ["Comment is required."] },
-    });
-
     const user = userEvent.setup();
-    render(
+    renderWithTrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
+      () => rejected({ commentBody: ["Comment is required."] }),
     );
 
     await user.type(screen.getByLabelText("Add comment"), "A note");
     await user.click(screen.getByRole("button", { name: "Add comment" }));
 
     expect(await screen.findByText("Comment is required.")).toBeInTheDocument();
-    // React would reset an uncontrolled form here and lose the input.
     expect(screen.getByLabelText("Add comment")).toHaveValue("A note");
   });
 
-  it("reports why a comment could not be added", async () => {
-    createComment.mockResolvedValueOnce({
-      message: "That comment author no longer exists.",
-    });
-
+  it("clears the draft once the comment is written", async () => {
+    // The one case where blanking the field is right: the draft is now a comment
+    // in the list above.
     const user = userEvent.setup();
-    render(
+    renderWithTrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
+    );
+
+    await user.type(screen.getByLabelText("Add comment"), "A note");
+    await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText("Add comment")).toHaveValue(""),
+    );
+  });
+
+  it("reports why a comment could not be added", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(
+      <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
+      () => rejected({}, "That comment author no longer exists."),
     );
 
     await user.click(screen.getByRole("button", { name: "Add comment" }));
@@ -183,21 +187,61 @@ describe("TaskDetail", () => {
     );
   });
 
-  it("offers a delete control that submits the delete", async () => {
+  it("offers a delete control that calls tasks.delete", async () => {
     const user = userEvent.setup();
     const task = makeTaskWithProject({ id: 77, title: "Doomed task" });
-
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    const { calls } = renderWithTrpc(
+      <TaskDetail task={task} comments={[]} people={people} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Delete task" }));
 
-    expect(deleteTask).toHaveBeenCalled();
+    expect(calls).toContainEqual({ path: "tasks.delete", input: { id: 77 } });
+  });
+
+  it("returns to the board the task belonged to, not to the dead detail URL", async () => {
+    const user = userEvent.setup();
+    const task = makeTaskWithProject({
+      id: 77,
+      title: "Doomed task",
+      projectId: 4,
+    });
+
+    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
+
+    await user.click(screen.getByRole("button", { name: "Delete task" }));
+
+    // The detail page for this id is not-found once the row is gone, so
+    // navigating there would land the user on a dead URL.
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/projects/4"));
+  });
+
+  it("stays put and reports why when the delete is refused", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(
+      <TaskDetail
+        task={makeTaskWithProject({ id: 77 })}
+        comments={[]}
+        people={people}
+      />,
+      (path) =>
+        path === "tasks.delete"
+          ? rejected({}, "That task no longer exists.")
+          : { ok: true, id: 1 },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete task" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That task no longer exists.",
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("links to the edit form for this task", () => {
     const task = makeTaskWithProject({ id: 77 });
 
-    render(<TaskDetail task={task} comments={[]} people={people} />);
+    renderWithTrpc(<TaskDetail task={task} comments={[]} people={people} />);
 
     // Not /tasks/new, which would create a second task instead.
     expect(screen.getByRole("link", { name: "Edit task" })).toHaveAttribute(
@@ -207,7 +251,7 @@ describe("TaskDetail", () => {
   });
 
   it("shows an empty state when there are no comments", () => {
-    render(
+    renderWithTrpc(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,
     );
 

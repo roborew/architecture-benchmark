@@ -78,6 +78,10 @@ const TASK_PROJECTION_FIELDS = sql`
     t.title,
     t.description,
     t.status,
+    -- The id as well as the name: the edit form has to prefill the assignee
+    -- select, and a display name cannot round-trip a select that holds ids.
+    -- users.display_name is not unique either, so two members can share one.
+    t.assignee_id::int AS "assigneeId",
     COALESCE(u.display_name, 'Unassigned') AS "assigneeName",
     COUNT(c.id)::int AS "commentCount",
     to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt"

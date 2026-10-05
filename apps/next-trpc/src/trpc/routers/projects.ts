@@ -9,7 +9,12 @@
 import { z } from "zod";
 
 import { sql } from "@/lib/db";
-import { getProject, getProjects, getProjectTasks } from "@/lib/data";
+import {
+  getDashboardProjects,
+  getProject,
+  getProjects,
+  getProjectTasks,
+} from "@/lib/data";
 import { baseProcedure, createTRPCRouter } from "../init";
 import type { ActionResult, FieldErrors } from "../result";
 
@@ -35,6 +40,16 @@ export const projectsRouter = createTRPCRouter({
   byId: baseProcedure
     .input(z.object({ id: z.number().int() }))
     .query(({ input }) => getProject(input.id)),
+
+  /**
+   * The busiest projects, for the dashboard's cards.
+   *
+   * Ordered by task count, so these cards answer "where is the work?" rather than
+   * repeating the newest-first ordering every other project list uses.
+   */
+  dashboard: baseProcedure
+    .input(z.object({ limit: z.number().int().optional() }).optional())
+    .query(({ input }) => getDashboardProjects(input?.limit)),
 
   /**
    * One page of a project's tasks. The status and cursor stay optional so a page

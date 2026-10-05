@@ -15,6 +15,9 @@
 
 # next.js
 /.next/
+# The e2e suite builds into its own directory (NEXT_DIST_DIR=.next-e2e) because
+# Next takes a lock on .next and would refuse to start while `next dev` runs.
+/.next-e2e/
 /out/
 
 # production

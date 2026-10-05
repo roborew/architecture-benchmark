@@ -3,17 +3,22 @@
 // The task detail body.
 //
 // It is a Client Component because the add-comment form and the delete control
-// both submit server actions and need `useActionState` for the validation state
-// and pending flags. The task and its comments arrive as props already read by
-// the page, so no data fetching happens here.
+// both call tRPC mutations and need the pending flags and validation state that
+// come with them. The task and its comments arrive as props already read by the
+// page, so no data fetching happens here.
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import type { Comment, TaskWithProject, User } from "@/lib/types";
 import { StatusBadge } from "@/app/_components/status-badge";
-import { createComment, deleteTask, type State } from "@/lib/actions";
+import type { ActionResult, FieldErrors } from "@/trpc/result";
+import { useTRPC } from "@/trpc/client";
 import { initials } from "@/lib/initials";
+
+type FormState = { errors?: FieldErrors; message?: string | null };
 
 const fieldLabel =
   "text-[10px] font-bold uppercase tracking-[.08em] text-slate-500";
@@ -33,7 +38,7 @@ function DetailsRow({
   );
 }
 
-/** The add-comment form. Split out so it owns its own action state. */
+/** The add-comment form. Split out so it owns its own mutation state. */
 function AddCommentForm({
   taskId,
   people,
@@ -41,17 +46,54 @@ function AddCommentForm({
   taskId: number;
   people: User[];
 }) {
-  const [state, formAction, pending] = useActionState<State, FormData>(
-    createComment.bind(null, taskId),
-    {},
-  );
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
-  // Controlled rather than `defaultValue`: React resets an uncontrolled form
-  // once the action settles, so a rejected submit would blank the draft.
+  const [state, setState] = useState<FormState>({});
+
+  // Controlled rather than `defaultValue`: a rejected submit must not blank the
+  // draft — precisely when the user needs to see what they wrote.
   const [body, setBody] = useState("");
 
+  const added = useMutation(
+    trpc.comments.create.mutationOptions({
+      onSuccess: async (result: ActionResult) => {
+        if (!result.ok) {
+          setState({ errors: result.errors, message: result.message });
+          return;
+        }
+
+        // No navigation: the user stays here and sees the comment they just
+        // wrote in the list above the form. What does change is the comment count
+        // on both this page and the list, so both are re-read.
+        setState({});
+        setBody("");
+
+        await Promise.all([
+          queryClient.invalidateQueries(trpc.tasks.comments.queryFilter()),
+          queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
+          queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
+          queryClient.invalidateQueries(trpc.projects.tasks.queryFilter()),
+        ]);
+      },
+      onError: () =>
+        setState({ message: "Database Error: Failed to add the comment." }),
+    }),
+  );
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState({});
+
+    const authorId = Number(
+      new FormData(event.currentTarget).get("commentAuthorId"),
+    );
+
+    added.mutate({ taskId, commentBody: body, commentAuthorId: authorId });
+  }
+
   return (
-    <form action={formAction} className="border-t border-slate-100 p-5">
+    <form onSubmit={handleSubmit} className="border-t border-slate-100 p-5">
       {state.message ? (
         <p
           role="alert"
@@ -105,10 +147,10 @@ function AddCommentForm({
         </label>
         <button
           type="submit"
-          disabled={pending}
+          disabled={added.isPending}
           className="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700 disabled:opacity-50"
         >
-          {pending ? "Adding…" : "Add comment"}
+          {added.isPending ? "Adding…" : "Add comment"}
         </button>
       </div>
     </form>
@@ -118,37 +160,68 @@ function AddCommentForm({
 /**
  * The delete control.
  *
- * Not in a `<form>` of its own here: it needs the task id bound, and keeping it
- * separate means the pending state is independent of the comment form's.
+ * On success the user lands on the board the task belonged to, not on the task:
+ * the detail page for this id is now not-found, so navigating there would leave
+ * them on a dead URL.
  */
 function DeleteTaskButton({
   taskId,
+  projectId,
   title,
 }: {
   taskId: number;
+  /** The board to return to, read by the page before the row is gone. */
+  projectId: number;
   title: string;
 }) {
-  const [state, formAction, pending] = useActionState<State, FormData>(
-    deleteTask.bind(null, taskId),
-    {},
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const deleted = useMutation(
+    trpc.tasks.delete.mutationOptions({
+      onSuccess: async (result: ActionResult) => {
+        if (!result.ok) {
+          setMessage(result.message ?? "Failed to delete task.");
+          return;
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries(trpc.tasks.list.queryFilter()),
+          queryClient.invalidateQueries(trpc.tasks.count.queryFilter()),
+          queryClient.invalidateQueries(trpc.projects.tasks.queryFilter()),
+        ]);
+
+        router.push(`/projects/${projectId}`);
+      },
+      onError: () => setMessage("Database Error: Failed to delete task."),
+    }),
   );
 
   return (
-    <form action={formAction} className="inline">
+    <form
+      className="inline"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setMessage(null);
+        deleted.mutate({ id: taskId });
+      }}
+    >
       <button
         type="submit"
-        disabled={pending}
+        disabled={deleted.isPending}
         aria-label="Delete task"
         className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 transition hover:border-red-300 disabled:opacity-50"
       >
-        {pending ? "Deleting…" : "Delete task"}
+        {deleted.isPending ? "Deleting…" : "Delete task"}
       </button>
-      {state.message ? (
+      {message ? (
         <span
           role="alert"
           className="mt-1 block text-[10px] font-semibold text-red-600"
         >
-          {state.message}
+          {message}
         </span>
       ) : null}
       <span className="sr-only">{title}</span>
@@ -190,7 +263,11 @@ export function TaskDetail({
           >
             Edit task
           </Link>
-          <DeleteTaskButton taskId={task.id} title={task.title} />
+          <DeleteTaskButton
+            taskId={task.id}
+            projectId={task.projectId}
+            title={task.title}
+          />
         </div>
       </div>
 

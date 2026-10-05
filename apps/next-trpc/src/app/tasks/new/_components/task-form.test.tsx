@@ -1,64 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { TaskForm } from "./task-form";
+import { rejected, renderWithTrpc } from "@tests/helpers/trpc-harness";
 import { makeProject, makeTask, makeUser } from "@tests/fixtures/builders";
 
-// The task form was inert markup: no `name` attributes, no `<form>`, and
-// hard-coded option lists. These tests pin the parts that make it submit real
-// data to the server actions, whose behaviour is covered by
-// src/lib/task-actions.integration.test.ts.
+import { TaskForm } from "./task-form";
 
-// Given an explicit parameter list rather than `async () => ({})`: a zero-arg
-// mock types `mock.calls` as an empty tuple, so reading the FormData a test
-// submitted would be a type error even though reading it is exactly what these
-// tests exist to do. `submittedFormData` does the asserting, so the values
-// themselves are never read.
-type CreateArgs = [prevState: unknown, formData: FormData];
-type UpdateArgs = [id: unknown, prevState: unknown, formData: FormData];
+// The form now holds tRPC mutations rather than calling Server Actions, so the
+// procedures are exercised through the harness and asserted on by path and input.
+// The procedures' own behaviour is covered against a real database in
+// tests/integration/task-router.integration.test.ts.
 
-/* eslint-disable @typescript-eslint/no-unused-vars -- the parameters above are
-   what make `mock.calls` indexable; it is intentional that they go unread. */
-const createTask = vi.fn(async (...args: CreateArgs) => ({}));
-const createTaskWithComment = vi.fn(async (...args: CreateArgs) => ({}));
-const updateTask = vi.fn(async (...args: UpdateArgs) => ({}));
-/* eslint-enable @typescript-eslint/no-unused-vars */
+const push = vi.fn();
 
-// Each wrapper takes the two arguments `useActionState` supplies and forwards
-// them. `updateTask` is bound to a row id in the component, so its wrapper
-// accepts a third argument; both shapes are passed through untouched.
-vi.mock("@/lib/actions", () => ({
-  createTask: (prevState: unknown, formData: FormData) =>
-    createTask(prevState, formData),
-  updateTask: (id: unknown, prevState: unknown, formData: FormData) =>
-    updateTask(id, prevState, formData),
-  createTaskWithComment: (prevState: unknown, formData: FormData) =>
-    createTaskWithComment(prevState, formData),
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
 }));
-
-/**
- * The FormData a mocked action was called with.
- *
- * `useActionState` passes `(previousState, formData)`; a bound action such as
- * `updateTask.bind(null, id)` has its id prepended by the bind, so the index
- * differs per action. Callers state which position they mean rather than
- * hard-coding a cast at every call site.
- */
-function submittedFormData(
-  mock: { mock: { calls: unknown[][] } },
-  index: number,
-): FormData {
-  const value = mock.mock.calls[0]?.[index];
-
-  if (!(value instanceof FormData)) {
-    throw new Error(
-      `Expected argument ${index} to be FormData, got ${typeof value}`,
-    );
-  }
-
-  return value;
-}
 
 const projects = [
   makeProject({ id: 1, name: "Website redesign" }),
@@ -82,23 +40,9 @@ function primaryForm() {
   return within(screen.getByTestId("create-task-form"));
 }
 
-/** The primary form's element, for cases needing a container rather than queries. */
-function primaryFormElement() {
-  return screen.getByTestId("create-task-form");
-}
-
-beforeEach(() => {
-  createTask.mockClear();
-  updateTask.mockClear();
-  createTaskWithComment.mockClear();
-  createTask.mockResolvedValue({});
-  updateTask.mockResolvedValue({});
-  createTaskWithComment.mockResolvedValue({});
-});
-
 describe("TaskForm (create)", () => {
   it("renders labelled fields for title, description and status", () => {
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByLabelText("Title")).toBeInTheDocument();
     expect(primaryForm().getByLabelText("Description")).toBeInTheDocument();
@@ -108,7 +52,7 @@ describe("TaskForm (create)", () => {
   });
 
   it("offers every project and every member in the selects", () => {
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
     expect(
       primaryForm().getByRole("combobox", { name: "Project" }),
@@ -130,7 +74,7 @@ describe("TaskForm (create)", () => {
   it("offers an explicit unassigned choice", () => {
     // spec/contract.md gives exactly one way to unassign: a deliberate choice,
     // never the absence of one.
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
     expect(
       within(
@@ -139,38 +83,19 @@ describe("TaskForm (create)", () => {
     ).toBeInTheDocument();
   });
 
-  it("submits through a form carrying every named field", () => {
-    render(<TaskForm projects={projects} people={people} />);
-
-    const container = primaryFormElement();
-
-    expect(container.tagName).toBe("FORM");
-
-    for (const name of [
-      "title",
-      "description",
-      "projectId",
-      "assigneeId",
-      "status",
-    ]) {
-      expect(
-        container.querySelector(`[name="${name}"]`),
-        `missing field ${name}`,
-      ).not.toBeNull();
-    }
-  });
-
   it("defaults the status to todo, per spec/contract.md", () => {
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByRole("combobox", { name: "Status" })).toHaveValue(
       "todo",
     );
   });
 
-  it("submits the chosen project, assignee and status", async () => {
+  it("calls tasks.create with the chosen project, assignee and status", async () => {
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} />);
+    const { calls } = renderWithTrpc(
+      <TaskForm projects={projects} people={people} />,
+    );
 
     await user.type(primaryForm().getByLabelText("Title"), "Ship it");
     await user.selectOptions(
@@ -187,20 +112,26 @@ describe("TaskForm (create)", () => {
     );
     await user.click(screen.getByRole("button", { name: "Create task" }));
 
-    expect(createTask).toHaveBeenCalled();
-
-    // The FormData is the action's second argument; the first is the previous
-    // state `useActionState` passes in.
-    const formData = submittedFormData(createTask, 1);
-    expect(formData.get("title")).toBe("Ship it");
-    expect(formData.get("projectId")).toBe("2");
-    expect(formData.get("assigneeId")).toBe("2");
-    expect(formData.get("status")).toBe("done");
+    expect(calls).toContainEqual({
+      path: "tasks.create",
+      input: {
+        title: "Ship it",
+        description: "",
+        projectId: 2,
+        assigneeId: 2,
+        status: "done",
+      },
+    });
   });
 
-  it("submits an empty assignee when the unassigned option is chosen", async () => {
+  it("sends null rather than undefined when the unassigned option is chosen", async () => {
+    // spec/contract.md gives exactly one way to unassign, so the mutation input
+    // models it as `number | null` — never an absent field, which would be a
+    // second, indistinguishable state.
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} />);
+    const { calls } = renderWithTrpc(
+      <TaskForm projects={projects} people={people} />,
+    );
 
     await user.type(primaryForm().getByLabelText("Title"), "Unassigned work");
     await user.selectOptions(
@@ -209,12 +140,26 @@ describe("TaskForm (create)", () => {
     );
     await user.click(screen.getByRole("button", { name: "Create task" }));
 
-    const formData = submittedFormData(createTask, 1);
-    expect(formData.get("assigneeId")).toBe("");
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        path: "tasks.create",
+        input: expect.objectContaining({ assigneeId: null }),
+      }),
+    );
+  });
+
+  it("leaves for the list once the create succeeds", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+
+    await user.type(primaryForm().getByLabelText("Title"), "Ship it");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/tasks"));
   });
 
   it("cancels back to the tasks list", () => {
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
     expect(primaryForm().getByRole("link", { name: "Cancel" })).toHaveAttribute(
       "href",
@@ -225,17 +170,29 @@ describe("TaskForm (create)", () => {
 
 describe("TaskForm (create with comment)", () => {
   it("offers a separate form carrying the comment fields", () => {
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
 
-    // spec/contract.md requires both forms on the project board, and they are
-    // distinct because only this one is atomic with its comment.
+    // spec/contract.md requires both forms on this screen, and they are distinct
+    // because only this one is atomic with its comment.
     expect(screen.getByTestId("create-with-comment-form")).toBeInTheDocument();
     expect(screen.getByLabelText("First comment")).toBeInTheDocument();
   });
 
+  it("offers a status select, so the form can pass the enum the procedure requires", () => {
+    // The form was missing this field, so every submit sent `status: null` and was
+    // refused — the atomic path could not be exercised from the browser at all.
+    renderWithTrpc(<TaskForm projects={projects} people={people} />);
+
+    const form = within(screen.getByTestId("create-with-comment-form"));
+
+    expect(form.getByRole("combobox", { name: "Status" })).toHaveValue("todo");
+  });
+
   it("submits the comment body and author together with the task", async () => {
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} />);
+    const { calls } = renderWithTrpc(
+      <TaskForm projects={projects} people={people} />,
+    );
 
     const form = screen.getByTestId("create-with-comment-form");
 
@@ -252,21 +209,31 @@ describe("TaskForm (create with comment)", () => {
       within(form).getByRole("button", { name: "Create with comment" }),
     );
 
-    expect(createTaskWithComment).toHaveBeenCalled();
-
-    const formData = submittedFormData(createTaskWithComment, 1);
-    expect(formData.get("commentBody")).toBe("Opening note");
-    expect(formData.get("commentAuthorId")).toBe("1");
-    // The task fields travel in the same submission, or it would not be one
-    // transaction.
-    expect(formData.get("title")).toBe("Atomic task");
+    // One call carrying both halves — the procedure wraps them in a transaction,
+    // and splitting them into two calls would defeat that.
+    expect(calls).toContainEqual({
+      path: "tasks.createWithComment",
+      input: expect.objectContaining({
+        title: "Atomic task",
+        commentBody: "Opening note",
+        commentAuthorId: 1,
+      }),
+    });
   });
 
-  it("does not submit the plain create action from this form", () => {
-    render(<TaskForm projects={projects} people={people} />);
+  it("does not call the plain create from this form", async () => {
+    const user = userEvent.setup();
+    const { calls } = renderWithTrpc(
+      <TaskForm projects={projects} people={people} />,
+    );
 
-    // Rendered with no user interaction, so neither action has run.
-    expect(createTask).not.toHaveBeenCalled();
+    const form = screen.getByTestId("create-with-comment-form");
+    await user.type(within(form).getByLabelText("Title"), "Atomic task");
+    await user.click(
+      within(form).getByRole("button", { name: "Create with comment" }),
+    );
+
+    expect(calls.map((call) => call.path)).not.toContain("tasks.create");
   });
 });
 
@@ -280,7 +247,9 @@ describe("TaskForm (edit)", () => {
   });
 
   it("prefills every field from the stored task", () => {
-    render(<TaskForm projects={projects} people={people} task={task} />);
+    renderWithTrpc(
+      <TaskForm projects={projects} people={people} task={task} />,
+    );
 
     expect(primaryForm().getByLabelText("Title")).toHaveValue(task.title);
     expect(primaryForm().getByLabelText("Description")).toHaveValue(
@@ -297,7 +266,9 @@ describe("TaskForm (edit)", () => {
   });
 
   it("heads the page and the button for an edit", () => {
-    render(<TaskForm projects={projects} people={people} task={task} />);
+    renderWithTrpc(
+      <TaskForm projects={projects} people={people} task={task} />,
+    );
 
     expect(
       screen.getByRole("heading", { name: "Edit task" }),
@@ -307,23 +278,36 @@ describe("TaskForm (edit)", () => {
     ).toBeInTheDocument();
   });
 
-  it("submits the edited values", async () => {
+  it("calls tasks.update with the task's id and no projectId", async () => {
+    // spec/contract.md lists the update form's fields as title, status, assignee
+    // and description only — a task belongs to its project for its lifetime, so
+    // the mutation must not accept a move the form never offers.
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} task={task} />);
+    const { calls } = renderWithTrpc(
+      <TaskForm projects={projects} people={people} task={task} />,
+    );
 
     await user.clear(primaryForm().getByLabelText("Title"));
     await user.type(primaryForm().getByLabelText("Title"), "Renamed task");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    // `updateTask` is bound to the row id, which React prepends to the arguments
-    // it passes, so the FormData arrives third: (id, previousState, formData).
-    const formData = submittedFormData(updateTask, 2);
-    expect(formData.get("title")).toBe("Renamed task");
+    const call = calls.find((c) => c.path === "tasks.update");
+
+    expect(call?.input).toEqual({
+      id: 101,
+      title: "Renamed task",
+      description: "Existing description",
+      status: "in progress",
+      assigneeId: null,
+    });
+    expect(call?.input).not.toHaveProperty("projectId");
   });
 
   it("hides the create forms while editing", () => {
     // An edit has no comment to create atomically — that is a create-only path.
-    render(<TaskForm projects={projects} people={people} task={task} />);
+    renderWithTrpc(
+      <TaskForm projects={projects} people={people} task={task} />,
+    );
 
     expect(
       screen.queryByTestId("create-with-comment-form"),
@@ -332,29 +316,25 @@ describe("TaskForm (edit)", () => {
 });
 
 describe("TaskForm (server-side validation)", () => {
-  it("keeps what was typed when the action rejects the submit", async () => {
-    createTask.mockResolvedValueOnce({
-      errors: { title: ["Title is required."] },
-    });
-
+  it("keeps what was typed when the procedure rejects the submit", async () => {
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+      rejected({ title: ["Title is required."] }),
+    );
 
     await user.type(primaryForm().getByLabelText("Title"), "Some work");
     await user.click(screen.getByRole("button", { name: "Create task" }));
 
     expect(await screen.findByText("Title is required.")).toBeInTheDocument();
-    // React would reset an uncontrolled form here and lose the input.
     expect(primaryForm().getByLabelText("Title")).toHaveValue("Some work");
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("marks the assignee field invalid when the assignee is gone", async () => {
-    createTask.mockResolvedValueOnce({
-      errors: { assigneeId: ["That assignee no longer exists."] },
-    });
-
     const user = userEvent.setup();
-    render(<TaskForm projects={projects} people={people} />);
+    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+      rejected({ assigneeId: ["That assignee no longer exists."] }),
+    );
 
     await user.type(primaryForm().getByLabelText("Title"), "Some work");
     await user.click(screen.getByRole("button", { name: "Create task" }));
@@ -364,6 +344,20 @@ describe("TaskForm (server-side validation)", () => {
     ).toBeInTheDocument();
     expect(
       primaryForm().getByRole("combobox", { name: "Assigned user" }),
+    ).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("reports a project that no longer exists against the select", async () => {
+    const user = userEvent.setup();
+    renderWithTrpc(<TaskForm projects={projects} people={people} />, () =>
+      rejected({ projectId: ["That project no longer exists."] }),
+    );
+
+    await user.type(primaryForm().getByLabelText("Title"), "Some work");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    expect(
+      primaryForm().getByRole("combobox", { name: "Project" }),
     ).toHaveAttribute("aria-invalid", "true");
   });
 });

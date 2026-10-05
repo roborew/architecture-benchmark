@@ -3,7 +3,6 @@ import { Suspense } from "react";
 
 import { TaskFilters } from "./_components/task-filters";
 import { TaskTable } from "./_components/task-table";
-import { countTasks, getProjects, getTasks, getUsers } from "@/lib/data";
 import {
   DEFAULT_PAGE_SIZE,
   formatRange,
@@ -12,6 +11,7 @@ import {
   parsePageSize,
 } from "@/lib/pagination";
 import { TaskPagination } from "./_components/task-pagination";
+import { getQueryClient, trpc } from "@/trpc/server";
 
 // The workspace-wide task list. Every filter is applied in the query rather
 // than in memory: the page used to slice an in-memory fixture, so a task
@@ -92,11 +92,14 @@ export default async function TasksPage({
   // Four independent reads, run concurrently. The count backs the summary line
   // the e2e suite asserts, and is a separate aggregate on purpose: a window
   // COUNT would force Postgres to materialise every matching row.
+  const queryClient = getQueryClient();
   const [tasks, total, projects, people] = await Promise.all([
-    getTasks({ ...filters, limit: size + 1, cursor }),
-    countTasks(filters),
-    getProjects(),
-    getUsers(),
+    queryClient.fetchQuery(
+      trpc.tasks.list.queryOptions({ ...filters, limit: size + 1, cursor }),
+    ),
+    queryClient.fetchQuery(trpc.tasks.count.queryOptions(filters)),
+    queryClient.fetchQuery(trpc.projects.list.queryOptions({ search: "" })),
+    queryClient.fetchQuery(trpc.users.list.queryOptions({ search: "" })),
   ]);
 
   // Over-fetched by one so `hasMore` costs no COUNT beyond the one already
