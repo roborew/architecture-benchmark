@@ -112,7 +112,13 @@ describe("DeleteUserButton", () => {
       screen.getByRole("button", { name: /Delete Alex Morgan/ }),
     );
 
-    const button = await screen.findByRole("button", { name: "Deleting…" });
+    // The control carries an aria-label naming its row, and an aria-label
+    // overrides the text content as the accessible name — so the row is found by
+    // that label and the pending wording is asserted as text.
+    const button = await screen.findByRole("button", {
+      name: /Delete Alex Morgan/,
+    });
+    expect(button).toHaveTextContent("Deleting…");
     expect(button).toBeDisabled();
 
     release(accepted());
