@@ -1,6 +1,7 @@
-import { useRouter, useLocation } from "@tanstack/react-router";
+import { useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { useQueryNavigation } from "@/hooks/use-query-navigation";
 import { useDebouncedValue } from "@/hooks/use-debounced";
 
 const inputClass =
@@ -19,8 +20,8 @@ export function SearchInput({
   placeholder?: string;
   label?: string;
 }) {
-  const router = useRouter();
   const { pathname, searchStr } = useLocation();
+  const navigateToQuery = useQueryNavigation(pathname);
   // The param name is a prop, so the query is read off the raw search string
   // rather than a statically-typed `useSearch()` object.
   const searchParams = new URLSearchParams(searchStr);
@@ -56,16 +57,14 @@ export function SearchInput({
     if (query) params.set(param, query);
     else params.delete(param);
 
-    const qs = params.toString();
     lastPushed.current = query;
     startTransition(() => {
-      router.navigate({
-        to: qs ? `${pathname}?${qs}` : pathname,
-        replace: true,
-        resetScroll: false,
-      });
+      // Replaces rather than pushes: typing a search should not fill the
+      // history stack with one entry per query, and resetScroll keeps the
+      // results panel from jumping while the reader is still typing.
+      navigateToQuery(params, { replace: true });
     });
-  }, [debounced, value, urlQuery, param, pathname, searchStr, router]);
+  }, [debounced, value, urlQuery, param, pathname, searchStr, navigateToQuery]);
 
   return (
     <label className="relative block">

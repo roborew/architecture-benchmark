@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { useQueryNavigation } from "@/hooks/use-query-navigation";
 
 import type { Project, User } from "@/lib/types";
 
@@ -37,7 +37,7 @@ export function TaskFilters({
   projectId?: number;
   assigneeId?: number;
 }) {
-  const router = useRouter();
+  const navigateToQuery = useQueryNavigation("/tasks");
 
   // The currently applied values, used to rebuild the URL on the next change.
   const current = { search, status, projectId, assigneeId };
@@ -53,11 +53,9 @@ export function TaskFilters({
     if (merged.assigneeId !== undefined)
       params.set("assignee", String(merged.assigneeId));
 
-    const query = params.toString();
-
     // Changing a filter invalidates the cursor and the page number, so both
     // are dropped rather than carried into a result set they no longer match.
-    router.navigate({ to: query ? `/tasks?${query}` : "/tasks" });
+    navigateToQuery(params);
   };
 
   return (
