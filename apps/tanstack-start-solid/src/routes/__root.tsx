@@ -34,10 +34,20 @@ export const Route = createRootRoute({
       },
     ],
   }),
-  component: RootComponent,
+  notFoundComponent: () => (
+    <div class="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
+      <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
+        Page not found
+      </h1>
+      <p class="mt-1.5 text-[13px] leading-6 text-slate-500">
+        The page you are looking for does not exist.
+      </p>
+    </div>
+  ),
+  shellComponent: RootDocument,
 });
 
-function RootComponent() {
+function RootDocument() {
   return (
     <html lang="en" class="h-full antialiased">
       <head>
