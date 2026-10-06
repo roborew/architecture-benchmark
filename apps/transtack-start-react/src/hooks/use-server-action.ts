@@ -48,7 +48,15 @@ export function withId(
   field: string,
   id: number,
 ): FormData {
-  const next = new FormData(formData);
+  const next = new FormData();
+
+  // Copied entry by entry rather than `new FormData(formData)`: TypeScript's
+  // lib.dom types the constructor's first parameter as HTMLFormElement, so
+  // passing a FormData does not typecheck even though every runtime accepts it.
+  for (const [key, value] of formData) {
+    next.append(key, value);
+  }
+
   next.set(field, String(id));
 
   return next;

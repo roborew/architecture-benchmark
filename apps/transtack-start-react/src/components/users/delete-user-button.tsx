@@ -9,7 +9,6 @@
 import { useServerFn } from "@tanstack/react-start";
 
 import type { User } from "@/lib/types";
-import { deleteUserFn } from "@/server/mutations";
 import { ID_FIELD, deleteUserFn } from "@/server/mutations";
 import { useServerAction, withId } from "@/hooks/use-server-action";
 
