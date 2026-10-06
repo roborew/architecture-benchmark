@@ -1,13 +1,13 @@
 import type {
-  Comment,
-  DashboardProject,
-  DashboardStats,
-  DashboardTask,
-  Project,
-  ProjectTaskRow,
-  TaskStatus,
-  TaskWithProject,
-  User,
+	Comment,
+	DashboardProject,
+	DashboardStats,
+	DashboardTask,
+	Project,
+	ProjectTaskRow,
+	TaskStatus,
+	TaskWithProject,
+	User,
 } from "@/lib/types";
 import { decodeCursor, encodeCursor } from "./cursor";
 import { sql } from "./db";
@@ -117,14 +117,14 @@ const TASK_PROJECTION = sql`
 `;
 
 export async function getProjects(value = "") {
-  const term = value.trim();
-  const where = term
-    ? sql`WHERE p.name ILIKE ${`%${escapeLike(term)}%`}
+	const term = value.trim();
+	const where = term
+		? sql`WHERE p.name ILIKE ${`%${escapeLike(term)}%`}
           OR p.description ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+		: sql``;
 
-  try {
-    return await sql<Project[]>`
+	try {
+		return await sql<Project[]>`
       SELECT
         p.id::int AS id,
         p.name,
@@ -139,10 +139,10 @@ export async function getProjects(value = "") {
       GROUP BY p.id, p.name, p.description, p.created_at
       ORDER BY p.created_at DESC, p.id DESC
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch projects.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch projects.");
+	}
 }
 
 /**
@@ -151,8 +151,8 @@ export async function getProjects(value = "") {
  * `getProjects` does rather than the raw row.
  */
 export async function getProject(id: number): Promise<Project | null> {
-  try {
-    const [project] = await sql<Project[]>`
+	try {
+		const [project] = await sql<Project[]>`
       SELECT
         p.id::int AS id,
         p.name,
@@ -167,19 +167,19 @@ export async function getProject(id: number): Promise<Project | null> {
       GROUP BY p.id, p.name, p.description, p.created_at
     `;
 
-    return project ?? null;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the project.");
-  }
+		return project ?? null;
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the project.");
+	}
 }
 
 export type ProjectTaskFilters = {
-  /** A single status, or empty/absent for every status. */
-  status?: string;
-  /** Opaque keyset cursor for `(created_at, id)`; absent means the first page. */
-  cursor?: string | null;
-  limit?: number;
+	/** A single status, or empty/absent for every status. */
+	status?: string;
+	/** Opaque keyset cursor for `(created_at, id)`; absent means the first page. */
+	cursor?: string | null;
+	limit?: number;
 };
 
 /**
@@ -193,42 +193,42 @@ export type ProjectTaskFilters = {
  * repeat a row.
  */
 export async function getProjectTasks(
-  projectId: number,
-  { status = "", cursor = null, limit = PAGE_SIZE }: ProjectTaskFilters = {},
+	projectId: number,
+	{ status = "", cursor = null, limit = PAGE_SIZE }: ProjectTaskFilters = {},
 ): Promise<ProjectTaskRow[]> {
-  const term = status.trim();
+	const term = status.trim();
 
-  // `status` is constrained text in the schema. Validating here rather than
-  // letting the constraint reject it turns a tampered URL into a clear error
-  // instead of a raw Postgres check-constraint message.
-  if (term && !TASK_STATUSES.includes(term as TaskStatus)) {
-    throw new Error(`Unknown task status: ${term}`);
-  }
+	// `status` is constrained text in the schema. Validating here rather than
+	// letting the constraint reject it turns a tampered URL into a clear error
+	// instead of a raw Postgres check-constraint message.
+	if (term && !TASK_STATUSES.includes(term as TaskStatus)) {
+		throw new Error(`Unknown task status: ${term}`);
+	}
 
-  const statusFilter = term ? sql`AND t.status = ${term}` : sql``;
+	const statusFilter = term ? sql`AND t.status = ${term}` : sql``;
 
-  const decoded = decodeCursor(cursor);
+	const decoded = decodeCursor(cursor);
 
-  // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
-  // costs 50x page 1, and a row inserted mid-walk shifts the window. Comparing
-  // the row tuple in one predicate lets Postgres use
-  // tasks_project_created_id_idx directly.
-  //
-  // The cursor is bound as text and cast in SQL rather than as a timestamptz:
-  // the driver would otherwise try to parse it back into a Date, which turns a
-  // stale or hand-edited cursor into a driver-level error instead of simply
-  // not matching a row.
-  const cursorFilter = decoded
-    ? sql`AND (t.created_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
+	// Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
+	// costs 50x page 1, and a row inserted mid-walk shifts the window. Comparing
+	// the row tuple in one predicate lets Postgres use
+	// tasks_project_created_id_idx directly.
+	//
+	// The cursor is bound as text and cast in SQL rather than as a timestamptz:
+	// the driver would otherwise try to parse it back into a Date, which turns a
+	// stale or hand-edited cursor into a driver-level error instead of simply
+	// not matching a row.
+	const cursorFilter = decoded
+		? sql`AND (t.created_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
+		: sql``;
 
-  // Clamped so a caller cannot ask for an unbounded page. One row above the page
-  // size is allowed deliberately: fetching PAGE + 1 and dropping the last is
-  // how the caller learns whether an older page exists without a COUNT.
-  const bound = Math.max(1, Math.min(limit, PAGE_SIZE + 1));
+	// Clamped so a caller cannot ask for an unbounded page. One row above the page
+	// size is allowed deliberately: fetching PAGE + 1 and dropping the last is
+	// how the caller learns whether an older page exists without a COUNT.
+	const bound = Math.max(1, Math.min(limit, PAGE_SIZE + 1));
 
-  try {
-    const rows = await sql<ProjectTaskRow[]>`
+	try {
+		const rows = await sql<ProjectTaskRow[]>`
       SELECT
         ${TASK_PROJECTION_FIELDS},
         -- The cursor needs microsecond precision, and a Z suffix since the
@@ -243,33 +243,33 @@ export async function getProjectTasks(
       LIMIT ${bound}
     `;
 
-    // Derived here rather than in SQL so cursor packing has one implementation,
-    // shared with the decoder this query uses to read a page back.
-    return rows.map((row) => ({
-      ...row,
-      cursorFor: encodeCursor(row.createdAtRaw, row.id),
-    }));
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the project tasks.");
-  }
+		// Derived here rather than in SQL so cursor packing has one implementation,
+		// shared with the decoder this query uses to read a page back.
+		return rows.map((row) => ({
+			...row,
+			cursorFor: encodeCursor(row.createdAtRaw, row.id),
+		}));
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the project tasks.");
+	}
 }
 
 export type TaskRow = TaskWithProject & {
-  /** Raw `updated_at` at microsecond precision, the cursor's time component. */
-  updatedAtRaw: string;
-  /** The `(updated_at, id)` tuple the next page starts after. */
-  cursorFor: string;
+	/** Raw `updated_at` at microsecond precision, the cursor's time component. */
+	updatedAtRaw: string;
+	/** The `(updated_at, id)` tuple the next page starts after. */
+	cursorFor: string;
 };
 
 export type TaskFilters = {
-  projectId?: number;
-  status?: string;
-  assigneeId?: number;
-  search?: string;
-  limit?: number;
-  /** Opaque keyset cursor for `(updated_at, id)`; absent means the first page. */
-  cursor?: string | null;
+	projectId?: number;
+	status?: string;
+	assigneeId?: number;
+	search?: string;
+	limit?: number;
+	/** Opaque keyset cursor for `(updated_at, id)`; absent means the first page. */
+	cursor?: string | null;
 };
 
 /**
@@ -280,41 +280,41 @@ export type TaskFilters = {
  * the project board, the workspace list and its detail page.
  */
 export async function getTasks({
-  projectId,
-  status = "",
-  assigneeId,
-  search = "",
-  limit = PAGE_SIZE,
-  cursor = null,
+	projectId,
+	status = "",
+	assigneeId,
+	search = "",
+	limit = PAGE_SIZE,
+	cursor = null,
 }: TaskFilters = {}): Promise<TaskRow[]> {
-  const statusTerm = status.trim();
+	const statusTerm = status.trim();
 
-  if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
-    throw new Error(`Unknown task status: ${statusTerm}`);
-  }
+	if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
+		throw new Error(`Unknown task status: ${statusTerm}`);
+	}
 
-  const term = search.trim();
+	const term = search.trim();
 
-  // LIKE wildcards in a search box are almost always a literal character the
-  // user typed, not a pattern. Without escaping, a single `%` matches every
-  // row and hides a real filtering bug.
-  const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
+	// LIKE wildcards in a search box are almost always a literal character the
+	// user typed, not a pattern. Without escaping, a single `%` matches every
+	// row and hides a real filtering bug.
+	const searchFilter = term
+		? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
           OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
+		: sql``;
 
-  const decoded = decodeCursor(cursor);
+	const decoded = decodeCursor(cursor);
 
-  // Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
-  // costs 50x page 1, and a row inserted mid-walk shifts the window. Bound as
-  // text and cast in SQL so an unusable cursor matches nothing instead of
-  // failing in the driver.
-  const cursorFilter = decoded
-    ? sql`AND (t.updated_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
-    : sql``;
+	// Keyset rather than OFFSET: OFFSET re-walks every skipped row, so page 50
+	// costs 50x page 1, and a row inserted mid-walk shifts the window. Bound as
+	// text and cast in SQL so an unusable cursor matches nothing instead of
+	// failing in the driver.
+	const cursorFilter = decoded
+		? sql`AND (t.updated_at, t.id) < (${decoded.createdAt}::text::timestamptz, ${decoded.id})`
+		: sql``;
 
-  try {
-    const rows = await sql<TaskRow[]>`
+	try {
+		const rows = await sql<TaskRow[]>`
       SELECT
         ${TASK_PROJECTION_FIELDS},
         ${CURSOR_FIELD}
@@ -330,14 +330,14 @@ export async function getTasks({
       LIMIT ${Math.max(1, Math.min(limit, PAGE_SIZE + 1))}
     `;
 
-    return rows.map((row) => ({
-      ...row,
-      cursorFor: encodeCursor(row.updatedAtRaw, row.id),
-    }));
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch tasks.");
-  }
+		return rows.map((row) => ({
+			...row,
+			cursorFor: encodeCursor(row.updatedAtRaw, row.id),
+		}));
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch tasks.");
+	}
 }
 
 /**
@@ -345,18 +345,18 @@ export async function getTasks({
  * or `null` when no row matches.
  */
 export async function getTask(id: number): Promise<TaskWithProject | null> {
-  try {
-    const [task] = await sql<TaskWithProject[]>`
+	try {
+		const [task] = await sql<TaskWithProject[]>`
       ${TASK_PROJECTION}
       WHERE t.id = ${id}
       GROUP BY t.id, p.name, u.display_name
     `;
 
-    return task ?? null;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the task.");
-  }
+		return task ?? null;
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the task.");
+	}
 }
 
 /**
@@ -366,11 +366,11 @@ export async function getTask(id: number): Promise<TaskWithProject | null> {
  * comment it has accumulated. `COMMENTS_PER_TASK` is that bound.
  */
 export async function getComments(
-  taskId: number,
-  limit = COMMENTS_PER_TASK,
+	taskId: number,
+	limit = COMMENTS_PER_TASK,
 ): Promise<Comment[]> {
-  try {
-    return await sql<Comment[]>`
+	try {
+		return await sql<Comment[]>`
       SELECT
         c.id::int AS id,
         c.task_id::int AS "taskId",
@@ -383,10 +383,10 @@ export async function getComments(
       ORDER BY c.created_at DESC, c.id DESC
       LIMIT ${Math.max(1, Math.min(limit, COMMENTS_PER_TASK))}
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the task comments.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the task comments.");
+	}
 }
 
 /**
@@ -398,26 +398,26 @@ export async function getComments(
  * cost is one bounded read plus one aggregate.
  */
 export async function countTasks({
-  search = "",
-  status = "",
-  projectId,
-  assigneeId,
+	search = "",
+	status = "",
+	projectId,
+	assigneeId,
 }: TaskFilters = {}): Promise<number> {
-  const statusTerm = status.trim();
+	const statusTerm = status.trim();
 
-  if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
-    throw new Error(`Unknown task status: ${statusTerm}`);
-  }
+	if (statusTerm && !TASK_STATUSES.includes(statusTerm as TaskStatus)) {
+		throw new Error(`Unknown task status: ${statusTerm}`);
+	}
 
-  const term = search.trim();
+	const term = search.trim();
 
-  const searchFilter = term
-    ? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
+	const searchFilter = term
+		? sql`AND (t.title ILIKE ${`%${escapeLike(term)}%`}
           OR t.description ILIKE ${`%${escapeLike(term)}%`})`
-    : sql``;
+		: sql``;
 
-  try {
-    const [row] = await sql<{ count: number }[]>`
+	try {
+		const [row] = await sql<{ count: number }[]>`
       SELECT COUNT(*)::int AS count
       FROM tasks t
       WHERE 1 = 1
@@ -427,11 +427,11 @@ export async function countTasks({
       ${searchFilter}
     `;
 
-    return row?.count ?? 0;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to count tasks.");
-  }
+		return row?.count ?? 0;
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to count tasks.");
+	}
 }
 
 /**
@@ -441,8 +441,8 @@ export async function countTasks({
  * separate COUNT queries would each scan a different table for the same row.
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  try {
-    const [stats] = await sql<DashboardStats[]>`
+	try {
+		const [stats] = await sql<DashboardStats[]>`
       SELECT
         (SELECT COUNT(*) FROM projects)::int AS "projectCount",
         (SELECT COUNT(*) FROM tasks)::int AS "totalTasks",
@@ -457,11 +457,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         (SELECT COUNT(*) FROM tasks WHERE status = 'done')::int AS "doneTasks"
     `;
 
-    return stats;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the dashboard stats.");
-  }
+		return stats;
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the dashboard stats.");
+	}
 }
 
 /**
@@ -471,10 +471,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
  * when the work last moved, which is also what `updateTask` advances.
  */
 export async function getRecentTasks(
-  limit = DASHBOARD_RECENT_TASKS,
+	limit = DASHBOARD_RECENT_TASKS,
 ): Promise<DashboardTask[]> {
-  try {
-    return await sql<DashboardTask[]>`
+	try {
+		return await sql<DashboardTask[]>`
       SELECT
         t.id::int AS id,
         t.title,
@@ -488,10 +488,10 @@ export async function getRecentTasks(
       ORDER BY t.updated_at DESC, t.id DESC
       LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_RECENT_TASKS))}
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch recent tasks.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch recent tasks.");
+	}
 }
 
 /**
@@ -501,10 +501,10 @@ export async function getRecentTasks(
  * repeating the newest-first ordering of every other list.
  */
 export async function getDashboardProjects(
-  limit = DASHBOARD_PROJECTS,
+	limit = DASHBOARD_PROJECTS,
 ): Promise<DashboardProject[]> {
-  try {
-    return await sql<DashboardProject[]>`
+	try {
+		return await sql<DashboardProject[]>`
       SELECT
         p.id::int AS id,
         p.name,
@@ -518,30 +518,30 @@ export async function getDashboardProjects(
       ORDER BY COUNT(t.id) DESC, p.id ASC
       LIMIT ${Math.max(1, Math.min(limit, DASHBOARD_PROJECTS))}
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch dashboard projects.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch dashboard projects.");
+	}
 }
 
 export async function getUsers(value = "") {
-  const term = value.trim();
-  const where = term
-    ? sql`WHERE u.display_name ILIKE ${`%${escapeLike(term)}%`}
+	const term = value.trim();
+	const where = term
+		? sql`WHERE u.display_name ILIKE ${`%${escapeLike(term)}%`}
           OR u.email ILIKE ${`%${escapeLike(term)}%`}`
-    : sql``;
+		: sql``;
 
-  try {
-    return await sql<User[]>`
+	try {
+		return await sql<User[]>`
       ${USER_AGGREGATES}
       ${where}
       GROUP BY u.id, u.display_name, u.email
       ORDER BY u.display_name DESC, u.id DESC
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch users.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch users.");
+	}
 }
 
 /**
@@ -550,18 +550,18 @@ export async function getUsers(value = "") {
  * aggregate counts.
  */
 export async function getUser(id: number): Promise<User | null> {
-  try {
-    const [user] = await sql<User[]>`
+	try {
+		const [user] = await sql<User[]>`
       ${USER_AGGREGATES}
       WHERE u.id = ${id}
       GROUP BY u.id, u.display_name, u.email
     `;
 
-    return user ?? null;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the user.");
-  }
+		return user ?? null;
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the user.");
+	}
 }
 
 /**
@@ -572,15 +572,15 @@ export async function getUser(id: number): Promise<User | null> {
  * filter would hand each of them the other's work.
  */
 export async function getUserTasks(id: number): Promise<TaskWithProject[]> {
-  try {
-    return await sql<TaskWithProject[]>`
+	try {
+		return await sql<TaskWithProject[]>`
       ${TASK_PROJECTION}
       WHERE t.assignee_id = ${id}
       GROUP BY t.id, p.name, u.display_name
       ORDER BY t.updated_at DESC, t.id DESC
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    throw new Error("Failed to fetch the user's tasks.");
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		throw new Error("Failed to fetch the user's tasks.");
+	}
 }

@@ -27,21 +27,21 @@ import { useRouter } from "@tanstack/solid-router";
  * to one from the other is a navigation the router will not resolve.
  */
 export function useQueryNavigation(basePath: string) {
-  const router = useRouter();
+	const router = useRouter();
 
-  return (query: URLSearchParams, options: { replace?: boolean } = {}) => {
-    const search = Object.fromEntries(query.entries());
+	return (query: URLSearchParams, options: { replace?: boolean } = {}) => {
+		const search = Object.fromEntries(query.entries());
 
-    // An empty query navigates to the bare path rather than "/tasks?" — the
-    // route's validateSearch omits undefined params, so the cleaner URL is
-    // also the one the loader and the e2e assertions expect.
-    router.navigate({
-      to: basePath,
-      search: Object.keys(search).length > 0 ? search : undefined,
-      ...(options.replace ? { replace: true } : {}),
-      // Typing a search must not scroll the results panel out from under the
-      // reader mid-keystroke.
-      resetScroll: false,
-    } as never);
-  };
+		// An empty query navigates to the bare path rather than "/tasks?" — the
+		// route's validateSearch omits undefined params, so the cleaner URL is
+		// also the one the loader and the e2e assertions expect.
+		router.navigate({
+			to: basePath,
+			search: Object.keys(search).length > 0 ? search : undefined,
+			...(options.replace ? { replace: true } : {}),
+			// Typing a search must not scroll the results panel out from under the
+			// reader mid-keystroke.
+			resetScroll: false,
+		} as never);
+	};
 }

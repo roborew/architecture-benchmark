@@ -16,82 +16,82 @@
 import { createServerFn } from "@tanstack/solid-start";
 
 import {
-  countTasks,
-  getComments,
-  getDashboardProjects,
-  getDashboardStats,
-  getProject,
-  getProjectTasks,
-  getProjects,
-  getRecentTasks,
-  getTask,
-  getTasks,
-  getUser,
-  getUserTasks,
-  getUsers,
-  type TaskFilters,
+	countTasks,
+	getComments,
+	getDashboardProjects,
+	getDashboardStats,
+	getProject,
+	getProjects,
+	getProjectTasks,
+	getRecentTasks,
+	getTask,
+	getTasks,
+	getUser,
+	getUsers,
+	getUserTasks,
+	type TaskFilters,
 } from "@/lib/data";
 
 export const fetchProjects = createServerFn({ method: "GET" })
-  .validator((data: { q?: string } | undefined) => data ?? { q: "" })
-  .handler(({ data }) => getProjects(data.q ?? ""));
+	.validator((data: { q?: string } | undefined) => data ?? { q: "" })
+	.handler(({ data }) => getProjects(data.q ?? ""));
 
 export const fetchProject = createServerFn({ method: "GET" })
-  .validator((data: { id: number }) => data)
-  .handler(({ data }) => getProject(data.id));
+	.validator((data: { id: number }) => data)
+	.handler(({ data }) => getProject(data.id));
 
 export const fetchProjectTasks = createServerFn({ method: "GET" })
-  .validator(
-    (data: {
-      projectId: number;
-      status?: string;
-      cursor?: string | null;
-      limit?: number;
-    }) => data,
-  )
-  .handler(({ data }) => getProjectTasks(data.projectId, data));
+	.validator(
+		(data: {
+			projectId: number;
+			status?: string;
+			cursor?: string | null;
+			limit?: number;
+		}) => data,
+	)
+	.handler(({ data }) => getProjectTasks(data.projectId, data));
 
 export const fetchTasks = createServerFn({ method: "GET" })
-  .validator((data: TaskFilters) => data)
-  .handler(({ data }) => getTasks(data));
+	.validator((data: TaskFilters) => data)
+	.handler(({ data }) => getTasks(data));
 
 export const fetchTaskCount = createServerFn({ method: "GET" })
-  .validator((data: TaskFilters) => data)
-  .handler(({ data }) => countTasks(data));
+	.validator((data: TaskFilters) => data)
+	.handler(({ data }) => countTasks(data));
 
 export const fetchTask = createServerFn({ method: "GET" })
-  .validator((data: { id: number }) => data)
-  .handler(({ data }) => getTask(data.id));
+	.validator((data: { id: number }) => data)
+	.handler(({ data }) => getTask(data.id));
 
 export const fetchComments = createServerFn({ method: "GET" })
-  .validator((data: { taskId: number }) => data)
-  .handler(({ data }) => getComments(data.taskId));
+	.validator((data: { taskId: number }) => data)
+	.handler(({ data }) => getComments(data.taskId));
 
 export const fetchDashboard = createServerFn({ method: "GET" }).handler(
-  async () => {
-    // Three independent aggregates, so they run concurrently rather than in
-    // sequence.
-    const [stats, recentTasks, projects] = await Promise.all([
-      getDashboardStats(),
-      getRecentTasks(),
-      getDashboardProjects(),
-    ]);
+	async () => {
+		// Three independent aggregates, so they run concurrently rather than in
+		// sequence.
+		const [stats, recentTasks, projects] = await Promise.all([
+			getDashboardStats(),
+			getRecentTasks(),
+			getDashboardProjects(),
+		]);
 
-    return { stats, recentTasks, projects };
-  },
+		return { stats, recentTasks, projects };
+	},
 );
 
 export const fetchUsers = createServerFn({ method: "GET" })
-  .validator((data: { q?: string } | undefined) => data ?? { q: "" })
-  .handler(({ data }) => getUsers(data.q ?? ""));
+	.validator((data: { q?: string } | undefined) => data ?? { q: "" })
+	.handler(({ data }) => getUsers(data.q ?? ""));
 
 export const fetchUser = createServerFn({ method: "GET" })
-  .validator((data: { id: number }) => data)
-  .handler(({ data }) => getUser(data.id));
+	.validator((data: { id: number }) => data)
+	.handler(({ data }) => getUser(data.id));
 
 export const fetchUserTasks = createServerFn({ method: "GET" })
-  .validator((data: { id: number }) => data)
-  .handler(({ data }) => getUserTasks(data.id));
+	.validator((data: { id: number }) => data)
+	.handler(({ data }) => getUserTasks(data.id));
 
 /**
  * The Project and Assigned user selects, for the task form.
@@ -101,9 +101,9 @@ export const fetchUserTasks = createServerFn({ method: "GET" })
  * each re-derive it.
  */
 export const fetchTaskFormOptions = createServerFn({ method: "GET" }).handler(
-  async () => {
-    const [projects, people] = await Promise.all([getProjects(), getUsers()]);
+	async () => {
+		const [projects, people] = await Promise.all([getProjects(), getUsers()]);
 
-    return { projects, people };
-  },
+		return { projects, people };
+	},
 );

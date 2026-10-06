@@ -12,16 +12,16 @@
 // cursor opaque — the page should not need to know how it is packed.
 
 export type Cursor = {
-  createdAt: string;
-  id: number;
+	createdAt: string;
+	id: number;
 };
 
 const SEPARATOR = "|";
 
 export function encodeCursor(createdAt: string, id: number): string {
-  return Buffer.from(`${createdAt}${SEPARATOR}${id}`, "utf8").toString(
-    "base64url",
-  );
+	return Buffer.from(`${createdAt}${SEPARATOR}${id}`, "utf8").toString(
+		"base64url",
+	);
 }
 
 /**
@@ -32,23 +32,23 @@ export function encodeCursor(createdAt: string, id: number): string {
  * link the user may have simply edited.
  */
 export function decodeCursor(value: string | null | undefined): Cursor | null {
-  if (!value) return null;
+	if (!value) return null;
 
-  let decoded: string;
+	let decoded: string;
 
-  try {
-    decoded = Buffer.from(value, "base64url").toString("utf8");
-  } catch {
-    return null;
-  }
+	try {
+		decoded = Buffer.from(value, "base64url").toString("utf8");
+	} catch {
+		return null;
+	}
 
-  const separator = decoded.lastIndexOf(SEPARATOR);
-  if (separator === -1) return null;
+	const separator = decoded.lastIndexOf(SEPARATOR);
+	if (separator === -1) return null;
 
-  const createdAt = decoded.slice(0, separator);
-  const id = Number(decoded.slice(separator + 1));
+	const createdAt = decoded.slice(0, separator);
+	const id = Number(decoded.slice(separator + 1));
 
-  if (!createdAt || !Number.isInteger(id)) return null;
+	if (!createdAt || !Number.isInteger(id)) return null;
 
-  return { createdAt, id };
+	return { createdAt, id };
 }

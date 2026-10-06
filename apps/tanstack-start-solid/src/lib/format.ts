@@ -1,16 +1,16 @@
 const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
 ];
 
 /**
@@ -22,7 +22,7 @@ const MONTHS = [
  * disagree depending on where they run.
  */
 export function formatDate(isoDate: string): string {
-  const [year, month, day] = isoDate.split("-").map(Number);
+	const [year, month, day] = isoDate.split("-").map(Number);
 
-  return `${day} ${MONTHS[month - 1]} ${year}`;
+	return `${day} ${MONTHS[month - 1]} ${year}`;
 }

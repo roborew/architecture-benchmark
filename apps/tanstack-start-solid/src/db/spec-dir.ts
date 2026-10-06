@@ -12,22 +12,22 @@ import { fileURLToPath } from "node:url";
 const MARKER = path.join("spec", "schema.sql");
 
 function findSpecRoot(from: string): string {
-  let directory = from;
+	let directory = from;
 
-  // Stop at the filesystem root; `path.dirname("/") === "/"` would loop forever.
-  for (;;) {
-    if (existsSync(path.join(directory, MARKER))) {
-      return directory;
-    }
+	// Stop at the filesystem root; `path.dirname("/") === "/"` would loop forever.
+	for (;;) {
+		if (existsSync(path.join(directory, MARKER))) {
+			return directory;
+		}
 
-    const parent = path.dirname(directory);
-    if (parent === directory) {
-      throw new Error(
-        `Could not locate the spec directory: no ${MARKER} found in any parent of ${from}`,
-      );
-    }
-    directory = parent;
-  }
+		const parent = path.dirname(directory);
+		if (parent === directory) {
+			throw new Error(
+				`Could not locate the spec directory: no ${MARKER} found in any parent of ${from}`,
+			);
+		}
+		directory = parent;
+	}
 }
 
 export const currentDirectory = path.dirname(fileURLToPath(import.meta.url));

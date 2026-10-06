@@ -8,9 +8,9 @@ import { createFileRoute } from "@tanstack/solid-router";
 import { ProjectForm } from "@/components/projects/project-form";
 
 export const Route = createFileRoute("/projects/new")({
-  component: NewProjectPage,
+	component: NewProjectPage,
 });
 
 function NewProjectPage() {
-  return <ProjectForm />;
+	return <ProjectForm />;
 }

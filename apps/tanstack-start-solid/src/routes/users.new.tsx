@@ -9,9 +9,9 @@ import { createFileRoute } from "@tanstack/solid-router";
 import { UserForm } from "@/components/users/user-form";
 
 export const Route = createFileRoute("/users/new")({
-  component: NewUserPage,
+	component: NewUserPage,
 });
 
 function NewUserPage() {
-  return <UserForm />;
+	return <UserForm />;
 }

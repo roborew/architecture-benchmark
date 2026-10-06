@@ -10,12 +10,12 @@ import { TaskForm } from "@/components/tasks/task-form";
 import { fetchTaskFormOptions } from "@/server/queries";
 
 export const Route = createFileRoute("/tasks/new")({
-  loader: () => fetchTaskFormOptions(),
-  component: NewTaskPage,
+	loader: () => fetchTaskFormOptions(),
+	component: NewTaskPage,
 });
 
 function NewTaskPage() {
-  const data = Route.useLoaderData();
+	const data = Route.useLoaderData();
 
-  return <TaskForm projects={data().projects} people={data().people} />;
+	return <TaskForm projects={data().projects} people={data().people} />;
 }

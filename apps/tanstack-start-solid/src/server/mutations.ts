@@ -32,17 +32,17 @@
 import { createServerFn } from "@tanstack/solid-start";
 
 import {
-  createComment as createCommentAction,
-  createProject as createProjectAction,
-  createTask as createTaskAction,
-  createTaskWithComment as createTaskWithCommentAction,
-  createUser as createUserAction,
-  deleteProject as deleteProjectAction,
-  deleteTask as deleteTaskAction,
-  deleteUser as deleteUserAction,
-  updateProject as updateProjectAction,
-  updateTask as updateTaskAction,
-  updateUser as updateUserAction,
+	createComment as createCommentAction,
+	createProject as createProjectAction,
+	createTask as createTaskAction,
+	createTaskWithComment as createTaskWithCommentAction,
+	createUser as createUserAction,
+	deleteProject as deleteProjectAction,
+	deleteTask as deleteTaskAction,
+	deleteUser as deleteUserAction,
+	updateProject as updateProjectAction,
+	updateTask as updateTaskAction,
+	updateUser as updateUserAction,
 } from "@/lib/actions";
 
 /**
@@ -52,59 +52,59 @@ import {
  * them cannot disagree about the name.
  */
 export const ID_FIELD = {
-  project: "projectId",
-  task: "taskId",
-  user: "userId",
+	project: "projectId",
+	task: "taskId",
+	user: "userId",
 } as const;
 
 function readId(formData: FormData, field: string): number {
-  return Number(formData.get(field));
+	return Number(formData.get(field));
 }
 
 export const createProjectFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => createProjectAction(data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => createProjectAction(data));
 
 export const updateProjectFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) =>
-    updateProjectAction(readId(data, ID_FIELD.project), data),
-  );
+	.validator((data: FormData) => data)
+	.handler(({ data }) =>
+		updateProjectAction(readId(data, ID_FIELD.project), data),
+	);
 
 export const deleteProjectFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => deleteProjectAction(readId(data, ID_FIELD.project)));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => deleteProjectAction(readId(data, ID_FIELD.project)));
 
 export const createUserFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => createUserAction(data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => createUserAction(data));
 
 export const updateUserFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => updateUserAction(readId(data, ID_FIELD.user), data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => updateUserAction(readId(data, ID_FIELD.user), data));
 
 export const deleteUserFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => deleteUserAction(readId(data, ID_FIELD.user)));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => deleteUserAction(readId(data, ID_FIELD.user)));
 
 export const createTaskFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => createTaskAction(data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => createTaskAction(data));
 
 export const updateTaskFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => updateTaskAction(readId(data, ID_FIELD.task), data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => updateTaskAction(readId(data, ID_FIELD.task), data));
 
 export const deleteTaskFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => deleteTaskAction(readId(data, ID_FIELD.task)));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => deleteTaskAction(readId(data, ID_FIELD.task)));
 
 export const createTaskWithCommentFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) => createTaskWithCommentAction(data));
+	.validator((data: FormData) => data)
+	.handler(({ data }) => createTaskWithCommentAction(data));
 
 export const createCommentFn = createServerFn({ method: "POST" })
-  .validator((data: FormData) => data)
-  .handler(({ data }) =>
-    createCommentAction(readId(data, ID_FIELD.task), data),
-  );
+	.validator((data: FormData) => data)
+	.handler(({ data }) =>
+		createCommentAction(readId(data, ID_FIELD.task), data),
+	);

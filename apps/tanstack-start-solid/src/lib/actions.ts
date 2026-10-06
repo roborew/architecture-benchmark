@@ -20,13 +20,13 @@ import { z } from "zod";
 import { sql } from "./db";
 
 const ProjectSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Project name is required.")
-    // The schema puts no limit on projects.name, but tasks.title caps at 200.
-    .max(200, "Project name must be 200 characters or fewer."),
-  description: z.string().trim(),
+	name: z
+		.string()
+		.trim()
+		.min(1, "Project name is required.")
+		// The schema puts no limit on projects.name, but tasks.title caps at 200.
+		.max(200, "Project name must be 200 characters or fewer."),
+	description: z.string().trim(),
 });
 
 /**
@@ -36,16 +36,16 @@ const ProjectSchema = z.object({
  * because the form declares `type="email"` and the server should agree.
  */
 const UserSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "User name is required.")
-    .max(200, "User name must be 200 characters or fewer."),
-  email: z
-    .string()
-    .trim()
-    .min(1, "Email is required.")
-    .email("Enter a valid email address."),
+	name: z
+		.string()
+		.trim()
+		.min(1, "User name is required.")
+		.max(200, "User name must be 200 characters or fewer."),
+	email: z
+		.string()
+		.trim()
+		.min(1, "Email is required.")
+		.email("Enter a valid email address."),
 });
 
 /**
@@ -56,24 +56,24 @@ const UserSchema = z.object({
  * choice — so an absent or empty value means "unassigned" rather than invalid.
  */
 const TaskSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    // Matches the CHECK (char_length BETWEEN 1 AND 200) in spec/schema.sql, so
-    // the same bound is enforced in the form and the database.
-    .min(1, "Title is required.")
-    .max(200, "Title must be 200 characters or fewer."),
-  // `formData.get` returns null for a field the form did not submit at all,
-  // which `z.string().default("")` would not catch — `.default` only fills in
-  // `undefined`. An omitted description is legal (the column defaults to ''),
-  // so null is normalised here rather than reported as a validation failure.
-  description: z.preprocess(
-    (value) => (value === null || value === undefined ? "" : value),
-    z.string().trim(),
-  ),
-  status: z.enum(["todo", "in progress", "done"], {
-    message: "Choose a valid status.",
-  }),
+	title: z
+		.string()
+		.trim()
+		// Matches the CHECK (char_length BETWEEN 1 AND 200) in spec/schema.sql, so
+		// the same bound is enforced in the form and the database.
+		.min(1, "Title is required.")
+		.max(200, "Title must be 200 characters or fewer."),
+	// `formData.get` returns null for a field the form did not submit at all,
+	// which `z.string().default("")` would not catch — `.default` only fills in
+	// `undefined`. An omitted description is legal (the column defaults to ''),
+	// so null is normalised here rather than reported as a validation failure.
+	description: z.preprocess(
+		(value) => (value === null || value === undefined ? "" : value),
+		z.string().trim(),
+	),
+	status: z.enum(["todo", "in progress", "done"], {
+		message: "Choose a valid status.",
+	}),
 });
 
 /**
@@ -84,30 +84,30 @@ const TaskSchema = z.object({
  * author is coerced because it arrives from a `<select>` as a string.
  */
 const CommentSchema = z.object({
-  commentBody: z.preprocess(
-    (value) => (value === null || value === undefined ? "" : value),
-    z
-      .string()
-      .trim()
-      .min(1, "Comment is required.")
-      .max(1000, "Comment must be 1000 characters or fewer."),
-  ),
-  commentAuthorId: z.coerce.number().int().positive(),
+	commentBody: z.preprocess(
+		(value) => (value === null || value === undefined ? "" : value),
+		z
+			.string()
+			.trim()
+			.min(1, "Comment is required.")
+			.max(1000, "Comment must be 1000 characters or fewer."),
+	),
+	commentAuthorId: z.coerce.number().int().positive(),
 });
 
 export type State = {
-  errors?: {
-    name?: string[];
-    email?: string[];
-    description?: string[];
-    title?: string[];
-    projectId?: string[];
-    assigneeId?: string[];
-    status?: string[];
-    commentBody?: string[];
-    commentAuthorId?: string[];
-  };
-  message?: string | null;
+	errors?: {
+		name?: string[];
+		email?: string[];
+		description?: string[];
+		title?: string[];
+		projectId?: string[];
+		assigneeId?: string[];
+		status?: string[];
+		commentBody?: string[];
+		commentAuthorId?: string[];
+	};
+	message?: string | null;
 };
 
 /**
@@ -122,267 +122,267 @@ export type ActionResult = State & { redirectTo?: string };
 
 /** Selects that must resolve to a real row before a task can reference them. */
 async function resolveRefs(fields: {
-  projectId?: FormDataEntryValue | null;
-  assigneeId?: FormDataEntryValue | null;
+	projectId?: FormDataEntryValue | null;
+	assigneeId?: FormDataEntryValue | null;
 }) {
-  const projectId = Number(fields.projectId);
-  const assigneeRaw = fields.assigneeId;
-  const assigneeId =
-    assigneeRaw === null || assigneeRaw === undefined || assigneeRaw === ""
-      ? null
-      : Number(assigneeRaw);
+	const projectId = Number(fields.projectId);
+	const assigneeRaw = fields.assigneeId;
+	const assigneeId =
+		assigneeRaw === null || assigneeRaw === undefined || assigneeRaw === ""
+			? null
+			: Number(assigneeRaw);
 
-  const errors: NonNullable<State["errors"]> = {};
+	const errors: NonNullable<State["errors"]> = {};
 
-  if (!Number.isInteger(projectId)) {
-    errors.projectId = ["Choose a project."];
-  } else {
-    const [row] = await sql<{ id: number }[]>`
+	if (!Number.isInteger(projectId)) {
+		errors.projectId = ["Choose a project."];
+	} else {
+		const [row] = await sql<{ id: number }[]>`
       SELECT id::int FROM projects WHERE id = ${projectId}
     `;
 
-    if (!row) {
-      errors.projectId = ["That project no longer exists."];
-    }
-  }
+		if (!row) {
+			errors.projectId = ["That project no longer exists."];
+		}
+	}
 
-  if (assigneeId !== null) {
-    if (!Number.isInteger(assigneeId)) {
-      errors.assigneeId = ["Choose a valid assignee."];
-    } else {
-      const [row] = await sql<{ id: number }[]>`
+	if (assigneeId !== null) {
+		if (!Number.isInteger(assigneeId)) {
+			errors.assigneeId = ["Choose a valid assignee."];
+		} else {
+			const [row] = await sql<{ id: number }[]>`
         SELECT id::int FROM users WHERE id = ${assigneeId}
       `;
 
-      if (!row) {
-        errors.assigneeId = ["That assignee no longer exists."];
-      }
-    }
-  }
+			if (!row) {
+				errors.assigneeId = ["That assignee no longer exists."];
+			}
+		}
+	}
 
-  return { projectId, assigneeId, errors };
+	return { projectId, assigneeId, errors };
 }
 
 export async function createProject(formData: FormData): Promise<ActionResult> {
-  const validatedFields = ProjectSchema.safeParse({
-    name: formData.get("name"),
-    description: formData.get("description"),
-  });
+	const validatedFields = ProjectSchema.safeParse({
+		name: formData.get("name"),
+		description: formData.get("description"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create project.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to create project.",
+		};
+	}
 
-  const { name, description } = validatedFields.data;
+	const { name, description } = validatedFields.data;
 
-  try {
-    // created_at is NOT NULL with no default, so the server sets it.
-    await sql`
+	try {
+		// created_at is NOT NULL with no default, so the server sets it.
+		await sql`
       INSERT INTO projects (name, description, created_at)
       VALUES (${name}, ${description}, now())
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to create project." };
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to create project." };
+	}
 
-  return { redirectTo: "/projects" };
+	return { redirectTo: "/projects" };
 }
 
 export async function updateProject(
-  id: number,
-  formData: FormData,
+	id: number,
+	formData: FormData,
 ): Promise<ActionResult> {
-  const validatedFields = ProjectSchema.safeParse({
-    name: formData.get("name"),
-    description: formData.get("description"),
-  });
+	const validatedFields = ProjectSchema.safeParse({
+		name: formData.get("name"),
+		description: formData.get("description"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to update project.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to update project.",
+		};
+	}
 
-  const { name, description } = validatedFields.data;
+	const { name, description } = validatedFields.data;
 
-  try {
-    // RETURNING distinguishes "no such row" from "row updated", so a stale
-    // form cannot report success for a project that is already gone.
-    const updated = await sql<{ id: number }[]>`
+	try {
+		// RETURNING distinguishes "no such row" from "row updated", so a stale
+		// form cannot report success for a project that is already gone.
+		const updated = await sql<{ id: number }[]>`
       UPDATE projects
       SET name = ${name}, description = ${description}
       WHERE id = ${id}
       RETURNING id
     `;
 
-    if (updated.length === 0) {
-      return { message: "That project no longer exists." };
-    }
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to update project." };
-  }
+		if (updated.length === 0) {
+			return { message: "That project no longer exists." };
+		}
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to update project." };
+	}
 
-  return { redirectTo: "/projects" };
+	return { redirectTo: "/projects" };
 }
 
 export async function deleteProject(id: number): Promise<ActionResult> {
-  try {
-    const deleted = await sql<{ id: number }[]>`
+	try {
+		const deleted = await sql<{ id: number }[]>`
       DELETE FROM projects WHERE id = ${id} RETURNING id
     `;
 
-    if (deleted.length === 0) {
-      return { message: "That project no longer exists." };
-    }
-  } catch (error) {
-    // tasks.project_id is ON DELETE RESTRICT, so a project that still has
-    // tasks cannot be removed. 23001 is restrict_violation; 23503 is what
-    // NO ACTION raises, and both mean the same thing here. This is a rule the
-    // user can act on, so it is reported rather than thrown.
-    const code = (error as { code?: string }).code;
+		if (deleted.length === 0) {
+			return { message: "That project no longer exists." };
+		}
+	} catch (error) {
+		// tasks.project_id is ON DELETE RESTRICT, so a project that still has
+		// tasks cannot be removed. 23001 is restrict_violation; 23503 is what
+		// NO ACTION raises, and both mean the same thing here. This is a rule the
+		// user can act on, so it is reported rather than thrown.
+		const code = (error as { code?: string }).code;
 
-    if (code === "23001" || code === "23503") {
-      const [row] = await sql<{ count: number }[]>`
+		if (code === "23001" || code === "23503") {
+			const [row] = await sql<{ count: number }[]>`
         SELECT COUNT(*)::int AS count FROM tasks WHERE project_id = ${id}
       `;
 
-      const count = row?.count ?? 0;
+			const count = row?.count ?? 0;
 
-      return {
-        message:
-          count === 1
-            ? "This project still has 1 task. Delete it before deleting the project."
-            : `This project still has ${count} tasks. Delete them before deleting the project.`,
-      };
-    }
+			return {
+				message:
+					count === 1
+						? "This project still has 1 task. Delete it before deleting the project."
+						: `This project still has ${count} tasks. Delete them before deleting the project.`,
+			};
+		}
 
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to delete project." };
-  }
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to delete project." };
+	}
 
-  return { redirectTo: "/projects" };
+	return { redirectTo: "/projects" };
 }
 
 export async function createUser(formData: FormData): Promise<ActionResult> {
-  const validatedFields = UserSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-  });
+	const validatedFields = UserSchema.safeParse({
+		name: formData.get("name"),
+		email: formData.get("email"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create user.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to create user.",
+		};
+	}
 
-  const { name, email } = validatedFields.data;
+	const { name, email } = validatedFields.data;
 
-  try {
-    await sql`
+	try {
+		await sql`
       INSERT INTO users (display_name, email)
       VALUES (${name}, ${email})
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to create user." };
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to create user." };
+	}
 
-  return { redirectTo: "/users" };
+	return { redirectTo: "/users" };
 }
 
 export async function updateUser(
-  id: number,
-  formData: FormData,
+	id: number,
+	formData: FormData,
 ): Promise<ActionResult> {
-  const validatedFields = UserSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-  });
+	const validatedFields = UserSchema.safeParse({
+		name: formData.get("name"),
+		email: formData.get("email"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to update user.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to update user.",
+		};
+	}
 
-  const { name, email } = validatedFields.data;
+	const { name, email } = validatedFields.data;
 
-  try {
-    const updated = await sql<{ id: number }[]>`
+	try {
+		const updated = await sql<{ id: number }[]>`
       UPDATE users
       SET display_name = ${name}, email = ${email}
       WHERE id = ${id}
       RETURNING id
     `;
 
-    if (updated.length === 0) {
-      return { message: "That user no longer exists." };
-    }
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to update user." };
-  }
+		if (updated.length === 0) {
+			return { message: "That user no longer exists." };
+		}
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to update user." };
+	}
 
-  return { redirectTo: "/users" };
+	return { redirectTo: "/users" };
 }
 
 export async function deleteUser(id: number): Promise<ActionResult> {
-  try {
-    const deleted = await sql<{ id: number }[]>`
+	try {
+		const deleted = await sql<{ id: number }[]>`
       DELETE FROM users WHERE id = ${id} RETURNING id
     `;
 
-    if (deleted.length === 0) {
-      return { message: "That user no longer exists." };
-    }
-  } catch (error) {
-    // comments.author_id is ON DELETE RESTRICT, so a member who has written
-    // anything cannot be removed. tasks.assignee_id is ON DELETE SET NULL,
-    // which unassigns rather than blocking, so only comments stop a delete.
-    const code = (error as { code?: string }).code;
+		if (deleted.length === 0) {
+			return { message: "That user no longer exists." };
+		}
+	} catch (error) {
+		// comments.author_id is ON DELETE RESTRICT, so a member who has written
+		// anything cannot be removed. tasks.assignee_id is ON DELETE SET NULL,
+		// which unassigns rather than blocking, so only comments stop a delete.
+		const code = (error as { code?: string }).code;
 
-    if (code === "23001" || code === "23503") {
-      const [commentRow] = await sql<{ count: number }[]>`
+		if (code === "23001" || code === "23503") {
+			const [commentRow] = await sql<{ count: number }[]>`
         SELECT COUNT(*)::int AS count FROM comments WHERE author_id = ${id}
       `;
-      const [taskRow] = await sql<{ count: number }[]>`
+			const [taskRow] = await sql<{ count: number }[]>`
         SELECT COUNT(*)::int AS count FROM tasks WHERE assignee_id = ${id}
       `;
 
-      const commentCount = commentRow?.count ?? 0;
-      const taskCount = taskRow?.count ?? 0;
+			const commentCount = commentRow?.count ?? 0;
+			const taskCount = taskRow?.count ?? 0;
 
-      // The counts are named separately because the two FKs mean different
-      // things, and only one of them is what blocks the delete:
-      //   comments.author_id  ON DELETE RESTRICT — the delete is refused, and
-      //                                         this is why it was refused
-      //   tasks.assignee_id   ON DELETE SET NULL  — the delete succeeds and
-      //                                         the tasks become unassigned
-      // Naming both makes the message actionable: the reader learns which
-      // rows to deal with, and that the task count is context rather than a
-      // second blocker.
-      return {
-        message:
-          `This person still has ${commentCount} ` +
-          `${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
-          `${taskCount === 1 ? "task" : "tasks"}. Remove ` +
-          `${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
-      };
-    }
+			// The counts are named separately because the two FKs mean different
+			// things, and only one of them is what blocks the delete:
+			//   comments.author_id  ON DELETE RESTRICT — the delete is refused, and
+			//                                         this is why it was refused
+			//   tasks.assignee_id   ON DELETE SET NULL  — the delete succeeds and
+			//                                         the tasks become unassigned
+			// Naming both makes the message actionable: the reader learns which
+			// rows to deal with, and that the task count is context rather than a
+			// second blocker.
+			return {
+				message:
+					`This person still has ${commentCount} ` +
+					`${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
+					`${taskCount === 1 ? "task" : "tasks"}. Remove ` +
+					`${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
+			};
+		}
 
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to delete user." };
-  }
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to delete user." };
+	}
 
-  return { redirectTo: "/users" };
+	return { redirectTo: "/users" };
 }
 
 /**
@@ -393,32 +393,32 @@ export async function deleteUser(id: number): Promise<ActionResult> {
  * "both equal at insert".
  */
 export async function createTask(formData: FormData): Promise<ActionResult> {
-  const validatedFields = TaskSchema.safeParse({
-    title: formData.get("title"),
-    description: formData.get("description"),
-    status: formData.get("status"),
-  });
+	const validatedFields = TaskSchema.safeParse({
+		title: formData.get("title"),
+		description: formData.get("description"),
+		status: formData.get("status"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create task.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to create task.",
+		};
+	}
 
-  const { projectId, assigneeId, errors } = await resolveRefs({
-    projectId: formData.get("projectId"),
-    assigneeId: formData.get("assigneeId"),
-  });
+	const { projectId, assigneeId, errors } = await resolveRefs({
+		projectId: formData.get("projectId"),
+		assigneeId: formData.get("assigneeId"),
+	});
 
-  if (Object.keys(errors).length > 0) {
-    return { errors, message: "Missing fields. Failed to create task." };
-  }
+	if (Object.keys(errors).length > 0) {
+		return { errors, message: "Missing fields. Failed to create task." };
+	}
 
-  const { title, description, status } = validatedFields.data;
+	const { title, description, status } = validatedFields.data;
 
-  try {
-    await sql`
+	try {
+		await sql`
       INSERT INTO tasks (
         project_id, assignee_id, title, description, status, created_at, updated_at
       )
@@ -426,12 +426,12 @@ export async function createTask(formData: FormData): Promise<ActionResult> {
         ${projectId}, ${assigneeId}, ${title}, ${description}, ${status}, now(), now()
       )
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to create task." };
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to create task." };
+	}
 
-  return { redirectTo: "/tasks" };
+	return { redirectTo: "/tasks" };
 }
 
 /**
@@ -441,60 +441,60 @@ export async function createTask(formData: FormData): Promise<ActionResult> {
  * RETURNING confirms.
  */
 export async function updateTask(
-  id: number,
-  formData: FormData,
+	id: number,
+	formData: FormData,
 ): Promise<ActionResult> {
-  const validatedFields = TaskSchema.safeParse({
-    title: formData.get("title"),
-    description: formData.get("description"),
-    status: formData.get("status"),
-  });
+	const validatedFields = TaskSchema.safeParse({
+		title: formData.get("title"),
+		description: formData.get("description"),
+		status: formData.get("status"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to update task.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to update task.",
+		};
+	}
 
-  // The project is deliberately not resolved here. spec/contract.md lists the
-  // update form's fields as title, status, assignee and description — a task
-  // belongs to its project for its lifetime, and requiring a project field the
-  // form does not render would make every edit fail validation.
+	// The project is deliberately not resolved here. spec/contract.md lists the
+	// update form's fields as title, status, assignee and description — a task
+	// belongs to its project for its lifetime, and requiring a project field the
+	// form does not render would make every edit fail validation.
 
-  const { title, description, status } = validatedFields.data;
+	const { title, description, status } = validatedFields.data;
 
-  const assigneeRaw = formData.get("assigneeId");
-  const assigneeId =
-    assigneeRaw === null || assigneeRaw === undefined || assigneeRaw === ""
-      ? null
-      : Number(assigneeRaw);
+	const assigneeRaw = formData.get("assigneeId");
+	const assigneeId =
+		assigneeRaw === null || assigneeRaw === undefined || assigneeRaw === ""
+			? null
+			: Number(assigneeRaw);
 
-  if (assigneeId !== null) {
-    const [assignee] = await sql<{ id: number }[]>`
+	if (assigneeId !== null) {
+		const [assignee] = await sql<{ id: number }[]>`
       SELECT id::int FROM users WHERE id = ${assigneeId}
     `;
 
-    if (!assignee) {
-      return {
-        errors: { assigneeId: ["That assignee no longer exists."] },
-        message: "Missing fields. Failed to update task.",
-      };
-    }
-  }
+		if (!assignee) {
+			return {
+				errors: { assigneeId: ["That assignee no longer exists."] },
+				message: "Missing fields. Failed to update task.",
+			};
+		}
+	}
 
-  // Read the project first, so a caller can also refresh the board the task is
-  // leaving or joining.
-  const [existing] = await sql<{ project_id: number }[]>`
+	// Read the project first, so a caller can also refresh the board the task is
+	// leaving or joining.
+	const [existing] = await sql<{ project_id: number }[]>`
     SELECT project_id::int FROM tasks WHERE id = ${id}
   `;
 
-  if (!existing) {
-    return { message: "That task no longer exists." };
-  }
+	if (!existing) {
+		return { message: "That task no longer exists." };
+	}
 
-  try {
-    const updated = await sql<{ id: number }[]>`
+	try {
+		const updated = await sql<{ id: number }[]>`
       UPDATE tasks
       SET
         title = ${title},
@@ -506,15 +506,15 @@ export async function updateTask(
       RETURNING id
     `;
 
-    if (updated.length === 0) {
-      return { message: "That task no longer exists." };
-    }
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to update task." };
-  }
+		if (updated.length === 0) {
+			return { message: "That task no longer exists." };
+		}
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to update task." };
+	}
 
-  return { redirectTo: `/tasks/${id}` };
+	return { redirectTo: `/tasks/${id}` };
 }
 
 /**
@@ -522,32 +522,32 @@ export async function updateTask(
  * comments go with it via `comments.task_id` ON DELETE CASCADE.
  */
 export async function deleteTask(id: number): Promise<ActionResult> {
-  // Read the project first, because the contract redirects to its board after
-  // a delete.
-  const [existing] = await sql<{ project_id: number }[]>`
+	// Read the project first, because the contract redirects to its board after
+	// a delete.
+	const [existing] = await sql<{ project_id: number }[]>`
     SELECT project_id::int FROM tasks WHERE id = ${id}
   `;
 
-  if (!existing) {
-    return { message: "That task no longer exists." };
-  }
+	if (!existing) {
+		return { message: "That task no longer exists." };
+	}
 
-  try {
-    const deleted = await sql<{ id: number }[]>`
+	try {
+		const deleted = await sql<{ id: number }[]>`
       DELETE FROM tasks WHERE id = ${id} RETURNING id
     `;
 
-    if (deleted.length === 0) {
-      return { message: "That task no longer exists." };
-    }
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to delete task." };
-  }
+		if (deleted.length === 0) {
+			return { message: "That task no longer exists." };
+		}
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to delete task." };
+	}
 
-  // Straight to the board: the detail page for this id is now not-found, so
-  // redirecting there would land the user on a dead URL.
-  return { redirectTo: `/projects/${existing.project_id}` };
+	// Straight to the board: the detail page for this id is now not-found, so
+	// redirecting there would land the user on a dead URL.
+	return { redirectTo: `/projects/${existing.project_id}` };
 }
 
 /**
@@ -559,67 +559,67 @@ export async function deleteTask(id: number): Promise<ActionResult> {
  * state the contract says must never be observable.
  */
 export async function createTaskWithComment(
-  formData: FormData,
+	formData: FormData,
 ): Promise<ActionResult> {
-  const validatedFields = TaskSchema.safeParse({
-    title: formData.get("title"),
-    description: formData.get("description"),
-    status: formData.get("status"),
-  });
+	const validatedFields = TaskSchema.safeParse({
+		title: formData.get("title"),
+		description: formData.get("description"),
+		status: formData.get("status"),
+	});
 
-  // The comment has its own bound (char_length BETWEEN 1 AND 1000), enforced by
-  // its own schema so the message lands on the comment field.
-  const commentFields = CommentSchema.safeParse({
-    commentBody: formData.get("commentBody"),
-    commentAuthorId: formData.get("commentAuthorId"),
-  });
+	// The comment has its own bound (char_length BETWEEN 1 AND 1000), enforced by
+	// its own schema so the message lands on the comment field.
+	const commentFields = CommentSchema.safeParse({
+		commentBody: formData.get("commentBody"),
+		commentAuthorId: formData.get("commentAuthorId"),
+	});
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create the task.",
-    };
-  }
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to create the task.",
+		};
+	}
 
-  if (!commentFields.success) {
-    return {
-      errors: commentFields.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to create the task.",
-    };
-  }
+	if (!commentFields.success) {
+		return {
+			errors: commentFields.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to create the task.",
+		};
+	}
 
-  // Only once the shape of the fields is known to be good does it make sense to
-  // ask the database whether the referenced rows exist.
-  const { projectId, assigneeId, errors } = await resolveRefs({
-    projectId: formData.get("projectId"),
-    assigneeId: formData.get("assigneeId"),
-  });
+	// Only once the shape of the fields is known to be good does it make sense to
+	// ask the database whether the referenced rows exist.
+	const { projectId, assigneeId, errors } = await resolveRefs({
+		projectId: formData.get("projectId"),
+		assigneeId: formData.get("assigneeId"),
+	});
 
-  if (Object.keys(errors).length > 0) {
-    return { errors, message: "Missing fields. Failed to create the task." };
-  }
+	if (Object.keys(errors).length > 0) {
+		return { errors, message: "Missing fields. Failed to create the task." };
+	}
 
-  const { title, description, status } = validatedFields.data;
-  const commentBody = commentFields.data.commentBody.trim();
-  const commentAuthorId = commentFields.data.commentAuthorId;
+	const { title, description, status } = validatedFields.data;
+	const commentBody = commentFields.data.commentBody.trim();
+	const commentAuthorId = commentFields.data.commentAuthorId;
 
-  // The author is a FK like the assignee, so an id that matches no row fails the
-  // insert. Checking first turns that into a field error rather than a thrown
-  // Postgres error the user cannot act on.
-  const [author] = await sql<{ id: number }[]>`
+	// The author is a FK like the assignee, so an id that matches no row fails the
+	// insert. Checking first turns that into a field error rather than a thrown
+	// Postgres error the user cannot act on.
+	const [author] = await sql<{ id: number }[]>`
     SELECT id::int FROM users WHERE id = ${commentAuthorId}
   `;
 
-  if (!author) {
-    return {
-      errors: { assigneeId: ["That comment author no longer exists."] },
-      message: "Missing fields. Failed to create the task.",
-    };
-  }
+	if (!author) {
+		return {
+			errors: { assigneeId: ["That comment author no longer exists."] },
+			message: "Missing fields. Failed to create the task.",
+		};
+	}
 
-  try {
-    await sql.begin(async (tx) => {
-      const [row] = await tx<{ id: number }[]>`
+	try {
+		await sql.begin(async (tx) => {
+			const [row] = await tx<{ id: number }[]>`
         INSERT INTO tasks (
           project_id, assignee_id, title, description, status, created_at, updated_at
         )
@@ -629,19 +629,19 @@ export async function createTaskWithComment(
         RETURNING id::int AS id
       `;
 
-      // Inside the same transaction, so a failure here throws and the task
-      // insert above is rolled back with it.
-      await tx`
+			// Inside the same transaction, so a failure here throws and the task
+			// insert above is rolled back with it.
+			await tx`
         INSERT INTO comments (task_id, author_id, body, created_at)
         VALUES (${row.id}, ${commentAuthorId}, ${commentBody}, now())
       `;
-    });
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to create the task." };
-  }
+		});
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to create the task." };
+	}
 
-  return { redirectTo: "/tasks" };
+	return { redirectTo: "/tasks" };
 }
 
 /**
@@ -652,57 +652,57 @@ export async function createTaskWithComment(
  * transaction with the task insert, which this path has no part in.
  */
 export async function createComment(
-  taskId: number,
-  formData: FormData,
+	taskId: number,
+	formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CommentSchema.safeParse({
-    commentBody: formData.get("commentBody"),
-    commentAuthorId: formData.get("commentAuthorId"),
-  });
+	const parsed = CommentSchema.safeParse({
+		commentBody: formData.get("commentBody"),
+		commentAuthorId: formData.get("commentAuthorId"),
+	});
 
-  if (!parsed.success) {
-    return {
-      errors: parsed.error.flatten().fieldErrors,
-      message: "Missing fields. Failed to add the comment.",
-    };
-  }
+	if (!parsed.success) {
+		return {
+			errors: parsed.error.flatten().fieldErrors,
+			message: "Missing fields. Failed to add the comment.",
+		};
+	}
 
-  const commentBody = parsed.data.commentBody;
-  const commentAuthorId = parsed.data.commentAuthorId;
+	const commentBody = parsed.data.commentBody;
+	const commentAuthorId = parsed.data.commentAuthorId;
 
-  // The task and the author are both foreign keys. Checking first turns an
-  // unknown id into a field error the user can act on, rather than a thrown
-  // Postgres error.
-  const [[task], [author]] = await Promise.all([
-    sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
-    sql<
-      { id: number }[]
-    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
-  ]);
+	// The task and the author are both foreign keys. Checking first turns an
+	// unknown id into a field error the user can act on, rather than a thrown
+	// Postgres error.
+	const [[task], [author]] = await Promise.all([
+		sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
+		sql<
+			{ id: number }[]
+		>`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+	]);
 
-  if (!task) {
-    return { message: "That task no longer exists." };
-  }
+	if (!task) {
+		return { message: "That task no longer exists." };
+	}
 
-  if (!author) {
-    return {
-      errors: { commentAuthorId: ["That comment author no longer exists."] },
-      message: "Missing fields. Failed to add the comment.",
-    };
-  }
+	if (!author) {
+		return {
+			errors: { commentAuthorId: ["That comment author no longer exists."] },
+			message: "Missing fields. Failed to add the comment.",
+		};
+	}
 
-  try {
-    await sql`
+	try {
+		await sql`
       INSERT INTO comments (task_id, author_id, body, created_at)
       VALUES (${taskId}, ${commentAuthorId}, ${commentBody}, now())
     `;
-  } catch (error) {
-    console.error("Database Error:", error);
-    return { message: "Database Error: Failed to add the comment." };
-  }
+	} catch (error) {
+		console.error("Database Error:", error);
+		return { message: "Database Error: Failed to add the comment." };
+	}
 
-  // No redirect: the user stays on the task detail page and sees the comment
-  // they just wrote in the list above the form. The caller still invalidates,
-  // since the comment count on the task list changed.
-  return {};
+	// No redirect: the user stays on the task detail page and sees the comment
+	// they just wrote in the list above the form. The caller still invalidates,
+	// since the comment count on the task list changed.
+	return {};
 }

@@ -44,62 +44,66 @@ type ActionFn = (formData: FormData) => Promise<ActionResult>;
  * handed us, and a component may still read it after submit.
  */
 export function withId(
-  formData: FormData,
-  field: string,
-  id: number,
+	formData: FormData,
+	field: string,
+	id: number,
 ): FormData {
-  const next = new FormData();
+	const next = new FormData();
 
-  // Copied entry by entry rather than `new FormData(formData)`: TypeScript's
-  // lib.dom types the constructor's first parameter as HTMLFormElement, so
-  // passing a FormData does not typecheck even though every runtime accepts it.
-  for (const [key, value] of formData) {
-    next.append(key, value);
-  }
+	// Copied entry by entry rather than `new FormData(formData)`: TypeScript's
+	// lib.dom types the constructor's first parameter as HTMLFormElement, so
+	// passing a FormData does not typecheck even though every runtime accepts it.
+	for (const [key, value] of formData) {
+		next.append(key, value);
+	}
 
-  next.set(field, String(id));
+	next.set(field, String(id));
 
-  return next;
+	return next;
 }
 
 export function useServerAction(
-  action: ActionFn,
-): [state: () => State, formAction: (formData: FormData) => void, pending: () => boolean] {
-  const router = useRouter();
-  const [state, setState] = createSignal<State>(initialActionState);
-  const [isPending, setIsPending] = createSignal(false);
+	action: ActionFn,
+): [
+	state: () => State,
+	formAction: (formData: FormData) => void,
+	pending: () => boolean,
+] {
+	const router = useRouter();
+	const [state, setState] = createSignal<State>(initialActionState);
+	const [isPending, setIsPending] = createSignal(false);
 
-  const formAction = async (formData: FormData) => {
-    setIsPending(true);
-    try {
-      const result = await action(formData);
+	const formAction = async (formData: FormData) => {
+		setIsPending(true);
+		try {
+			const result = await action(formData);
 
-      // A validation failure is not a successful mutation, so it must not
-      // invalidate: the route's data is still correct, and re-running the
-      // loaders would only cost a round trip.
-      if (result.redirectTo === undefined) {
-        setState(result);
-        return;
-      }
+			// A validation failure is not a successful mutation, so it must not
+			// invalidate: the route's data is still correct, and re-running the
+			// loaders would only cost a round trip.
+			if (result.redirectTo === undefined) {
+				setState(result);
+				return;
+			}
 
-      // Invalidate before navigating. `redirectTo` often names the route the
-      // user is already on (creating a task redirects to /tasks), and
-      // navigating first would render the stale list and then re-render under
-      // the user with the new row.
-      await router.invalidate();
+			// Invalidate before navigating. `redirectTo` often names the route the
+			// user is already on (creating a task redirects to /tasks), and
+			// navigating first would render the stale list and then re-render under
+			// the user with the new row.
+			await router.invalidate();
 
-      setState({});
+			setState({});
 
-      // The action returns a resolved path such as `/tasks/101`, not a route
-      // pattern plus params, so it is passed as `to` with the cast that
-      // expresses "this string is a full path". TanStack resolves it against
-      // the route tree, which also keeps the browser URL and the loader's
-      // params in sync.
-      await router.navigate({ to: result.redirectTo as never });
-    } finally {
-      setIsPending(false);
-    }
-  };
+			// The action returns a resolved path such as `/tasks/101`, not a route
+			// pattern plus params, so it is passed as `to` with the cast that
+			// expresses "this string is a full path". TanStack resolves it against
+			// the route tree, which also keeps the browser URL and the loader's
+			// params in sync.
+			await router.navigate({ to: result.redirectTo as never });
+		} finally {
+			setIsPending(false);
+		}
+	};
 
-  return [state, formAction, isPending];
+	return [state, formAction, isPending];
 }

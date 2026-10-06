@@ -21,47 +21,47 @@ export const PAGE_SIZES = [5, 10, 25, 50] as const;
 export const DEFAULT_PAGE_SIZE = 10;
 
 export type PageRange = {
-  from: number;
-  to: number;
-  total: number;
+	from: number;
+	to: number;
+	total: number;
 };
 
 /** The absolute positions the current page occupies within `total` results. */
 export function pageRange({
-  page,
-  size,
-  total,
+	page,
+	size,
+	total,
 }: {
-  page: number;
-  size: number;
-  total: number;
+	page: number;
+	size: number;
+	total: number;
 }): PageRange {
-  if (total <= 0) return { from: 0, to: 0, total: 0 };
+	if (total <= 0) return { from: 0, to: 0, total: 0 };
 
-  const from = (page - 1) * size + 1;
-  const to = page * size;
+	const from = (page - 1) * size + 1;
+	const to = page * size;
 
-  // A page number past the end — a hand-edited URL, or a page that shrank
-  // because rows were deleted — must not report a range beyond the data.
-  if (from > total) return { from: total, to: total, total };
+	// A page number past the end — a hand-edited URL, or a page that shrank
+	// because rows were deleted — must not report a range beyond the data.
+	if (from > total) return { from: total, to: total, total };
 
-  return { from, to: Math.min(to, total), total };
+	return { from, to: Math.min(to, total), total };
 }
 
 export function formatRange({
-  from,
-  to,
-  total,
-  filtered = false,
+	from,
+	to,
+	total,
+	filtered = false,
 }: PageRange & { filtered?: boolean }): string {
-  if (total === 0) return "Showing 0 of 0 tasks";
+	if (total === 0) return "Showing 0 of 0 tasks";
 
-  const noun = total === 1 ? "task" : "tasks";
+	const noun = total === 1 ? "task" : "tasks";
 
-  return (
-    `Showing ${from}-${to} of ${total} ${noun}` +
-    (filtered ? " matching your filters" : "")
-  );
+	return (
+		`Showing ${from}-${to} of ${total} ${noun}` +
+		(filtered ? " matching your filters" : "")
+	);
 }
 
 /**
@@ -72,13 +72,13 @@ export function formatRange({
  * to pull an entire table into one page.
  */
 export function parsePageSize(value: string | undefined | null): number {
-  const parsed = Number(value);
+	const parsed = Number(value);
 
-  if (!Number.isInteger(parsed)) return DEFAULT_PAGE_SIZE;
+	if (!Number.isInteger(parsed)) return DEFAULT_PAGE_SIZE;
 
-  return (PAGE_SIZES as readonly number[]).includes(parsed)
-    ? parsed
-    : DEFAULT_PAGE_SIZE;
+	return (PAGE_SIZES as readonly number[]).includes(parsed)
+		? parsed
+		: DEFAULT_PAGE_SIZE;
 }
 
 /**
@@ -89,12 +89,12 @@ export function parsePageSize(value: string | undefined | null): number {
  * 1. That keeps the summary line describing what is actually on screen.
  */
 export function parsePage(
-  value: string | undefined | null,
-  { hasCursor = true }: { hasCursor?: boolean } = {},
+	value: string | undefined | null,
+	{ hasCursor = true }: { hasCursor?: boolean } = {},
 ): number {
-  if (!hasCursor) return 1;
+	if (!hasCursor) return 1;
 
-  const parsed = Number(value);
+	const parsed = Number(value);
 
-  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
 }
