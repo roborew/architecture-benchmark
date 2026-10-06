@@ -10,9 +10,14 @@
 
 import express, { type Express } from "express";
 
+import { requirePostgresUrl } from "./config/env.ts";
+import { createConnection } from "./db/connection.ts";
 import { mountHealthRoutes } from "./health/health.routes.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { notFound } from "./middleware/not-found.ts";
+import { createUsersController } from "./users/users.controller.ts";
+import { createUsersModel } from "./users/users.model.ts";
+import { createUsersRouter } from "./users/users.routes.ts";
 
 export interface CreateAppOptions {
   /**
@@ -24,7 +29,7 @@ export interface CreateAppOptions {
   postgresUrl?: string;
 }
 
-export function createApp(_options: CreateAppOptions = {}): Express {
+export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
 
   // Don't advertise the framework to clients.
@@ -33,7 +38,14 @@ export function createApp(_options: CreateAppOptions = {}): Express {
   // JSON bodies for the write endpoints; a read-only GET ignores it.
   app.use(express.json());
 
+  // The dependency chain, composed here and nowhere else: connection →
+  // model → controller → router. Each layer sees only the layer below it.
+  const db = createConnection(requirePostgresUrl(options.postgresUrl));
+  const usersModel = createUsersModel(db);
+  const usersController = createUsersController(usersModel);
+
   mountHealthRoutes(app);
+  app.use("/api/users", createUsersRouter(usersController));
 
   // Mounted after every route, before the error handler — order is the whole
   // contract of these two.

@@ -15,6 +15,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Empty until the first unit suite lands; keep the script runnable.
+    passWithNoTests: true,
     projects: [
       {
         test: {
@@ -22,8 +24,6 @@ export default defineConfig({
           environment: "node",
           globals: true,
           include: ["tests/unit/**/*.test.ts"],
-          // Empty until the first unit suite lands; keep the script runnable.
-          passWithNoTests: true,
         },
       },
       {
