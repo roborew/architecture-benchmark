@@ -1,17 +1,32 @@
 import { useLocation } from "@tanstack/react-router";
 import { resolvePageTitle } from "@/lib/nav";
 import { AppHeader } from "./app-header";
+import Navigation from "./navigation";
 
-// The page chrome — header and content column. The reference app's sidebar
-// navigation lands with the routes it links to (projects, tasks); a sidebar
-// of dead links would render a route the router cannot resolve.
+// The page chrome — sidebar, header, content column — that wraps every route.
+// Routes render (and fail) INSIDE it, so a failing loader shows its error in
+// the content column and the template stays on screen.
 export function AppShell({ children }: { children: React.ReactNode }) {
 	const pathname = useLocation().pathname;
 
 	return (
-		<div className="flex min-h-screen flex-col bg-slate-50">
-			<AppHeader title={resolvePageTitle(pathname)} />
-			<main className="min-w-0 flex-1 bg-white">{children}</main>
+		<div className="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
+			<aside
+				className="flex bg-navy-950 px-4 py-3 text-slate-300 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-62 lg:flex-col lg:px-4 lg:py-7"
+				aria-label="Main navigation"
+			>
+				<Navigation />
+				<div className="mt-auto hidden border-t border-slate-600 px-3 pt-4 text-[11px] leading-5 text-slate-300 lg:block">
+					<strong className="block text-[12px] text-white">
+						Style reference
+					</strong>
+					Static Tailwind examples for the CRUD benchmark applications.
+				</div>
+			</aside>
+			<main className="min-w-0 lg:col-start-2 bg-white">
+				<AppHeader title={resolvePageTitle(pathname)} />
+				{children}
+			</main>
 		</div>
 	);
 }

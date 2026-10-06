@@ -10,7 +10,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-
+import { UsersError, UsersRouteError } from "@/components/users/users-error";
 import { UsersPage } from "@/components/users/users-page";
 import { usersQueryOptions } from "@/lib/users-query";
 import { parseUsersSearch } from "@/lib/users-search";
@@ -22,6 +22,9 @@ export const Route = createFileRoute("/users/")({
 	loaderDeps: ({ search }) => ({ q: search.q }),
 	loader: ({ deps, context }) =>
 		context.queryClient.ensureQueryData(usersQueryOptions(deps.q)),
+	// A failed fetch renders HERE, inside the shell, rather than tearing the
+	// route tree down to a blank screen (the router's CatchBoundary fallback).
+	errorComponent: UsersRouteError,
 	component: UsersRoute,
 });
 
@@ -38,13 +41,9 @@ function UsersRoute() {
 	}
 
 	if (isError) {
-		return (
-			<div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
-				<p className="text-[13px] text-slate-500">
-					Could not load people: {error.message}
-				</p>
-			</div>
-		);
+		// The loader already handled the first failure via errorComponent; this
+		// guards a refetch that fails after a successful render.
+		return <UsersError error={error} />;
 	}
 
 	return <UsersPage people={data} />;

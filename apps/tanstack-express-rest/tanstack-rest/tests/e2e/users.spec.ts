@@ -82,3 +82,22 @@ test("clearing the search restores the full list", async ({ page }) => {
 		}),
 	).toBeVisible();
 });
+
+test("keeps the page template when the API is unreachable", async ({
+	page,
+}) => {
+	// Simulate the backend being down: every users request is aborted at the
+	// network layer, which is exactly what the browser sees when the Express
+	// server is not running. The loader's query fails, and the route must show
+	// the error inside the template — header, sidebar, page title — rather
+	// than tearing the route tree down to a blank screen.
+	await page.route("**/api/users**", (route) => route.abort("failed"));
+
+	await page.goto("/users");
+
+	await expect(page.getByTestId("page-title")).toHaveText("People");
+	await expect(
+		page.getByRole("complementary", { name: "Main navigation" }),
+	).toBeVisible();
+	await expect(page.getByText("Could not load people.")).toBeVisible();
+});

@@ -36,3 +36,14 @@ export function resolvePageTitle(pathname: string): string {
 export function isActivePath(pathname: string, href: string): boolean {
 	return pathname === href;
 }
+
+// The routes the route tree actually registers. A nav entry for an unbuilt
+// route renders as a plain anchor — a router Link to an unregistered route
+// throws on render — so the menu can ship the full template before every
+// route exists. As each slice lands, add its path here and the anchor becomes
+// a Link.
+const BUILT_PATHS = new Set(["/", "/users"]);
+
+export function isBuiltPath(href: string): boolean {
+	return BUILT_PATHS.has(href);
+}
