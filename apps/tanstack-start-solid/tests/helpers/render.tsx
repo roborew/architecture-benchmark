@@ -22,7 +22,7 @@ export async function act(fn: () => Promise<void> | void): Promise<void> {
   // system process all pending effects. Solid may schedule effects across
   // multiple ticks, especially when signals are updated from timers.
   for (let i = 0; i < 20; i++) {
-    await new Promise((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
   }
 }
 
