@@ -360,26 +360,21 @@ export async function deleteUser(id: number): Promise<ActionResult> {
       const commentCount = commentRow?.count ?? 0;
       const taskCount = taskRow?.count ?? 0;
 
-      const parts: string[] = [];
-
-      if (commentCount > 0) {
-        parts.push(
-          commentCount === 1
-            ? "1 comment they wrote"
-            : `${commentCount} comments they wrote`,
-        );
-      }
-
-      if (taskCount > 0) {
-        parts.push(
-          taskCount === 1
-            ? "1 task assigned to them"
-            : `${taskCount} tasks assigned to them`,
-        );
-      }
-
+      // The counts are named separately because the two FKs mean different
+      // things, and only one of them is what blocks the delete:
+      //   comments.author_id  ON DELETE RESTRICT — the delete is refused, and
+      //                                         this is why it was refused
+      //   tasks.assignee_id   ON DELETE SET NULL  — the delete succeeds and
+      //                                         the tasks become unassigned
+      // Naming both makes the message actionable: the reader learns which
+      // rows to deal with, and that the task count is context rather than a
+      // second blocker.
       return {
-        message: `Cannot delete this member: they still have ${parts.join(" and ")}.`,
+        message:
+          `This person still has ${commentCount} ` +
+          `${commentCount === 1 ? "comment" : "comments"} and ${taskCount} ` +
+          `${taskCount === 1 ? "task" : "tasks"}. Remove ` +
+          `${commentCount === 1 ? "the comment" : "the comments"} before deleting.`,
       };
     }
 
@@ -680,7 +675,9 @@ export async function createComment(
   // Postgres error.
   const [[task], [author]] = await Promise.all([
     sql<{ id: number }[]>`SELECT id::int FROM tasks WHERE id = ${taskId}`,
-    sql<{ id: number }[]>`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
+    sql<
+      { id: number }[]
+    >`SELECT id::int FROM users WHERE id = ${commentAuthorId}`,
   ]);
 
   if (!task) {
