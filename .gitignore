@@ -4,3 +4,4 @@
 apps/next-actions/.next-e2e/
 apps/next-prisma/.next-e2e/dev/
 apps/next-drizzle/.next-e2e/dev/
+apps/tanstack-express-rest/express-rest/node_modules/
