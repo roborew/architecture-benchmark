@@ -7,7 +7,7 @@ import Navigation from "./navigation";
 
 export function AppShell(props: { children?: JSX.Element }) {
   const location = useLocation();
-  const pathname = () => location.pathname ?? "/";
+  const pathname = () => location().pathname ?? "/";
 
   return (
     <div class="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">

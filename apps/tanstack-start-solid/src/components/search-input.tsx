@@ -21,8 +21,8 @@ export function SearchInput(props: {
   const label = () => props.label ?? "Search";
 
   const location = useLocation();
-  const pathname = () => location.pathname ?? "/";
-  const searchStr = () => location.searchStr ?? "";
+  const pathname = () => location().pathname ?? "/";
+  const searchStr = () => location().searchStr ?? "";
 
   const navigateToQuery = useQueryNavigation(pathname());
   const searchParams = () => new URLSearchParams(searchStr());

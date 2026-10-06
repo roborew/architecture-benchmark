@@ -25,7 +25,7 @@ vi.mock("@tanstack/solid-router", async (importOriginal) => {
   return {
     ...actual,
     useRouter: () => mocks.router,
-    useLocation: () => ({
+    useLocation: () => () => ({
       pathname: mocks.pathname,
       searchStr: mocks.params.toString(),
     }),

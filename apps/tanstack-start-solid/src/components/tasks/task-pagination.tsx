@@ -25,7 +25,7 @@ export function TaskPagination(props: {
   const navigateToQuery = useQueryNavigation("/tasks");
 
   const location = useLocation();
-  const currentParams = () => new URLSearchParams(location.searchStr ?? "");
+  const currentParams = () => new URLSearchParams(location().searchStr ?? "");
 
   return (
     <div class="flex items-center gap-3">
