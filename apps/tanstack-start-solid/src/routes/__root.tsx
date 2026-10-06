@@ -4,6 +4,7 @@ import {
   Scripts,
   createRootRoute,
 } from "@tanstack/solid-router";
+import { HydrationScript } from "solid-js/web";
 
 import { AppShell } from "@/components/app-shell";
 
@@ -51,6 +52,7 @@ function RootDocument() {
   return (
     <html lang="en" class="h-full antialiased">
       <head>
+        <HydrationScript />
         <HeadContent />
       </head>
       <body class="min-w-80 bg-slate-50 font-sans text-slate-800">
