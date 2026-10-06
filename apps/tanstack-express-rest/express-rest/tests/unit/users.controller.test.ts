@@ -3,12 +3,11 @@
 // The controller's HTTP contract with the model stubbed: what it sends to the
 // model, what it writes to the response, and what it does when the model
 // fails. No database, no supertest — the model is a fake.
-
-import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
+import { describe, expect, it, vi } from "vitest";
 
-import type { UsersModel } from "../../src/users/users.model.ts";
 import { createUsersController } from "../../src/users/users.controller.ts";
+import type { UsersModel } from "../../src/users/users.model.ts";
 
 function makeModel(list: UsersModel["list"]): UsersModel {
   return { list };
