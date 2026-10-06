@@ -1,15 +1,14 @@
-import { Link, useLocation } from "@tanstack/solid-router";
+import { Link } from "@tanstack/solid-router";
 import { For } from "solid-js";
 
-import { NAV_ITEMS, isActivePath } from "@/lib/nav";
+import { NAV_ITEMS } from "@/lib/nav";
 
 const linkClass =
   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold text-slate-300 transition hover:bg-navy-800 hover:text-white lg:mt-1 lg:w-full lg:text-[13px]";
 
-export default function Navigation() {
-  const location = useLocation();
-  const pathname = () => location.pathname ?? "/";
+const activeClass = "bg-navy-800 text-white";
 
+export default function Navigation() {
   return (
     <>
       <Link
@@ -31,19 +30,17 @@ export default function Navigation() {
           Workspace
         </p>
         <For each={NAV_ITEMS}>
-          {(item) => {
-            const active = () => isActivePath(pathname(), item.href);
-            return (
-              <Link
-                to={item.href}
-                aria-current={active() ? "page" : undefined}
-                class={`${linkClass} ${active() ? "bg-navy-800 text-white" : ""}`}
-              >
-                <span aria-hidden="true">{item.icon}</span>
-                <span>{item.label}</span>
-              </Link>
-            );
-          }}
+          {(item) => (
+            <Link
+              to={item.href}
+              activeClass={activeClass}
+              activeProps={{ "aria-current": "page" }}
+              class={linkClass}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
+            </Link>
+          )}
         </For>
       </nav>
     </>

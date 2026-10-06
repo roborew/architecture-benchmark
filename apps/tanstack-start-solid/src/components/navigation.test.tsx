@@ -67,9 +67,7 @@ describe("Navigation", () => {
   });
 
   it("marks the current page with aria-current", () => {
-    mocks.usePathname.mockReturnValue("/projects");
-
-    renderWithRouter(() => <Navigation />);
+    renderWithRouter(() => <Navigation />, { route: "/projects" });
 
     expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute(
       "aria-current",
@@ -78,9 +76,7 @@ describe("Navigation", () => {
   });
 
   it("marks the dashboard on the root path", () => {
-    mocks.usePathname.mockReturnValue("/");
-
-    renderWithRouter(() => <Navigation />);
+    renderWithRouter(() => <Navigation />, { route: "/" });
 
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
       "aria-current",
@@ -89,9 +85,7 @@ describe("Navigation", () => {
   });
 
   it("does not mark a page when the path does not match", () => {
-    mocks.usePathname.mockReturnValue("/users");
-
-    renderWithRouter(() => <Navigation />);
+    renderWithRouter(() => <Navigation />, { route: "/users" });
 
     expect(screen.getByRole("link", { name: "Projects" })).not.toHaveAttribute(
       "aria-current",
