@@ -91,4 +91,51 @@ describe("UsersController.list", () => {
       ),
     ).rejects.toThrow("db down");
   });
+
+  it("responds 400 with the error envelope when q is an array", async () => {
+    const list = vi.fn().mockResolvedValue([]);
+    const model = makeModel(list);
+    const res = makeResponse();
+
+    await createUsersController(model).list(
+      makeRequest({ q: ["robin", "sam"] }),
+      asExpressResponse(res),
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "q must be a single value",
+    });
+    // No query may run for a request the API refused.
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("responds 400 when q exceeds 100 characters", async () => {
+    const list = vi.fn().mockResolvedValue([]);
+    const model = makeModel(list);
+    const res = makeResponse();
+
+    await createUsersController(model).list(
+      makeRequest({ q: "a".repeat(101) }),
+      asExpressResponse(res),
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "q must be at most 100 characters",
+    });
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("passes a 100-character q through as valid", async () => {
+    const list = vi.fn().mockResolvedValue([]);
+    const model = makeModel(list);
+
+    await createUsersController(model).list(
+      makeRequest({ q: "a".repeat(100) }),
+      asExpressResponse(makeResponse()),
+    );
+
+    expect(list).toHaveBeenCalledWith("a".repeat(100));
+  });
 });

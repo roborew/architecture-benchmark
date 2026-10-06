@@ -10,6 +10,10 @@ import request from "supertest";
 
 import { createApp } from "../../src/app.ts";
 
+// The search contract mirrors the reference variant's getUsers integration
+// suite (case-insensitive name match, email match, wildcard escaping), with
+// the HTTP boundaries the REST layer adds: 400 envelopes for malformed q.
+
 // The seeded fixture (spec/snapshots/correctness), worked through by hand:
 //
 //   users   1 Robin Andrew, 2 Alex Morgan, 3 Sam Taylor
@@ -88,6 +92,70 @@ describe("GET /api/users", () => {
     expect(byEmail.get("sam@example.test")).toMatchObject({
       assignedTaskCount: 2,
       openTaskCount: 1,
+    });
+  });
+
+  it("matches a member name case-insensitively", async () => {
+    const response = await request(createApp()).get("/api/users?q=ROBIN");
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]).toMatchObject({
+      id: 1,
+      name: "Robin Andrew",
+    });
+  });
+
+  it("matches on email as well as name", async () => {
+    const response = await request(createApp()).get(
+      "/api/users?q=alex@example.test",
+    );
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]).toMatchObject({ id: 2 });
+  });
+
+  it("returns an empty array for a term that matches no member", async () => {
+    const response = await request(createApp()).get(
+      "/api/users?q=no-such-person",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it("treats LIKE wildcards in the term as literal characters", async () => {
+    // A bare `%` would otherwise match every row and hide a real escaping bug.
+    const percent = await request(createApp()).get("/api/users?q=%");
+    const underscore = await request(createApp()).get("/api/users?q=_");
+
+    expect(percent.body).toEqual([]);
+    expect(underscore.body).toEqual([]);
+  });
+
+  it("ignores surrounding whitespace", async () => {
+    const response = await request(createApp()).get(
+      "/api/users?q=%20%20Robin%20Andrew%20%20",
+    );
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]).toMatchObject({ id: 1 });
+  });
+
+  it("returns 400 when q is repeated", async () => {
+    const response = await request(createApp()).get("/api/users?q=robin&q=sam");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "q must be a single value" });
+  });
+
+  it("returns 400 when q is longer than 100 characters", async () => {
+    const response = await request(createApp()).get(
+      `/api/users?q=${"a".repeat(101)}`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: "q must be at most 100 characters",
     });
   });
 });
