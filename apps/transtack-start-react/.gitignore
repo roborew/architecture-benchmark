@@ -11,3 +11,9 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Playwright's run artifacts. `playwright-report` is only written on failure,
+# and `test-results` holds per-test traces and screenshots — both are local
+# debugging output, not source.
+playwright-report
+test-results
