@@ -45,9 +45,17 @@ export const Route = createRootRoute({
       </p>
     </div>
   ),
+  // shellComponent is the static HTML document shell. It must NOT contain
+  // reactive router state (useLocation, useMatches, etc.) because Solid
+  // re-renders the entire shell when those signals change, causing infinite
+  // render loops and app freezing.
   shellComponent: RootDocument,
+  // The AppShell layout lives in the route tree via `component`, where it
+  // can safely read router state without re-rendering the HTML document.
+  component: RootLayout,
 });
 
+/** Static HTML document shell — no reactive router state. */
 function RootDocument() {
   return (
     <html lang="en" class="h-full antialiased">
@@ -56,11 +64,18 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body class="min-w-80 bg-slate-50 font-sans text-slate-800">
-        <AppShell>
-          <Outlet />
-        </AppShell>
+        <Outlet />
         <Scripts />
       </body>
     </html>
+  );
+}
+
+/** Route-tree layout — safe to use reactive router hooks here. */
+function RootLayout() {
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
   );
 }

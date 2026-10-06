@@ -1,17 +1,13 @@
-import { useMatches } from "@tanstack/solid-router";
-import type { ParentComponent } from "solid-js";
-import { createMemo } from "solid-js";
+import { useLocation } from "@tanstack/solid-router";
+import type { JSX } from "solid-js";
 
 import { AppHeader } from "./app-header";
 import { resolvePageTitle } from "@/lib/nav";
 import Navigation from "./navigation";
 
-export function AppShell(props: ParentComponent) {
-  const matches = useMatches();
-  const pathname = createMemo(() => {
-    const lastMatch = matches().at(-1);
-    return lastMatch?.pathname ?? "/";
-  });
+export function AppShell(props: { children?: JSX.Element }) {
+  const location = useLocation();
+  const pathname = () => location.pathname ?? "/";
 
   return (
     <div class="grid min-h-screen grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)]">
