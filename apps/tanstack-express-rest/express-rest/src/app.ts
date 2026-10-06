@@ -9,6 +9,7 @@
 // never the reverse, so importing the app never opens a socket.
 
 import express, { type Express } from "express";
+import cors from "cors";
 
 import { requirePostgresUrl } from "./config/env.ts";
 import { createConnection } from "./db/connection.ts";
@@ -37,6 +38,13 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // JSON bodies for the write endpoints; a read-only GET ignores it.
   app.use(express.json());
+
+  // The frontend is a separate origin (Vite dev server / SPA host), so every
+  // fetch the client makes is cross-origin. Origins are reflected rather
+  // than allowlisted: this API serves no cookies or credentials, so there is
+  // nothing a reflected origin could smuggle. A credentialed API would need an
+  // explicit allowlist instead.
+  app.use(cors({ origin: true }));
 
   // The dependency chain, composed here and nowhere else: connection →
   // model → controller → router. Each layer sees only the layer below it.
