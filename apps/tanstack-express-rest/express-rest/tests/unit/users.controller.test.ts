@@ -7,8 +7,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
 
-import { createUsersController } from "../../src/users/users.controller.ts";
 import type { UsersModel } from "../../src/users/users.model.ts";
+import { createUsersController } from "../../src/users/users.controller.ts";
 
 function makeModel(list: UsersModel["list"]): UsersModel {
   return { list };
