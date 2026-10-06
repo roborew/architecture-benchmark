@@ -1,17 +1,34 @@
-
 @import "tailwindcss";
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
 
-* {
-  box-sizing: border-box;
+/*
+ * The app is light-only by design: every surface is an explicit slate
+ * or white utility class, copied from the static style reference shared by
+ * every app variant in this repo.
+ *
+ * This file therefore defines no :root foreground/background colours
+ * and no prefers-color-scheme block. Colour and background are left
+ * entirely to the utilities on <main>/<body>.
+ *
+ * The fonts are self-hosted via Fontsource rather than fetched from a CDN at
+ * runtime, which also keeps the app renderable with no network access — the
+ * dev servers run before the database exists and the e2e suite assumes this.
+ */
+
+@theme {
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+
+    --color-navy-950: #14233b;
+    --color-navy-900: #1e314e;
+    --color-navy-800: #2c4569;
+
+    --color-brand-50: #f1f5ff;
+    --color-brand-100: #e3ebff;
+    --color-brand-500: #5576e8;
+    --color-brand-600: #4266df;
+    --color-brand-700: #3455c5;
+
+    --shadow-panel: 0 3px 14px rgba(36, 51, 77, 0.05);
 }
-
-html,
-body,
-#app {
-  min-height: 100%;
-}
-
-body {
-  margin: 0;
-}
-

@@ -1,5 +1,5 @@
-import type { User } from "@/lib/types";
 import { initials } from "@/lib/initials";
+import type { User } from "@/lib/types";
 
 const th = "px-3 py-3 first:px-5 last:px-5";
 const td = "px-3 py-3.5 first:px-5 last:px-5";

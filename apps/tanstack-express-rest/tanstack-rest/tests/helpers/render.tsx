@@ -11,14 +11,14 @@
 // can set up the state they are asserting about.
 
 import {
-	render,
+	createMemoryHistory,
+	RouterContextProvider,
+} from "@tanstack/react-router";
+import {
 	type RenderOptions,
 	type RenderResult,
+	render,
 } from "@testing-library/react";
-import {
-	RouterContextProvider,
-	createMemoryHistory,
-} from "@tanstack/react-router";
 import type { ReactElement, ReactNode } from "react";
 
 import { getRouter } from "@/router";

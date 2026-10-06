@@ -9,13 +9,13 @@ import type { User } from "@/lib/types";
 // Unit tests assert against the values they pass in, never against literals.
 
 export function makeUser(overrides: Partial<User> = {}): User {
-  return {
-    id: 9201,
-    name: "Fixture Person",
-    email: "fixture@example.test",
-    assignedTaskCount: 1,
-    openTaskCount: 1,
-    commentCount: 0,
-    ...overrides,
-  };
+	return {
+		id: 9201,
+		name: "Fixture Person",
+		email: "fixture@example.test",
+		assignedTaskCount: 1,
+		openTaskCount: 1,
+		commentCount: 0,
+		...overrides,
+	};
 }

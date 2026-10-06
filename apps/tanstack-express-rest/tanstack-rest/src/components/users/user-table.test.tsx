@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { renderWithRouter, screen, within } from "@tests/helpers/render";
 import { makeUser } from "@tests/fixtures/builders";
+import { renderWithRouter, screen, within } from "@tests/helpers/render";
+import { describe, expect, it } from "vitest";
 import { UserTable } from "./user-table";
 
 describe("UserTable", () => {

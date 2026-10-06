@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-	renderWithRouter,
 	act,
 	fireEvent,
+	renderWithRouter,
 	screen,
 } from "@tests/helpers/render";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchInput } from "./search-input";
 
 // Mutable so a test can change the URL underneath the component, which is
@@ -38,7 +38,8 @@ const mocks = vi.hoisted(() => {
 // useLocation mirrors TanStack's ParsedLocation: the component reads the query
 // off the raw `searchStr`, so the mocked `params` are stringified into it.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+	const actual =
+		await importOriginal<typeof import("@tanstack/react-router")>();
 
 	return {
 		...actual,

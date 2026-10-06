@@ -1,8 +1,7 @@
 import { useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useTransition } from "react";
-
-import { useQueryNavigation } from "@/hooks/use-query-navigation";
 import { useDebouncedValue } from "@/hooks/use-debounced";
+import { useQueryNavigation } from "@/hooks/use-query-navigation";
 
 const inputClass =
 	"w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -64,7 +63,7 @@ export function SearchInput({
 			// results panel from jumping while the reader is still typing.
 			navigateToQuery(params, { replace: true });
 		});
-	}, [debounced, value, urlQuery, param, pathname, searchStr, navigateToQuery]);
+	}, [debounced, value, urlQuery, param, searchStr, navigateToQuery]);
 
 	return (
 		<label className="relative block">
