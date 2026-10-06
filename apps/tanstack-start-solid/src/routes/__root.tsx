@@ -2,37 +2,53 @@ import {
   HeadContent,
   Outlet,
   Scripts,
-  createRootRouteWithContext,
-} from '@tanstack/solid-router'
+  createRootRoute,
+} from "@tanstack/solid-router";
 
-import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools'
+import { AppShell } from "@/components/app-shell";
 
-import { HydrationScript } from 'solid-js/web'
-import { Suspense } from 'solid-js'
+import appCss from "../styles.css?url";
 
-import styleCss from '../styles.css?url'
-
-export const Route = createRootRouteWithContext()({
+export const Route = createRootRoute({
   head: () => ({
-    links: [{ rel: 'stylesheet', href: styleCss }],
+    meta: [
+      {
+        charSet: "utf-8",
+      },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1",
+      },
+      {
+        title: "Tasks Manager",
+      },
+      {
+        name: "description",
+        content: "Task Manager",
+      },
+    ],
+    links: [
+      {
+        rel: "stylesheet",
+        href: appCss,
+      },
+    ],
   }),
-  shellComponent: RootComponent,
-})
+  component: RootComponent,
+});
 
 function RootComponent() {
   return (
-    <html>
+    <html lang="en" class="h-full antialiased">
       <head>
-        <HydrationScript />
         <HeadContent />
       </head>
-      <body>
-        <Suspense>
+      <body class="min-w-80 bg-slate-50 font-sans text-slate-800">
+        <AppShell>
           <Outlet />
-          <TanStackRouterDevtools />
-        </Suspense>
+        </AppShell>
         <Scripts />
       </body>
     </html>
-  )
+  );
 }

@@ -1,0 +1,133 @@
+// src/routes/projects.$id.index.tsx — one project and its task list.
+//
+// The Next.js page read the project and its tasks directly. Both reads go
+// through server functions here, because a loader also runs in the browser
+// during client navigation.
+
+import { Link, createFileRoute } from "@tanstack/solid-router";
+import { Show } from "solid-js";
+
+import { ProjectDetail } from "@/components/projects/project-detail";
+import { fetchProject, fetchProjectTasks } from "@/server/queries";
+
+/**
+ * The status filter's query-string spelling.
+ *
+ * A raw space is awkward in a query string while the stored value is "in
+ * progress" (spec/contract.md), so the two are translated here and the query
+ * layer only ever sees the stored form.
+ */
+const STATUS_FROM_QUERY: Record<string, string> = {
+  todo: "todo",
+  "in-progress": "in progress",
+  done: "done",
+};
+
+/**
+ * Over-fetch by one row to learn whether more exist: the extra row is dropped
+ * before rendering, so the page still shows at most `PAGE_SIZE` tasks.
+ */
+const PAGE = 25;
+
+export const Route = createFileRoute("/projects/$id/")({
+  // Typed as optional so a `<Link to="/projects/$id">` elsewhere does not have
+  // to pass a `search` object; the validator still returns plain strings.
+  // Absent params resolve to `undefined`, not "". A validator that returns an
+  // empty string makes TanStack write it into the URL, so navigating to a
+  // project would land on /projects/1?status=&cursor= instead of /projects/1
+  // — an observable difference from the Next.js app and one the e2e suite
+  // asserts on. Undefined params are omitted from the search string entirely.
+  //
+  // Numeric values are coerced as well: TanStack's default search parsing is
+  // JSON-based, so a hand-edited ?status=2 would otherwise be dropped rather
+  // than rejected by the status check below.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    status?: string;
+    cursor?: string;
+  } => ({
+    status:
+      typeof search.status === "string"
+        ? search.status
+        : typeof search.status === "number" && Number.isFinite(search.status)
+          ? String(search.status)
+          : undefined,
+    cursor:
+      typeof search.cursor === "string"
+        ? search.cursor
+        : typeof search.cursor === "number" && Number.isFinite(search.cursor)
+          ? String(search.cursor)
+          : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ ...search }),
+  loader: async ({ params, deps }) => {
+    const projectId = Number(params.id);
+    const statusParam = deps.status ?? "";
+    const cursor = deps.cursor ?? "";
+
+    // `Number` yields NaN for anything non-numeric, and a NaN lookup finds no
+    // row, so both paths land on the not-found state below.
+    const project = Number.isInteger(projectId)
+      ? await fetchProject({ data: { id: projectId } })
+      : null;
+
+    if (!project) return null;
+
+    const appliedStatus =
+      statusParam && statusParam in STATUS_FROM_QUERY
+        ? STATUS_FROM_QUERY[statusParam]
+        : undefined;
+
+    const fetched = await fetchProjectTasks({
+      data: {
+        projectId: project.id,
+        status: appliedStatus,
+        cursor: cursor || undefined,
+        limit: PAGE + 1,
+      },
+    });
+
+    // The select keeps the query-string spelling so re-submitting is stable.
+    return {
+      project,
+      tasks: fetched.slice(0, PAGE),
+      status: statusParam,
+      hasMore: fetched.length > PAGE,
+    };
+  },
+  component: ProjectDetailPage,
+});
+
+function ProjectDetailPage() {
+  const data = Route.useLoaderData();
+
+  return (
+    <Show
+      fallback={
+        <div class="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
+          <h1 class="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
+            Project not found
+          </h1>
+          <p class="mt-1.5 text-[13px] leading-6 text-slate-500">
+            No project matches that id.
+          </p>
+          <Link
+            to="/projects"
+            class="mt-4 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Back to Projects
+          </Link>
+        </div>
+      }
+      when={data()}
+    >
+      <ProjectDetail
+        project={data().project}
+        tasks={data().tasks}
+        status={data().status}
+        hasMore={data().hasMore}
+      />
+    </Show>
+  );
+}
