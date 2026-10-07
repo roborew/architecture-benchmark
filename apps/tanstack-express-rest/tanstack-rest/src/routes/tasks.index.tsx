@@ -21,7 +21,7 @@ export const Route = createFileRoute("/tasks/")({
   // follows the search field.
   loaderDeps: ({ search }) => ({ q: search.q }),
   loader: ({ deps, context }) =>
-    context.queryClient.ensureQueryData(tasksQueryOptions(deps.q)),
+    context.queryClient.ensureQueryData(tasksQueryOptions({ q: deps.q })),
   // A failed fetch renders HERE, inside the shell, rather than tearing the
   // route tree down to a blank screen (the router's CatchBoundary fallback).
   errorComponent: TasksRouteError,
@@ -30,7 +30,9 @@ export const Route = createFileRoute("/tasks/")({
 
 function TasksRoute() {
   const { q } = Route.useSearch();
-  const { isPending, isError, error, data } = useQuery(tasksQueryOptions(q));
+  const { isPending, isError, error, data } = useQuery(
+    tasksQueryOptions({ q }),
+  );
 
   if (isPending) {
     return (
