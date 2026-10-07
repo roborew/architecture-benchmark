@@ -1,4 +1,4 @@
-// src/lib/dashboard-query.ts
+// src/queries/dashboard-query.ts
 //
 // The TanStack Query options for the dashboard aggregate. Declared once
 // because the home route's loader (ensureQueryData) and its component

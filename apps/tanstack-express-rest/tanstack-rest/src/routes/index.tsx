@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // dashboard's one aggregate (`ensureQueryData`) before the route renders, and
 // the component reads the same query with `useQuery` — the identical options
-// object (src/lib/dashboard-query.ts) is what makes the two agree on the cache
+// object (src/queries/dashboard-query.ts) is what makes the two agree on the cache
 // entry. Stats, recent tasks and the busiest projects arrive together as one
 // aggregate, exactly as the reference variant's `fetchDashboard` returns them.
 
@@ -17,7 +17,7 @@ import {
 import { DashboardProjects } from "@/components/dashboard-projects";
 import { DashboardStats } from "@/components/dashboard-stats";
 import { RecentTasks } from "@/components/recent-tasks";
-import { dashboardQueryOptions } from "@/lib/dashboard-query";
+import { dashboardQueryOptions } from "@/queries/dashboard-query";
 
 const outlineAction =
 	"inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50";

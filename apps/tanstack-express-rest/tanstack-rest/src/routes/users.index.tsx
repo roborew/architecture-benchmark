@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // query cache (`ensureQueryData`) before the route renders, and the component
 // reads the same query with `useQuery` — the identical options object
-// (src/lib/users-query.ts) is what makes the two agree on the cache entry.
+// (src/queries/users-query.ts) is what makes the two agree on the cache entry.
 // The loader runs once per navigation; `useQuery` re-runs when the search
 // param changes, so typing in the search field refreshes the table without a
 // manual reload.
@@ -12,8 +12,8 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { UsersError, UsersRouteError } from "@/components/users/users-error";
 import { UsersPage } from "@/components/users/users-page";
-import { usersQueryOptions } from "@/lib/users-query";
 import { parseUsersSearch } from "@/lib/users-search";
+import { usersQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/users/")({
 	validateSearch: parseUsersSearch,

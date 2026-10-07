@@ -1,4 +1,4 @@
-// src/lib/tasks-query.ts
+// src/queries/tasks-query.ts
 //
 // The TanStack Query options for the workspace-wide task list and its count
 // aggregate. Declared once because the route loader (ensureQueryData) and the

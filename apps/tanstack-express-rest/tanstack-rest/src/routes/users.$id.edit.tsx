@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // member's own row (`ensureQueryData`) before the route renders, and the
 // component reads the same query with `useQuery` — the identical options
-// object (src/lib/users-query.ts) is what makes the two agree on the cache
+// object (src/queries/users-query.ts) is what makes the two agree on the cache
 // entry.
 //
 // A missing member is `notFound()`, thrown by the loader, with the same markup
@@ -17,7 +17,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ApiError } from "@/api/api";
 import { UserForm } from "@/components/users/user-form";
 import { UsersError, UsersRouteError } from "@/components/users/users-error";
-import { userQueryOptions } from "@/lib/users-query";
+import { userQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/users/$id/edit")({
 	loader: async ({ params, context }) => {

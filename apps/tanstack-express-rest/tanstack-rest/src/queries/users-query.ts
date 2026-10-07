@@ -1,4 +1,4 @@
-// src/lib/users-query.ts
+// src/queries/users-query.ts
 //
 // The TanStack Query options for the users surface. Declared once because the
 // route loader (ensureQueryData) and the page component (useQuery) must share

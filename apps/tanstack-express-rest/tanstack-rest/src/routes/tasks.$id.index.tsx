@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // task's own row, its comments, and the member list (`ensureQueryData`)
 // before the route renders, and the component reads the same queries with
-// `useQuery` — the identical options objects (src/lib/*-query.ts) are what
+// `useQuery` — the identical options objects (src/queries/*-query.ts) are what
 // make the two agree on the cache entries.
 //
 // The not-found outcome is a rendered state rather than `notFound()`, because
@@ -16,9 +16,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ApiError } from "@/api/api";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import { TasksError, TasksRouteError } from "@/components/tasks/tasks-error";
-import { commentsQueryOptions } from "@/lib/comments-query";
-import { taskQueryOptions } from "@/lib/tasks-query";
-import { usersQueryOptions } from "@/lib/users-query";
+import { commentsQueryOptions } from "@/queries/comments-query";
+import { taskQueryOptions } from "@/queries/tasks-query";
+import { usersQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/tasks/$id/")({
 	loader: async ({ params, context }) => {

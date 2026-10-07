@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // project's own row and its board page (`ensureQueryData`) before the route
 // renders, and the component reads the same queries with `useQuery` — the
-// identical options objects (src/lib/projects-query.ts) are what make the two
+// identical options objects (src/queries/projects-query.ts) are what make the two
 // agree on the cache entries.
 //
 // The not-found outcome is a rendered state rather than `notFound()`, because
@@ -23,7 +23,7 @@ import {
 import {
 	projectQueryOptions,
 	projectTasksQueryOptions,
-} from "@/lib/projects-query";
+} from "@/queries/projects-query";
 
 /**
  * The status filter's query-string spelling.

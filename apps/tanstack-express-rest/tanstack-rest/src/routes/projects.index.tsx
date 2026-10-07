@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // query cache (`ensureQueryData`) before the route renders, and the component
 // reads the same query with `useQuery` — the identical options object
-// (src/lib/projects-query.ts) is what makes the two agree on the cache entry.
+// (src/queries/projects-query.ts) is what makes the two agree on the cache entry.
 // The loader runs once per navigation; `useQuery` re-runs when the search
 // param changes, so typing in the search field refreshes the table without a
 // manual reload.
@@ -16,8 +16,8 @@ import {
 	ProjectsRouteError,
 } from "@/components/projects/projects-error";
 import { SearchInput } from "@/components/search-input";
-import { projectsQueryOptions } from "@/lib/projects-query";
 import { parseProjectsSearch } from "@/lib/projects-search";
+import { projectsQueryOptions } from "@/queries/projects-query";
 
 export const Route = createFileRoute("/projects/")({
 	validateSearch: parseProjectsSearch,

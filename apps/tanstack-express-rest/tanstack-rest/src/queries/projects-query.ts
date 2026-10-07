@@ -1,4 +1,4 @@
-// src/lib/projects-query.ts
+// src/queries/projects-query.ts
 //
 // The TanStack Query options for the projects surface. Declared once because
 // the route loader (ensureQueryData) and the page component (useQuery) must

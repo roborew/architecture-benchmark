@@ -2,7 +2,7 @@
 //
 // The loader warms the task's own row plus the two option lists the form
 // needs (`ensureQueryData`), and the component reads the same queries with
-// `useQuery` — the identical options objects (src/lib/*-query.ts) are what
+// `useQuery` — the identical options objects (src/queries/*-query.ts) are what
 // make the two agree on the cache entries.
 //
 // The form shows the project as fixed text on an edit rather than as a
@@ -20,9 +20,9 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ApiError } from "@/api/api";
 import { TaskForm } from "@/components/tasks/task-form";
 import { TasksError, TasksRouteError } from "@/components/tasks/tasks-error";
-import { projectsQueryOptions } from "@/lib/projects-query";
-import { taskQueryOptions } from "@/lib/tasks-query";
-import { usersQueryOptions } from "@/lib/users-query";
+import { projectsQueryOptions } from "@/queries/projects-query";
+import { taskQueryOptions } from "@/queries/tasks-query";
+import { usersQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/tasks/$id/edit")({
 	loader: async ({ params, context }) => {

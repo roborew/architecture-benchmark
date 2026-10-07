@@ -12,8 +12,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { TaskForm } from "@/components/tasks/task-form";
 import { TasksError, TasksRouteError } from "@/components/tasks/tasks-error";
-import { projectsQueryOptions } from "@/lib/projects-query";
-import { usersQueryOptions } from "@/lib/users-query";
+import { projectsQueryOptions } from "@/queries/projects-query";
+import { usersQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/tasks/new")({
 	loader: async ({ context }) => {

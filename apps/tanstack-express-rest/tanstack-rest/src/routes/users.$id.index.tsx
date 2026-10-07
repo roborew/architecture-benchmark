@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // member's own row and her assigned tasks (`ensureQueryData`) before the route
 // renders, and the component reads the same queries with `useQuery` — the
-// identical options objects (src/lib/users-query.ts) are what make the two
+// identical options objects (src/queries/users-query.ts) are what make the two
 // agree on the cache entries. The second read is keyed on the first one's
 // result, exactly as the reference variant's two-step lookup was.
 //
@@ -17,7 +17,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ApiError } from "@/api/api";
 import { UserDetail } from "@/components/users/user-detail";
 import { UsersError, UsersRouteError } from "@/components/users/users-error";
-import { userQueryOptions, userTasksQueryOptions } from "@/lib/users-query";
+import { userQueryOptions, userTasksQueryOptions } from "@/queries/users-query";
 
 export const Route = createFileRoute("/users/$id/")({
 	loader: async ({ params, context }) => {

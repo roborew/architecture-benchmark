@@ -10,7 +10,7 @@
 //
 // The responsibilities are split the same way the reference splits them:
 //
-//   src/lib/api.ts     sends the request and turns failures into ApiError
+//   src/api/api.ts     sends the request and turns failures into ApiError
 //   this hook          renders the outcome, invalidates, then navigates
 //
 // Invalidation is the SPA's `revalidatePath`: a mutation can touch any

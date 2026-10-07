@@ -15,7 +15,7 @@ import { TaskDetail } from "./task-detail";
 // own fields. The comment form's fields are named `body` and `authorId` — the
 // endpoint's own spelling, not the reference form's `commentBody` /
 // `commentAuthorId` — because the API keys its validation errors by the names
-// the request actually sent (src/lib/api.ts, `createComment`).
+// the request actually sent (src/api/comments.ts, `createComment`).
 
 /** The reply shape every mutation resolves to: `ok` means success. */
 type ApiReply = MutationResult;

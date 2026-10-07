@@ -10,7 +10,7 @@
 // One deviation from the reference markup, on purpose: the comment form's
 // fields are named `body` and `authorId`, not the reference's `commentBody` /
 // `commentAuthorId`. The REST endpoint keys its validation errors by the names
-// the request actually sent (src/lib/api.ts, `createComment`), so the form that
+// the request actually sent (src/api/comments.ts, `createComment`), so the form that
 // renders `state.errors?.body` must submit the same spelling — otherwise a
 // rejected comment renders nothing next to the field that was refused.
 

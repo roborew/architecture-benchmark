@@ -1,4 +1,4 @@
-// src/lib/comments-query.ts
+// src/queries/comments-query.ts
 //
 // The TanStack Query options for a task's comments. Declared once because the
 // task detail's route loader (ensureQueryData) and its component (useQuery)

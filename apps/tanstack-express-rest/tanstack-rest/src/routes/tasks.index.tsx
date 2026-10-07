@@ -3,7 +3,7 @@
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // query cache (`ensureQueryData`) before the route renders, and the component
 // reads the same queries with `useQuery` — the identical options objects
-// (src/lib/*-query.ts) are what make the two agree on the cache entries.
+// (src/queries/*-query.ts) are what make the two agree on the cache entries.
 //
 // The loader runs once per navigation; `useQuery` re-runs when the search
 // params change, so picking a filter or a page size refreshes the table
@@ -27,10 +27,13 @@ import {
 	parsePage,
 	parsePageSize,
 } from "@/lib/pagination";
-import { projectsQueryOptions } from "@/lib/projects-query";
-import { taskCountQueryOptions, tasksQueryOptions } from "@/lib/tasks-query";
 import { parseTasksSearch, type TasksSearch } from "@/lib/tasks-search";
-import { usersQueryOptions } from "@/lib/users-query";
+import { projectsQueryOptions } from "@/queries/projects-query";
+import {
+	taskCountQueryOptions,
+	tasksQueryOptions,
+} from "@/queries/tasks-query";
+import { usersQueryOptions } from "@/queries/users-query";
 
 /**
  * The status filter's query-string spelling.
