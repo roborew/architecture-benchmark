@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_PAGE_SIZE,
-	PAGE_SIZES,
 	formatRange,
+	PAGE_SIZES,
 	pageRange,
 	parsePage,
 	parsePageSize,

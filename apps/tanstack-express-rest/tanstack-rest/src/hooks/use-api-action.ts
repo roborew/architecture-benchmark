@@ -28,8 +28,8 @@ import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
 
 /** The outcome state a form renders: a message, and/or field → messages. */
 export type ApiActionState = {
-  message?: string;
-  errors?: Record<string, string[]>;
+	message?: string;
+	errors?: Record<string, string[]>;
 };
 
 export const initialApiActionState: ApiActionState = {};
@@ -51,79 +51,79 @@ type ApiActionFn = (values: FormValues) => Promise<MutationResult>;
  * plain fields, and a `File`'s `toString()` would silently send junk.
  */
 export function formValues(formData: FormData): FormValues {
-  const values: FormValues = {};
+	const values: FormValues = {};
 
-  for (const [key, value] of formData.entries()) {
-    if (typeof value === "string") {
-      values[key] = value;
-    }
-  }
+	for (const [key, value] of formData.entries()) {
+		if (typeof value === "string") {
+			values[key] = value;
+		}
+	}
 
-  return values;
+	return values;
 }
 
 export function useApiAction(
-  action: ApiActionFn,
+	action: ApiActionFn,
 ): [
-  state: ApiActionState,
-  formAction: (formData: FormData) => void,
-  pending: boolean,
+	state: ApiActionState,
+	formAction: (formData: FormData) => void,
+	pending: boolean,
 ] {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const [state, setState] = useState<ApiActionState>(initialApiActionState);
-  const [isPending, startTransition] = useTransition();
+	const router = useRouter();
+	const queryClient = useQueryClient();
+	const [state, setState] = useState<ApiActionState>(initialApiActionState);
+	const [isPending, startTransition] = useTransition();
 
-  const formAction = useCallback(
-    (formData: FormData) => {
-      startTransition(async () => {
-        let result: MutationResult;
+	const formAction = useCallback(
+		(formData: FormData) => {
+			startTransition(async () => {
+				let result: MutationResult;
 
-        try {
-          result = await action(formValues(formData));
-        } catch (error) {
-          // The API's own refusals arrive as an ApiError carrying the
-          // field errors; anything else (fetch itself rejecting) is a
-          // network failure the user still needs to see, not an
-          // unhandled rejection inside a transition.
-          if (error instanceof ApiError) {
-            // An empty errors map is omitted, not spread in: a guard failure
-            // (409) carries only a message, and `errors: {}` would make a
-            // form's `state.errors?.title` check render an error-free alert.
-            setState(
-              Object.keys(error.errors).length > 0
-                ? { message: error.message, errors: error.errors }
-                : { message: error.message },
-            );
-          } else if (error instanceof Error) {
-            setState({ message: error.message });
-          } else {
-            setState({ message: "Something went wrong. Please try again." });
-          }
-          return;
-        }
+				try {
+					result = await action(formValues(formData));
+				} catch (error) {
+					// The API's own refusals arrive as an ApiError carrying the
+					// field errors; anything else (fetch itself rejecting) is a
+					// network failure the user still needs to see, not an
+					// unhandled rejection inside a transition.
+					if (error instanceof ApiError) {
+						// An empty errors map is omitted, not spread in: a guard failure
+						// (409) carries only a message, and `errors: {}` would make a
+						// form's `state.errors?.title` check render an error-free alert.
+						setState(
+							Object.keys(error.errors).length > 0
+								? { message: error.message, errors: error.errors }
+								: { message: error.message },
+						);
+					} else if (error instanceof Error) {
+						setState({ message: error.message });
+					} else {
+						setState({ message: "Something went wrong. Please try again." });
+					}
+					return;
+				}
 
-        // Invalidate before navigating, exactly as the reference's
-        // hook does: `redirectTo` often names the route the user is
-        // already on, and navigating first would render the stale list
-        // and then re-render under the user with the new row.
-        await queryClient.invalidateQueries();
-        await router.invalidate();
+				// Invalidate before navigating, exactly as the reference's
+				// hook does: `redirectTo` often names the route the user is
+				// already on, and navigating first would render the stale list
+				// and then re-render under the user with the new row.
+				await queryClient.invalidateQueries();
+				await router.invalidate();
 
-        setState({});
+				setState({});
 
-        // A reply without a redirect (adding a comment) means: stay on
-        // this page — the invalidation above is what shows the result.
-        if (result.redirectTo !== undefined) {
-          // The API returns a resolved path such as /tasks/101, not a
-          // route pattern plus params, so it is passed as `to` with the
-          // cast that expresses "this string is a full path".
-          await router.navigate({ to: result.redirectTo as never });
-        }
-      });
-    },
-    [action, queryClient, router],
-  );
+				// A reply without a redirect (adding a comment) means: stay on
+				// this page — the invalidation above is what shows the result.
+				if (result.redirectTo !== undefined) {
+					// The API returns a resolved path such as /tasks/101, not a
+					// route pattern plus params, so it is passed as `to` with the
+					// cast that expresses "this string is a full path".
+					await router.navigate({ to: result.redirectTo as never });
+				}
+			});
+		},
+		[action, queryClient, router],
+	);
 
-  return [state, formAction, isPending];
+	return [state, formAction, isPending];
 }

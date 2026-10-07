@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
+import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
 
 import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
 import { getRouter } from "@/router";
@@ -26,7 +26,9 @@ function makeWrapper() {
 		router,
 		wrapper: ({ children }: { children: ReactNode }) => (
 			<QueryClientProvider client={queryClient}>
-				<RouterContextProvider router={router}>{children}</RouterContextProvider>
+				<RouterContextProvider router={router}>
+					{children}
+				</RouterContextProvider>
 			</QueryClientProvider>
 		),
 	};

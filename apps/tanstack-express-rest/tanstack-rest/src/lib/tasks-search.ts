@@ -19,31 +19,31 @@
 // what the pagination helpers already expect.
 
 export type TasksSearch = {
-  q?: string;
-  project?: string;
-  status?: string;
-  assignee?: string;
-  cursor?: string;
-  page?: string;
-  size?: string;
+	q?: string;
+	project?: string;
+	status?: string;
+	assignee?: string;
+	cursor?: string;
+	page?: string;
+	size?: string;
 };
 
 /** Coerces a validated search value to a string; unusable values become absent. */
 export function toParam(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+	if (typeof value === "string") return value;
+	if (typeof value === "number" && Number.isFinite(value)) return String(value);
 
-  return undefined;
+	return undefined;
 }
 
 export function parseTasksSearch(search: Record<string, unknown>): TasksSearch {
-  return {
-    q: toParam(search.q),
-    project: toParam(search.project),
-    status: toParam(search.status),
-    assignee: toParam(search.assignee),
-    cursor: toParam(search.cursor),
-    page: toParam(search.page),
-    size: toParam(search.size),
-  };
+	return {
+		q: toParam(search.q),
+		project: toParam(search.project),
+		status: toParam(search.status),
+		assignee: toParam(search.assignee),
+		cursor: toParam(search.cursor),
+		page: toParam(search.page),
+		size: toParam(search.size),
+	};
 }

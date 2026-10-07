@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	projectQueryOptions,
-	projectTasksQueryOptions,
 	projectsQueryOptions,
+	projectTasksQueryOptions,
 } from "./projects-query";
 
 // The query options are the shared contract between the route loader

@@ -9,25 +9,25 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
-import { getUser, getUserTasks, getUsers } from "@/lib/api";
+import { getUser, getUsers, getUserTasks } from "@/lib/api";
 
 export function usersQueryOptions(term = "") {
-  return queryOptions({
-    queryKey: ["users", term ? { q: term } : {}],
-    queryFn: () => getUsers(term),
-  });
+	return queryOptions({
+		queryKey: ["users", term ? { q: term } : {}],
+		queryFn: () => getUsers(term),
+	});
 }
 
 export function userQueryOptions(id: number) {
-  return queryOptions({
-    queryKey: ["user", { id }],
-    queryFn: () => getUser(id),
-  });
+	return queryOptions({
+		queryKey: ["user", { id }],
+		queryFn: () => getUser(id),
+	});
 }
 
 export function userTasksQueryOptions(id: number) {
-  return queryOptions({
-    queryKey: ["user-tasks", { id }],
-    queryFn: () => getUserTasks(id),
-  });
+	return queryOptions({
+		queryKey: ["user-tasks", { id }],
+		queryFn: () => getUserTasks(id),
+	});
 }

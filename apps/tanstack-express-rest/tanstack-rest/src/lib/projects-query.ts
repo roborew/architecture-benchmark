@@ -9,7 +9,12 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
-import { getProject, getProjectTasks, getProjects, type ProjectTaskQuery } from "@/lib/api";
+import {
+	getProject,
+	getProjects,
+	getProjectTasks,
+	type ProjectTaskQuery,
+} from "@/lib/api";
 
 /** Removes the values that do not reach the URL, so the key matches the request. */
 function keyPart(filters: ProjectTaskQuery): Record<string, string | number> {
@@ -38,7 +43,10 @@ export function projectQueryOptions(id: number) {
 	});
 }
 
-export function projectTasksQueryOptions(projectId: number, filters: ProjectTaskQuery = {}) {
+export function projectTasksQueryOptions(
+	projectId: number,
+	filters: ProjectTaskQuery = {},
+) {
 	return queryOptions({
 		queryKey: ["project-tasks", projectId, keyPart(filters)],
 		queryFn: () => getProjectTasks(projectId, filters),

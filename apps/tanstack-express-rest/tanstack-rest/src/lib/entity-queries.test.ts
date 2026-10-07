@@ -10,17 +10,13 @@ import { userQueryOptions, userTasksQueryOptions } from "./users-query";
 // the component. These are the single-fetch options — a key that identifies
 // the one row (or aggregate) the request returns.
 
-const {
-	getCommentsMock,
-	getDashboardMock,
-	getUserMock,
-	getUserTasksMock,
-} = vi.hoisted(() => ({
-	getCommentsMock: vi.fn(),
-	getDashboardMock: vi.fn(),
-	getUserMock: vi.fn(),
-	getUserTasksMock: vi.fn(),
-}));
+const { getCommentsMock, getDashboardMock, getUserMock, getUserTasksMock } =
+	vi.hoisted(() => ({
+		getCommentsMock: vi.fn(),
+		getDashboardMock: vi.fn(),
+		getUserMock: vi.fn(),
+		getUserTasksMock: vi.fn(),
+	}));
 
 vi.mock("@/lib/api", () => ({
 	getComments: getCommentsMock,
@@ -42,7 +38,10 @@ beforeEach(() => {
 
 describe("commentsQueryOptions", () => {
 	it("keys the cache by the task id", () => {
-		expect(commentsQueryOptions(9).queryKey).toEqual(["comments", { taskId: 9 }]);
+		expect(commentsQueryOptions(9).queryKey).toEqual([
+			"comments",
+			{ taskId: 9 },
+		]);
 		expect(commentsQueryOptions(10).queryKey).not.toEqual(
 			commentsQueryOptions(9).queryKey,
 		);
@@ -87,7 +86,10 @@ describe("userQueryOptions", () => {
 
 describe("userTasksQueryOptions", () => {
 	it("keys the cache by the id, apart from the member's own row", () => {
-		expect(userTasksQueryOptions(4).queryKey).toEqual(["user-tasks", { id: 4 }]);
+		expect(userTasksQueryOptions(4).queryKey).toEqual([
+			"user-tasks",
+			{ id: 4 },
+		]);
 		expect(userTasksQueryOptions(4).queryKey).not.toEqual(
 			userQueryOptions(4).queryKey,
 		);
