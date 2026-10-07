@@ -15,15 +15,12 @@ defmodule PhoenixRestWeb.Router do
   end
 
   scope "/", PhoenixRestWeb do
-    pipe_through :browser
+    pipe_through :api
 
-    get "/", PageController, :home
+    # The readiness endpoint the rig and every e2e webServer waits on — before
+    # the database exists, so it never touches the Repo (HealthController).
+    get "/healthz", HealthController, :show
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", PhoenixRestWeb do
-  #   pipe_through :api
-  # end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:phoenix_rest, :dev_routes) do

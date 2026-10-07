@@ -15,8 +15,11 @@ config :phoenix_rest,
 config :phoenix_rest, PhoenixRestWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  # JSON only: this is a REST API — the SPA is a separate origin, and a REST
+  # client must never receive an HTML error page (ErrorHTML is gone by
+  # design; every failure renders the JSON envelope).
   render_errors: [
-    formats: [html: PhoenixRestWeb.ErrorHTML, json: PhoenixRestWeb.ErrorJSON],
+    formats: [json: PhoenixRestWeb.ErrorJSON],
     layout: false
   ],
   pubsub_server: PhoenixRest.PubSub,
