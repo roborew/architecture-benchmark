@@ -36,11 +36,13 @@ export default function Navigation() {
 					const className = `${linkClass} ${active ? "bg-navy-800 text-white" : ""}`;
 					const ariaCurrent = active ? "page" : undefined;
 
-					// One shared markup shape; only the href driver differs.
+					// One shared markup shape; only the href driver differs. The cast is
+					// the nav's own list of built top-level routes — isBuiltPath keeps
+					// unbuilt entries on the anchor path below.
 					return isBuiltPath(item.href) ? (
 						<Link
 							key={item.href}
-							to={item.href as "/" | "/tasks" | "/users"}
+							to={item.href as "/" | "/projects" | "/tasks" | "/users"}
 							aria-current={ariaCurrent}
 							className={className}
 						>
