@@ -10,7 +10,8 @@
 // inverted: the server entry depends on the factory, never the reverse, so
 // importing the app never opens a port.
 //
-// Where the Express variant mounts a middleware chain, Fastify builds a plugin
+// Where the Express variant mounts middleware (`express.json()`, `cors()`, an
+// error-handling middleware at the end of the stack), Fastify builds a plugin
 // tree: registrations are queued and applied when the instance boots (at the
 // first `inject()`/`listen()`), and handlers that reject are forwarded to the
 // registered error handler without any middleware having to catch them.
@@ -23,6 +24,9 @@ import { createConnection } from "./db/connection.ts";
 import { mountHealthRoutes } from "./health/health.routes.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { notFoundHandler } from "./middleware/not-found.ts";
+import { createDashboardController } from "./dashboard/dashboard.controller.ts";
+import { createDashboardModel } from "./dashboard/dashboard.model.ts";
+import { dashboardRoutes } from "./dashboard/dashboard.routes.ts";
 import { createProjectsController } from "./projects/projects.controller.ts";
 import { createProjectsModel } from "./projects/projects.model.ts";
 import { projectsRoutes } from "./projects/projects.routes.ts";
@@ -78,6 +82,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const tasksController = createTasksController(tasksModel);
   const projectsModel = createProjectsModel(db);
   const projectsController = createProjectsController(projectsModel);
+  const dashboardModel = createDashboardModel(db);
+  const dashboardController = createDashboardController(dashboardModel);
 
   mountHealthRoutes(app);
 
@@ -96,6 +102,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.register(projectsRoutes, {
     prefix: "/api/projects",
     controller: projectsController,
+  });
+  app.register(dashboardRoutes, {
+    prefix: "/api/dashboard",
+    controller: dashboardController,
   });
 
   return app;
