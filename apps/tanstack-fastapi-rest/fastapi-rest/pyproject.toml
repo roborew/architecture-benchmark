@@ -1,0 +1,25 @@
+[project]
+name = "fastapi-rest"
+version = "1.0.0"
+description = "The REST API variant of the architecture benchmark: FastAPI + psycopg against the canonical PostgreSQL schema (spec/schema.sql), serving the sibling tanstack-rest SPA."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.142.0",
+    "psycopg[pool]>=3.3.0",
+    "pydantic>=2.13.0",
+    "pydantic-settings>=2.15.0",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=9.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs a local Postgres server (deselect with '-m \"not integration\"')",
+]
