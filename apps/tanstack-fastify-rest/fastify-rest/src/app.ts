@@ -2,7 +2,8 @@
 //
 // The app factory — the composition root.
 //
-// `buildApp` builds the Fastify application. Tests import it and drive it with
+// `buildApp` builds the Fastify application and wires the layers together
+// (routes → controllers → models → db). Tests import it and drive it with
 // `app.inject()` (light-my-request: a fake HTTP transport that awaits the
 // app's boot and dispatches the request in-process — no socket is ever
 // bound); `src/server.ts` is the only place that listens. The dependency is
@@ -21,6 +22,9 @@ import { createConnection } from "./db/connection.ts";
 import { mountHealthRoutes } from "./health/health.routes.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { notFoundHandler } from "./middleware/not-found.ts";
+import { tasksRoutes } from "./tasks/tasks.routes.ts";
+import { createTasksModel } from "./tasks/tasks.model.ts";
+import { createTasksController } from "./tasks/tasks.controller.ts";
 
 export interface BuildAppOptions {
   /**
@@ -48,15 +52,22 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler(notFoundHandler);
 
-  // The Postgres connection, created per app so the `postgresUrl` override is
-  // honored from the first build. postgres.js connects lazily — nothing
-  // reaches the server until the first query — which is exactly what the
-  // healthz contract relies on. The domain models and routes that consume it
-  // land with each domain's REST surface; until then there is nothing to
-  // query.
+  // The dependency chain, composed here and nowhere else: connection →
+  // model → controller → router. Each layer sees only the layer below it.
   const db = createConnection(requirePostgresUrl(options.postgresUrl));
+  const tasksModel = createTasksModel(db);
+  const tasksController = createTasksController(tasksModel);
 
   mountHealthRoutes(app);
+
+  // The router's equivalent: an encapsulated plugin registered under a
+  // prefix, so each routes file never sees its mount point and can be
+  // mounted anywhere without changes — the same property the Express
+  // variant gets from mounting a Router() under app.use("/api/…").
+  app.register(tasksRoutes, {
+    prefix: "/api/tasks",
+    controller: tasksController,
+  });
 
   return app;
 }
