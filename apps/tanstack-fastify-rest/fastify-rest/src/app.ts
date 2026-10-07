@@ -22,6 +22,9 @@ import { createConnection } from "./db/connection.ts";
 import { mountHealthRoutes } from "./health/health.routes.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { notFoundHandler } from "./middleware/not-found.ts";
+import { createProjectsController } from "./projects/projects.controller.ts";
+import { createProjectsModel } from "./projects/projects.model.ts";
+import { projectsRoutes } from "./projects/projects.routes.ts";
 import { tasksRoutes } from "./tasks/tasks.routes.ts";
 import { createTasksModel } from "./tasks/tasks.model.ts";
 import { createTasksController } from "./tasks/tasks.controller.ts";
@@ -57,6 +60,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const db = createConnection(requirePostgresUrl(options.postgresUrl));
   const tasksModel = createTasksModel(db);
   const tasksController = createTasksController(tasksModel);
+  const projectsModel = createProjectsModel(db);
+  const projectsController = createProjectsController(projectsModel);
 
   mountHealthRoutes(app);
 
@@ -67,6 +72,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.register(tasksRoutes, {
     prefix: "/api/tasks",
     controller: tasksController,
+  });
+  app.register(projectsRoutes, {
+    prefix: "/api/projects",
+    controller: projectsController,
   });
 
   return app;
