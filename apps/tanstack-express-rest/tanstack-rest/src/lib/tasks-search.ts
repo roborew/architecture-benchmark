@@ -2,21 +2,48 @@
 //
 // The /tasks route's search params, validated once at the route boundary.
 //
-// `q` is typed optional so a plain `<a href="/tasks">` stays valid without every
-// caller having to pass `search`. Absent resolves to `undefined` rather than ""
-// so the bare URL stays /tasks, and numeric values are coerced because a client
-// built with TanStack's default JSON-ish search parsing can deliver ?q=5 as the
-// number 5.
+// The fields are typed optional so a plain `<Link to="/tasks">` stays valid
+// without every caller having to pass a `search` object. Absent resolves to
+// `undefined` rather than "" so the bare URL stays /tasks — a validator that
+// returned empty strings would write them into the URL as ?q=&status=&…,
+// which is not the URL the reference app produces.
+//
+// `status` is spelled as the URL spells it ("in-progress"); the stored value
+// carries a space ("in progress"), and the translation between the two lives
+// in the route's loader, where the reference variant keeps it.
+//
+// TanStack's default search parsing is JSON-based, so ?size=5 arrives as the
+// *number* 5. A string-only check silently drops every numeric param — the
+// page size, the page number, the project and assignee ids all vanished once
+// that way — so both types are accepted and coerced to a string, which is
+// what the pagination helpers already expect.
 
-export type TasksSearch = { q?: string };
+export type TasksSearch = {
+  q?: string;
+  project?: string;
+  status?: string;
+  assignee?: string;
+  cursor?: string;
+  page?: string;
+  size?: string;
+};
+
+/** Coerces a validated search value to a string; unusable values become absent. */
+export function toParam(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+
+  return undefined;
+}
 
 export function parseTasksSearch(search: Record<string, unknown>): TasksSearch {
   return {
-    q:
-      typeof search.q === "string"
-        ? search.q
-        : typeof search.q === "number" && Number.isFinite(search.q)
-          ? String(search.q)
-          : undefined,
+    q: toParam(search.q),
+    project: toParam(search.project),
+    status: toParam(search.status),
+    assignee: toParam(search.assignee),
+    cursor: toParam(search.cursor),
+    page: toParam(search.page),
+    size: toParam(search.size),
   };
 }
