@@ -5,47 +5,49 @@
 // page component (useQuery) must share the exact same query key or the
 // loader's prefetch would never be seen by the component.
 //
-// The key drops every value the request would drop: an absent filter and an
-// empty one build the same URL, so they must be one cache entry — a loader
-// prefetching `?q=` and a component reading no `q` at all would otherwise
-// quietly miss each other.
+// The options are the oRPC procedures' own option builders (src/orpc/client.ts):
+// the key and the queryFn both come from the procedure, so the two cannot
+// disagree. What stays here is the normalisation the API treats as one
+// request: every value that would not change the reply (an absent filter, an
+// empty one, a null cursor) is dropped from the input, so two spellings of
+// the same request are one cache entry — a loader prefetching one and a
+// component reading the other would otherwise quietly miss.
 
-import { queryOptions } from "@tanstack/react-query";
+import { orpc } from "@/orpc/client";
 
-import {
-	getTask,
-	getTaskCount,
-	getTasks,
-	type TaskCountQuery,
-	type TaskListQuery,
-} from "@/api/tasks";
+/** The filters the workspace-wide task list accepts, as the SPA spells them. */
+export type TaskListQuery = {
+  /** Searches title and description. */
+  q?: string;
+  /** A single stored status, or absent for every status. */
+  status?: string;
+  projectId?: number;
+  assigneeId?: number;
+  /** The keyset cursor the previous page ended on; absent means the first page. */
+  cursor?: string | null;
+  /** Page size; the API clamps it to [1, 26] as the reference does. */
+  limit?: number;
+};
 
-/** Removes the values that do not reach the URL, so the key matches the request. */
-function keyPart(filters: TaskListQuery): Record<string, string | number> {
-	const part: Record<string, string | number> = {};
-
-	for (const [key, value] of Object.entries(filters)) {
-		if (value !== undefined && value !== null && value !== "") {
-			part[key] = value;
-		}
-	}
-
-	return part;
+/** Removes the values that do not reach the request, so the key matches it. */
+function input(filters: TaskListQuery) {
+  return {
+    q: filters.q || undefined,
+    status: filters.status || undefined,
+    projectId: filters.projectId ?? undefined,
+    assigneeId: filters.assigneeId ?? undefined,
+    cursor: filters.cursor ?? undefined,
+    limit: filters.limit ?? undefined,
+  };
 }
 
 export function tasksQueryOptions(filters: TaskListQuery = {}) {
-	return queryOptions({
-		queryKey: ["tasks", keyPart(filters)],
-		queryFn: () => getTasks(filters),
-	});
+  return orpc.tasks.list.queryOptions({ input: input(filters) });
 }
 
-/** One task by id, with its project name; 404 surfaces as an ApiError. */
+/** One task by id, with its project name; a missing row rejects as NOT_FOUND. */
 export function taskQueryOptions(id: number) {
-	return queryOptions({
-		queryKey: ["task", { id }],
-		queryFn: () => getTask(id),
-	});
+  return orpc.tasks.byId.queryOptions({ input: { id } });
 }
 
 /**
@@ -53,12 +55,11 @@ export function taskQueryOptions(id: number) {
  *
  * A count is a separate aggregate on purpose (spec/queries.md): the list is a
  * bounded read, and the summary must not force the list to carry every
- * matching row. The count query takes no cursor and no limit, so its key is
+ * matching row. The count query takes no cursor and no limit, so its input is
  * only the filters — the same filters the list carries, minus the paging.
  */
-export function taskCountQueryOptions(filters: TaskCountQuery = {}) {
-	return queryOptions({
-		queryKey: ["task-count", keyPart(filters)],
-		queryFn: () => getTaskCount(filters),
-	});
+export function taskCountQueryOptions(filters: TaskListQuery = {}) {
+  const { cursor: _cursor, limit: _limit, ...rest } = filters;
+
+  return orpc.tasks.count.queryOptions({ input: input(rest) });
 }

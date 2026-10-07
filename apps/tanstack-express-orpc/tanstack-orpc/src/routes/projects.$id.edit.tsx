@@ -14,7 +14,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ApiError } from "@/api/api";
+import { ORPCError } from "@orpc/client";
 import { ProjectForm } from "@/components/projects/project-form";
 import {
 	ProjectsError,
@@ -35,10 +35,10 @@ export const Route = createFileRoute("/projects/$id/edit")({
 		try {
 			await context.queryClient.ensureQueryData(projectQueryOptions(projectId));
 		} catch (error) {
-			// The API answers 404 for a missing row: the same not-found page the
+			// The API answers NOT_FOUND for a missing row: the same not-found page the
 			// NaN id produced. Anything else (the API unreachable, a 5xx) is a
 			// real error and propagates to the errorComponent.
-			if (error instanceof ApiError && error.status === 404) throw notFound();
+			if (error instanceof ORPCError && error.code === "NOT_FOUND") throw notFound();
 			throw error;
 		}
 	},
@@ -65,9 +65,9 @@ function EditProjectPage() {
 	}
 
 	if (isError) {
-		// The loader already mapped the first 404 to the not-found page; this
+		// The loader already mapped the first NOT_FOUND to the not-found page; this
 		// guards a refetch that fails after a successful render.
-		if (error instanceof ApiError && error.status === 404) {
+		if (error instanceof ORPCError && error.code === "NOT_FOUND") {
 			return <ProjectNotFound />;
 		}
 

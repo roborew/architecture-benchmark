@@ -5,15 +5,14 @@
 // (useQuery) must share the exact same query key or the loader's prefetch
 // would never be seen by the component. The dashboard is one aggregate —
 // stats, recent tasks and the busiest projects arrive together — so it is one
-// cache entry with no parameters.
+// procedure call with no input and one cache entry.
+//
+// The options are the oRPC procedure's own option builders (src/orpc/client.ts):
+// the key and the queryFn both come from the procedure, so the two cannot
+// disagree.
 
-import { queryOptions } from "@tanstack/react-query";
-
-import { getDashboard } from "@/api/dashboard";
+import { orpc } from "@/orpc/client";
 
 export function dashboardQueryOptions() {
-	return queryOptions({
-		queryKey: ["dashboard"],
-		queryFn: () => getDashboard(),
-	});
+  return orpc.dashboard.get.queryOptions();
 }
