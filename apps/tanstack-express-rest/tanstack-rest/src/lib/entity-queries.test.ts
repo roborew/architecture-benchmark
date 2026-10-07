@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { commentsQueryOptions } from "./comments-query";
 import { dashboardQueryOptions } from "./dashboard-query";
+import { taskQueryOptions, tasksQueryOptions } from "./tasks-query";
 import { userQueryOptions, userTasksQueryOptions } from "./users-query";
 
 // The query options are the shared contract between the route loader
@@ -10,17 +11,24 @@ import { userQueryOptions, userTasksQueryOptions } from "./users-query";
 // the component. These are the single-fetch options — a key that identifies
 // the one row (or aggregate) the request returns.
 
-const { getCommentsMock, getDashboardMock, getUserMock, getUserTasksMock } =
-	vi.hoisted(() => ({
-		getCommentsMock: vi.fn(),
-		getDashboardMock: vi.fn(),
-		getUserMock: vi.fn(),
-		getUserTasksMock: vi.fn(),
-	}));
+const {
+	getCommentsMock,
+	getDashboardMock,
+	getTaskMock,
+	getUserMock,
+	getUserTasksMock,
+} = vi.hoisted(() => ({
+	getCommentsMock: vi.fn(),
+	getDashboardMock: vi.fn(),
+	getTaskMock: vi.fn(),
+	getUserMock: vi.fn(),
+	getUserTasksMock: vi.fn(),
+}));
 
 vi.mock("@/lib/api", () => ({
 	getComments: getCommentsMock,
 	getDashboard: getDashboardMock,
+	getTask: getTaskMock,
 	getUser: getUserMock,
 	getUserTasks: getUserTasksMock,
 }));
@@ -28,10 +36,12 @@ vi.mock("@/lib/api", () => ({
 beforeEach(() => {
 	getCommentsMock.mockReset();
 	getDashboardMock.mockReset();
+	getTaskMock.mockReset();
 	getUserMock.mockReset();
 	getUserTasksMock.mockReset();
 	getCommentsMock.mockResolvedValue([]);
 	getDashboardMock.mockResolvedValue({});
+	getTaskMock.mockResolvedValue({});
 	getUserMock.mockResolvedValue({});
 	getUserTasksMock.mockResolvedValue([]);
 });
@@ -53,6 +63,23 @@ describe("commentsQueryOptions", () => {
 		await (options.queryFn as () => Promise<unknown>)();
 
 		expect(getCommentsMock).toHaveBeenCalledWith(9);
+	});
+});
+
+describe("taskQueryOptions", () => {
+	it("keys the cache by the id, apart from the workspace-wide list", () => {
+		expect(taskQueryOptions(4).queryKey).toEqual(["task", { id: 4 }]);
+		expect(taskQueryOptions(4).queryKey).not.toEqual(
+			tasksQueryOptions().queryKey,
+		);
+	});
+
+	it("fetches one task, with its project, through the api client", async () => {
+		const options = taskQueryOptions(4);
+
+		await (options.queryFn as () => Promise<unknown>)();
+
+		expect(getTaskMock).toHaveBeenCalledWith(4);
 	});
 });
 

@@ -7,29 +7,29 @@ import { TasksError } from "./tasks-error";
 // tearing the whole route tree down.
 
 describe("TasksError", () => {
-  it("shows an inline message naming the page that failed", () => {
-    renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
+	it("shows an inline message naming the page that failed", () => {
+		renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
 
-    expect(screen.getByText("Could not load tasks.")).toBeVisible();
-  });
+		expect(screen.getByText("Could not load tasks.")).toBeVisible();
+	});
 
-  it("shows the underlying error message", () => {
-    renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
+	it("shows the underlying error message", () => {
+		renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
 
-    expect(screen.getByText(/Failed to fetch/)).toBeVisible();
-  });
+		expect(screen.getByText(/Failed to fetch/)).toBeVisible();
+	});
 
-  it("suggests the likely cause for a fetch failure", () => {
-    renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
+	it("suggests the likely cause for a fetch failure", () => {
+		renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
 
-    expect(screen.getByText(/Is the API server running/)).toBeVisible();
-  });
+		expect(screen.getByText(/Is the API server running/)).toBeVisible();
+	});
 
-  it("renders inside the page container styling", () => {
-    const { container } = renderWithRouter(
-      <TasksError error={new Error("Failed to fetch")} />,
-    );
+	it("renders inside the page container styling", () => {
+		const { container } = renderWithRouter(
+			<TasksError error={new Error("Failed to fetch")} />,
+		);
 
-    expect(container.firstChild).toHaveClass("mx-auto", "w-full", "max-w-310");
-  });
+		expect(container.firstChild).toHaveClass("mx-auto", "w-full", "max-w-310");
+	});
 });

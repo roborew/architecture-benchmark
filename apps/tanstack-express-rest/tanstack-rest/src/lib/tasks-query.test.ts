@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { tasksQueryOptions } from "./tasks-query";
+import { taskCountQueryOptions, tasksQueryOptions } from "./tasks-query";
 
 // The query options are the shared contract between the route loader
 // (ensureQueryData) and the component (useQuery): the same options must
@@ -9,13 +9,21 @@ import { tasksQueryOptions } from "./tasks-query";
 // that build the same URL (an absent term and an empty one) must be one cache
 // entry, or the prefetch and the read would silently miss each other.
 
-const { getTasksMock } = vi.hoisted(() => ({ getTasksMock: vi.fn() }));
+const { getTasksMock, getTaskCountMock } = vi.hoisted(() => ({
+	getTasksMock: vi.fn(),
+	getTaskCountMock: vi.fn(),
+}));
 
-vi.mock("@/lib/api", () => ({ getTasks: getTasksMock }));
+vi.mock("@/lib/api", () => ({
+	getTasks: getTasksMock,
+	getTaskCount: getTaskCountMock,
+}));
 
 beforeEach(() => {
 	getTasksMock.mockReset();
 	getTasksMock.mockResolvedValue([]);
+	getTaskCountMock.mockReset();
+	getTaskCountMock.mockResolvedValue(0);
 });
 
 describe("tasksQueryOptions", () => {
@@ -68,5 +76,39 @@ describe("tasksQueryOptions", () => {
 		await (options.queryFn as () => Promise<unknown>)();
 
 		expect(getTasksMock).toHaveBeenCalledWith({ q: "robin", status: "todo" });
+	});
+});
+
+describe("taskCountQueryOptions", () => {
+	it("keys the count cache separately from the list", () => {
+		// The count is a different aggregate with a different lifetime: a stale
+		// list page after a mutation must not be able to answer a fresh count
+		// read from the list's entry, or the summary line would lag the data.
+		expect(taskCountQueryOptions({ q: "robin" }).queryKey).not.toEqual(
+			tasksQueryOptions({ q: "robin" }).queryKey,
+		);
+	});
+
+	it("keys the cache by the filters that build the request", () => {
+		expect(
+			taskCountQueryOptions({ q: "robin", status: "todo", projectId: 2 })
+				.queryKey,
+		).toEqual(["task-count", { q: "robin", status: "todo", projectId: 2 }]);
+	});
+
+	it("drops empty filters from the key, as the request does from the URL", () => {
+		expect(taskCountQueryOptions({ q: "" }).queryKey).toEqual([
+			"task-count",
+			{},
+		]);
+		expect(taskCountQueryOptions().queryKey).toEqual(["task-count", {}]);
+	});
+
+	it("fetches through the api client with the filters", async () => {
+		const options = taskCountQueryOptions({ q: "robin" });
+
+		await (options.queryFn as () => Promise<unknown>)();
+
+		expect(getTaskCountMock).toHaveBeenCalledWith({ q: "robin" });
 	});
 });
