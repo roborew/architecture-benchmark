@@ -16,6 +16,7 @@
 // registered error handler without any middleware having to catch them.
 
 import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 
 import { requirePostgresUrl } from "./config/env.ts";
 import { createConnection } from "./db/connection.ts";
@@ -28,6 +29,9 @@ import { projectsRoutes } from "./projects/projects.routes.ts";
 import { tasksRoutes } from "./tasks/tasks.routes.ts";
 import { createTasksModel } from "./tasks/tasks.model.ts";
 import { createTasksController } from "./tasks/tasks.controller.ts";
+import { usersRoutes } from "./users/users.routes.ts";
+import { createUsersModel } from "./users/users.model.ts";
+import { createUsersController } from "./users/users.controller.ts";
 
 export interface BuildAppOptions {
   /**
@@ -47,6 +51,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   const app = Fastify();
 
+  // The frontend is a separate origin (Vite dev server / SPA host), so every
+  // fetch the client makes is cross-origin. Origins are reflected rather
+  // than allowlisted: this API serves no cookies or credentials, so there is
+  // nothing a reflected origin could smuggle. A credentialed API would need an
+  // explicit allowlist instead.
+  app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+  });
+
   // The framework's replacements for the terminal middleware pair the Express
   // variant mounts after every route: any handler that throws or rejects is
   // forwarded here (Express 5 needed no wrapper either, but its error
@@ -58,6 +72,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // The dependency chain, composed here and nowhere else: connection →
   // model → controller → router. Each layer sees only the layer below it.
   const db = createConnection(requirePostgresUrl(options.postgresUrl));
+  const usersModel = createUsersModel(db);
+  const usersController = createUsersController(usersModel);
   const tasksModel = createTasksModel(db);
   const tasksController = createTasksController(tasksModel);
   const projectsModel = createProjectsModel(db);
@@ -69,6 +85,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // prefix, so each routes file never sees its mount point and can be
   // mounted anywhere without changes — the same property the Express
   // variant gets from mounting a Router() under app.use("/api/…").
+  app.register(usersRoutes, {
+    prefix: "/api/users",
+    controller: usersController,
+  });
   app.register(tasksRoutes, {
     prefix: "/api/tasks",
     controller: tasksController,
