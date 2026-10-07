@@ -10,33 +10,193 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
+import { Route as ProjectsNewRouteImport } from './routes/projects.new'
+import { Route as TasksIndexRouteImport } from './routes/tasks.index'
+import { Route as TasksNewRouteImport } from './routes/tasks.new'
+import { Route as UsersIndexRouteImport } from './routes/users.index'
+import { Route as UsersNewRouteImport } from './routes/users.new'
+import { Route as ProjectsIdIndexRouteImport } from './routes/projects.$id.index'
+import { Route as ProjectsIdEditRouteImport } from './routes/projects.$id.edit'
+import { Route as TasksIdIndexRouteImport } from './routes/tasks.$id.index'
+import { Route as TasksIdEditRouteImport } from './routes/tasks.$id.edit'
+import { Route as UsersIdIndexRouteImport } from './routes/users.$id.index'
+import { Route as UsersIdEditRouteImport } from './routes/users.$id.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsNewRoute = ProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksIndexRoute = TasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksNewRoute = TasksNewRouteImport.update({
+  id: '/tasks/new',
+  path: '/tasks/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsersIndexRoute = UsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsersNewRoute = UsersNewRouteImport.update({
+  id: '/users/new',
+  path: '/users/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsIdIndexRoute = ProjectsIdIndexRouteImport.update({
+  id: '/projects/$id/',
+  path: '/projects/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsIdEditRoute = ProjectsIdEditRouteImport.update({
+  id: '/projects/$id/edit',
+  path: '/projects/$id/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksIdIndexRoute = TasksIdIndexRouteImport.update({
+  id: '/tasks/$id/',
+  path: '/tasks/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksIdEditRoute = TasksIdEditRouteImport.update({
+  id: '/tasks/$id/edit',
+  path: '/tasks/$id/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsersIdIndexRoute = UsersIdIndexRouteImport.update({
+  id: '/users/$id/',
+  path: '/users/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsersIdEditRoute = UsersIdEditRouteImport.update({
+  id: '/users/$id/edit',
+  path: '/users/$id/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/projects/new': typeof ProjectsNewRoute
+  '/tasks/new': typeof TasksNewRoute
+  '/users/new': typeof UsersNewRoute
+  '/projects/': typeof ProjectsIndexRoute
+  '/tasks/': typeof TasksIndexRoute
+  '/users/': typeof UsersIndexRoute
+  '/projects/$id/edit': typeof ProjectsIdEditRoute
+  '/tasks/$id/edit': typeof TasksIdEditRoute
+  '/users/$id/edit': typeof UsersIdEditRoute
+  '/projects/$id/': typeof ProjectsIdIndexRoute
+  '/tasks/$id/': typeof TasksIdIndexRoute
+  '/users/$id/': typeof UsersIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/projects/new': typeof ProjectsNewRoute
+  '/tasks/new': typeof TasksNewRoute
+  '/users/new': typeof UsersNewRoute
+  '/projects': typeof ProjectsIndexRoute
+  '/tasks': typeof TasksIndexRoute
+  '/users': typeof UsersIndexRoute
+  '/projects/$id/edit': typeof ProjectsIdEditRoute
+  '/tasks/$id/edit': typeof TasksIdEditRoute
+  '/users/$id/edit': typeof UsersIdEditRoute
+  '/projects/$id': typeof ProjectsIdIndexRoute
+  '/tasks/$id': typeof TasksIdIndexRoute
+  '/users/$id': typeof UsersIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/projects/new': typeof ProjectsNewRoute
+  '/tasks/new': typeof TasksNewRoute
+  '/users/new': typeof UsersNewRoute
+  '/projects/': typeof ProjectsIndexRoute
+  '/tasks/': typeof TasksIndexRoute
+  '/users/': typeof UsersIndexRoute
+  '/projects/$id/edit': typeof ProjectsIdEditRoute
+  '/tasks/$id/edit': typeof TasksIdEditRoute
+  '/users/$id/edit': typeof UsersIdEditRoute
+  '/projects/$id/': typeof ProjectsIdIndexRoute
+  '/tasks/$id/': typeof TasksIdIndexRoute
+  '/users/$id/': typeof UsersIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/projects/new'
+    | '/tasks/new'
+    | '/users/new'
+    | '/projects/'
+    | '/tasks/'
+    | '/users/'
+    | '/projects/$id/edit'
+    | '/tasks/$id/edit'
+    | '/users/$id/edit'
+    | '/projects/$id/'
+    | '/tasks/$id/'
+    | '/users/$id/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/projects/new'
+    | '/tasks/new'
+    | '/users/new'
+    | '/projects'
+    | '/tasks'
+    | '/users'
+    | '/projects/$id/edit'
+    | '/tasks/$id/edit'
+    | '/users/$id/edit'
+    | '/projects/$id'
+    | '/tasks/$id'
+    | '/users/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/projects/new'
+    | '/tasks/new'
+    | '/users/new'
+    | '/projects/'
+    | '/tasks/'
+    | '/users/'
+    | '/projects/$id/edit'
+    | '/tasks/$id/edit'
+    | '/users/$id/edit'
+    | '/projects/$id/'
+    | '/tasks/$id/'
+    | '/users/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProjectsNewRoute: typeof ProjectsNewRoute
+  TasksNewRoute: typeof TasksNewRoute
+  UsersNewRoute: typeof UsersNewRoute
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
+  TasksIndexRoute: typeof TasksIndexRoute
+  UsersIndexRoute: typeof UsersIndexRoute
+  ProjectsIdEditRoute: typeof ProjectsIdEditRoute
+  TasksIdEditRoute: typeof TasksIdEditRoute
+  UsersIdEditRoute: typeof UsersIdEditRoute
+  ProjectsIdIndexRoute: typeof ProjectsIdIndexRoute
+  TasksIdIndexRoute: typeof TasksIdIndexRoute
+  UsersIdIndexRoute: typeof UsersIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +208,107 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/': {
+      id: '/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/new': {
+      id: '/projects/new'
+      path: '/projects/new'
+      fullPath: '/projects/new'
+      preLoaderRoute: typeof ProjectsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks/': {
+      id: '/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof TasksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks/new': {
+      id: '/tasks/new'
+      path: '/tasks/new'
+      fullPath: '/tasks/new'
+      preLoaderRoute: typeof TasksNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/users/': {
+      id: '/users/'
+      path: '/users'
+      fullPath: '/users/'
+      preLoaderRoute: typeof UsersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/users/new': {
+      id: '/users/new'
+      path: '/users/new'
+      fullPath: '/users/new'
+      preLoaderRoute: typeof UsersNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$id/': {
+      id: '/projects/$id/'
+      path: '/projects/$id'
+      fullPath: '/projects/$id/'
+      preLoaderRoute: typeof ProjectsIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$id/edit': {
+      id: '/projects/$id/edit'
+      path: '/projects/$id/edit'
+      fullPath: '/projects/$id/edit'
+      preLoaderRoute: typeof ProjectsIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks/$id/': {
+      id: '/tasks/$id/'
+      path: '/tasks/$id'
+      fullPath: '/tasks/$id/'
+      preLoaderRoute: typeof TasksIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks/$id/edit': {
+      id: '/tasks/$id/edit'
+      path: '/tasks/$id/edit'
+      fullPath: '/tasks/$id/edit'
+      preLoaderRoute: typeof TasksIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/users/$id/': {
+      id: '/users/$id/'
+      path: '/users/$id'
+      fullPath: '/users/$id/'
+      preLoaderRoute: typeof UsersIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/users/$id/edit': {
+      id: '/users/$id/edit'
+      path: '/users/$id/edit'
+      fullPath: '/users/$id/edit'
+      preLoaderRoute: typeof UsersIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProjectsNewRoute: ProjectsNewRoute,
+  TasksNewRoute: TasksNewRoute,
+  UsersNewRoute: UsersNewRoute,
+  ProjectsIndexRoute: ProjectsIndexRoute,
+  TasksIndexRoute: TasksIndexRoute,
+  UsersIndexRoute: UsersIndexRoute,
+  ProjectsIdEditRoute: ProjectsIdEditRoute,
+  TasksIdEditRoute: TasksIdEditRoute,
+  UsersIdEditRoute: UsersIdEditRoute,
+  ProjectsIdIndexRoute: ProjectsIdIndexRoute,
+  TasksIdIndexRoute: TasksIdIndexRoute,
+  UsersIdIndexRoute: UsersIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

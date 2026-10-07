@@ -1,16 +1,32 @@
 {
+  "name": "express-rest",
+  "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/app.ts",
-    "dev": "node --watch src/app.ts",
-    "typecheck": "tsc"
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:migrate": "node src/db/migrate.ts",
+    "db:seed": "node src/db/seed.ts",
+    "db:reset": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
-    "typescript": "^7.0.2"
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   }
 }
