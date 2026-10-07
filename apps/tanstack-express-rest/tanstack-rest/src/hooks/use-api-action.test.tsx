@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterContextProvider } from "@tanstack/react-router";
+import {
+	createMemoryHistory,
+	RouterContextProvider,
+} from "@tanstack/react-router";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +22,15 @@ type ActionFn = (values: FormValues) => Promise<MutationResult>;
 /** A wrapper giving the hook the same providers the app entry does. */
 function makeWrapper() {
 	const queryClient = new QueryClient();
-	const router = getRouter({ queryClient });
+	// A memory history parked on a loader-less route. The app's "/" now carries
+	// the dashboard loader, whose fetch would never settle under this file's
+	// fake timers — `router.invalidate()` would stay pending forever and the
+	// navigation assertions below would race a network the test never owns. The
+	// hook under test only needs a committed router, not the dashboard's data.
+	const router = getRouter({
+		queryClient,
+		history: createMemoryHistory({ initialEntries: ["/users/new"] }),
+	});
 
 	return {
 		queryClient,
