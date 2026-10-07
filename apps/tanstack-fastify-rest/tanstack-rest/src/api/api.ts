@@ -15,9 +15,9 @@
 // assignee means "unassigned", a numeric string is a row id), so the client
 // cannot disagree with itself about how a value is spelled.
 
-/** Where the Express API lives. Overridable per environment (e2e points it at its own server). */
+/** Where the Fastify API lives. Overridable per environment (e2e points it at its own server). */
 export const API_URL: string =
-	import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+  import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 /**
  * A failure the API reported deliberately.
@@ -29,53 +29,53 @@ export const API_URL: string =
  * generic message.
  */
 export class ApiError extends Error {
-	readonly status: number;
-	readonly errors: Record<string, string[]>;
+  readonly status: number;
+  readonly errors: Record<string, string[]>;
 
-	constructor(
-		status: number,
-		message: string,
-		errors: Record<string, string[]>,
-	) {
-		super(message);
-		this.name = "ApiError";
-		this.status = status;
-		this.errors = errors;
-	}
+  constructor(
+    status: number,
+    message: string,
+    errors: Record<string, string[]>,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.errors = errors;
+  }
 }
 
 /** Every request, and the one place the error envelope is parsed. */
 export async function requestJson<T>(
-	path: string,
-	init?: RequestInit,
+  path: string,
+  init?: RequestInit,
 ): Promise<T> {
-	const response = await fetch(`${API_URL}${path}`, init);
+  const response = await fetch(`${API_URL}${path}`, init);
 
-	if (!response.ok) {
-		// The API's error envelope is { error, errors? }, but a proxy or a crash
-		// can hand back anything; the status is the only guaranteed fact.
-		let message = `Request failed with ${response.status}`;
-		let errors: Record<string, string[]> = {};
+  if (!response.ok) {
+    // The API's error envelope is { error, errors? }, but a proxy or a crash
+    // can hand back anything; the status is the only guaranteed fact.
+    let message = `Request failed with ${response.status}`;
+    let errors: Record<string, string[]> = {};
 
-		try {
-			const body = (await response.json()) as {
-				error?: string;
-				errors?: Record<string, string[]>;
-			};
-			if (body && typeof body.error === "string") {
-				message = body.error;
-			}
-			if (body?.errors && typeof body.errors === "object") {
-				errors = body.errors;
-			}
-		} catch {
-			// Not JSON — keep the status-based message.
-		}
+    try {
+      const body = (await response.json()) as {
+        error?: string;
+        errors?: Record<string, string[]>;
+      };
+      if (body && typeof body.error === "string") {
+        message = body.error;
+      }
+      if (body?.errors && typeof body.errors === "object") {
+        errors = body.errors;
+      }
+    } catch {
+      // Not JSON — keep the status-based message.
+    }
 
-		throw new ApiError(response.status, message, errors);
-	}
+    throw new ApiError(response.status, message, errors);
+  }
 
-	return response.json() as Promise<T>;
+  return response.json() as Promise<T>;
 }
 
 /**
@@ -86,32 +86,32 @@ export async function requestJson<T>(
  * over the bare path.
  */
 export function toQuery(
-	filters: Record<string, string | number | undefined | null>,
+  filters: Record<string, string | number | undefined | null>,
 ): string {
-	const params = new URLSearchParams();
+  const params = new URLSearchParams();
 
-	for (const [key, value] of Object.entries(filters)) {
-		if (value !== undefined && value !== null && value !== "") {
-			params.set(key, String(value));
-		}
-	}
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
 
-	const query = params.toString();
+  const query = params.toString();
 
-	return query ? `?${query}` : "";
+  return query ? `?${query}` : "";
 }
 
 /** A POST/PATCH/DELETE with a JSON body; the mutations all share this shape. */
 export function send<T>(
-	path: string,
-	method: string,
-	body: unknown,
+  path: string,
+  method: string,
+  body: unknown,
 ): Promise<T> {
-	return requestJson<T>(path, {
-		method,
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
+  return requestJson<T>(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 /**
@@ -131,7 +131,7 @@ export type FormValues = Record<string, string>;
  * `redirectTo` (adding a comment) means: stay on this page and refresh.
  */
 export type MutationResult = {
-	ok: true;
-	message?: string;
-	redirectTo?: string;
+  ok: true;
+  message?: string;
+  redirectTo?: string;
 };

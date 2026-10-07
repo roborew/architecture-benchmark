@@ -54,14 +54,14 @@ const fixtureDirectory = path.join(specDirectory, "snapshots", FIXTURE_PROFILE);
 /**
  * Connection string for the e2e database.
  *
- * Derived from the Express app's `POSTGRES_URL` (its `.env`) by swapping only
+ * Derived from the Fastify app's `POSTGRES_URL` (its `.env`) by swapping only
  * the database name, so host and credentials come from the one place the
  * backend already reads them.
  */
 export function e2eConnectionString(): string {
   const envPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../../../express-rest/.env",
+    "../../../fastify-rest/.env",
   );
 
   if (!process.env.POSTGRES_URL && existsSync(envPath)) {
@@ -72,7 +72,7 @@ export function e2eConnectionString(): string {
 
   if (!base) {
     throw new Error(
-      "Missing POSTGRES_URL: set it in express-rest/.env so the e2e database can be created.",
+      "Missing POSTGRES_URL: set it in fastify-rest/.env so the e2e database can be created.",
     );
   }
 
@@ -124,7 +124,7 @@ export async function seedDatabase(): Promise<void> {
 
   try {
     // `COPY ... FROM STDIN` streams the fixture CSVs straight in — the same
-    // path `express-rest/src/db/seed.ts` uses, so the two seeders cannot
+    // path `fastify-rest/src/db/seed.ts` uses, so the two seeders cannot
     // diverge in behaviour.
     await sql.begin(async (tx) => {
       for (const table of FIXTURE_TABLES) {
