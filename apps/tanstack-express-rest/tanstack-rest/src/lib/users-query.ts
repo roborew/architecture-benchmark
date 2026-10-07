@@ -9,7 +9,7 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
-import { getUser, getUsers, getUserTasks } from "@/lib/api";
+import { getUser, getUsers, getUserTasks } from "@/api/users";
 
 export function usersQueryOptions(term = "") {
 	return queryOptions({

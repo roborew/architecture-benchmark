@@ -2,12 +2,12 @@ import userEvent from "@testing-library/user-event";
 import { makeProject, makeTask, makeUser } from "@tests/fixtures/builders";
 import { renderWithRouter, screen, within } from "@tests/helpers/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 import { TaskForm } from "./task-form";
 
 // The task form was inert markup: no `name` attributes, no `<form>`, and
 // hard-coded option lists. These tests pin the parts that make it submit real
-// data to the REST mutations in `@/lib/api`, whose behaviour is covered by the
+// data to the REST mutations in `@/api/tasks`, whose behaviour is covered by the
 // API's own tests.
 
 /** The reply shape every mutation resolves to: `ok` means success. */
@@ -23,8 +23,8 @@ const updateTaskMock = vi.fn(
 	async (_id: number, _values: FormValues): Promise<ApiReply> => ({ ok: true }),
 );
 
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/tasks", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/tasks")>();
 
 	// The spread keeps every other export — ApiError included — real, so the
 	// rejection paths below can throw the genuine class the hook branches on.

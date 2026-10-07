@@ -7,7 +7,7 @@ import {
 import { renderWithRouter, screen, within } from "@tests/helpers/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 import { TaskDetail } from "./task-detail";
 
 // The add-comment form and the delete control both submit api mutations with
@@ -24,11 +24,13 @@ const createCommentMock = vi.fn(
 	async (_values: FormValues): Promise<ApiReply> => ({ ok: true }),
 );
 const deleteTaskMock = vi.fn(
-	async (_id: number): Promise<ApiReply> => ({ ok: true }),
+	async (_id: number): Promise<ApiReply> => ({
+		ok: true,
+	}),
 );
 
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/comments", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/comments")>();
 
 	// The spread keeps every other export — ApiError included — real, so the
 	// rejection paths below can throw the genuine class the hook branches on.
@@ -36,6 +38,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
 		...actual,
 		createComment: (...args: unknown[]) =>
 			createCommentMock(...(args as [FormValues])),
+	};
+});
+
+vi.mock("@/api/tasks", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/tasks")>();
+
+	return {
+		...actual,
 		deleteTask: (...args: unknown[]) => deleteTaskMock(...(args as [number])),
 	};
 });

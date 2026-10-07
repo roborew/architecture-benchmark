@@ -14,7 +14,7 @@ import {
 	getProjects,
 	getProjectTasks,
 	type ProjectTaskQuery,
-} from "@/lib/api";
+} from "@/api/projects";
 
 /** Removes the values that do not reach the URL, so the key matches the request. */
 function keyPart(filters: ProjectTaskQuery): Record<string, string | number> {

@@ -14,7 +14,7 @@ const { getTasksMock, getTaskCountMock } = vi.hoisted(() => ({
 	getTaskCountMock: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/api/tasks", () => ({
 	getTasks: getTasksMock,
 	getTaskCount: getTaskCountMock,
 }));

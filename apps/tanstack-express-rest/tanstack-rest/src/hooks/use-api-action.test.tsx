@@ -7,7 +7,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 import { getRouter } from "@/router";
 import { formValues, useApiAction } from "./use-api-action";
 

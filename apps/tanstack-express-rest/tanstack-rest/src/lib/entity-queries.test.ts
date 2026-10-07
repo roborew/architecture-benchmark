@@ -25,10 +25,10 @@ const {
 	getUserTasksMock: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
-	getComments: getCommentsMock,
-	getDashboard: getDashboardMock,
-	getTask: getTaskMock,
+vi.mock("@/api/comments", () => ({ getComments: getCommentsMock }));
+vi.mock("@/api/dashboard", () => ({ getDashboard: getDashboardMock }));
+vi.mock("@/api/tasks", () => ({ getTask: getTaskMock }));
+vi.mock("@/api/users", () => ({
 	getUser: getUserMock,
 	getUserTasks: getUserTasksMock,
 }));

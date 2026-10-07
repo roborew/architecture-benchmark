@@ -24,7 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useState, useTransition } from "react";
 
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 
 /** The outcome state a form renders: a message, and/or field → messages. */
 export type ApiActionState = {

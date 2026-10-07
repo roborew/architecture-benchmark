@@ -14,13 +14,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-
+import { ApiError } from "@/api/api";
 import { ProjectDetail } from "@/components/projects/project-detail";
 import {
 	ProjectsError,
 	ProjectsRouteError,
 } from "@/components/projects/projects-error";
-import { ApiError } from "@/lib/api";
 import {
 	projectQueryOptions,
 	projectTasksQueryOptions,

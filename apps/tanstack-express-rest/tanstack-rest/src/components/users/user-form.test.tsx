@@ -3,7 +3,7 @@ import { makeUser } from "@tests/fixtures/builders";
 import { renderWithRouter, screen } from "@tests/helpers/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 import { UserForm } from "./user-form";
 
 // The user form used to be inert markup: no `name` attributes and no `<form>`,
@@ -25,8 +25,8 @@ const updateUserMock = vi.fn(
 	async (_id: number, _values: FormValues): Promise<ApiReply> => ({ ok: true }),
 );
 
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/users", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/users")>();
 
 	// The spread keeps every other export — ApiError included — real, so the
 	// rejection paths below can throw the genuine class the hook branches on.

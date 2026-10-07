@@ -16,10 +16,10 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-
+import { createComment } from "@/api/comments";
+import { deleteTask } from "@/api/tasks";
 import { StatusBadge } from "@/components/status-badge";
 import { useApiAction } from "@/hooks/use-api-action";
-import { createComment, deleteTask } from "@/lib/api";
 import { initials } from "@/lib/initials";
 import type { Comment, TaskWithProject, User } from "@/lib/types";
 

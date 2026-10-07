@@ -15,9 +15,8 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-
+import { createTask, createTaskWithComment, updateTask } from "@/api/tasks";
 import { useApiAction } from "@/hooks/use-api-action";
-import { createTask, createTaskWithComment, updateTask } from "@/lib/api";
 import {
 	cancelClass,
 	createClass,

@@ -9,7 +9,7 @@ import { usersQueryOptions } from "./users-query";
 
 const { getUsersMock } = vi.hoisted(() => ({ getUsersMock: vi.fn() }));
 
-vi.mock("@/lib/api", () => ({ getUsers: getUsersMock }));
+vi.mock("@/api/users", () => ({ getUsers: getUsersMock }));
 
 beforeEach(() => {
 	getUsersMock.mockReset();

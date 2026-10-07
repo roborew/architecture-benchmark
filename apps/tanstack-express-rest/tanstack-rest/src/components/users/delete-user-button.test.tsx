@@ -3,7 +3,7 @@ import { makeUser } from "@tests/fixtures/builders";
 import { renderWithRouter, screen } from "@tests/helpers/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, type MutationResult } from "@/lib/api";
+import { ApiError, type MutationResult } from "@/api/api";
 import { DeleteUserButton } from "./delete-user-button";
 
 // Mirrors DeleteProjectButton: a form whose bound action does the work, plus
@@ -17,8 +17,8 @@ const deleteUserMock = vi.fn(
 	async (_id: number): Promise<ApiReply> => ({ ok: true }),
 );
 
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/users", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/users")>();
 
 	// The spread keeps every other export — ApiError included — real, so the
 	// guard-message test below can throw the genuine class the hook branches on.

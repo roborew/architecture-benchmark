@@ -19,7 +19,7 @@ const { getProjectMock, getProjectTasksMock, getProjectsMock } = vi.hoisted(
 	}),
 );
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/api/projects", () => ({
 	getProject: getProjectMock,
 	getProjectTasks: getProjectTasksMock,
 	getProjects: getProjectsMock,

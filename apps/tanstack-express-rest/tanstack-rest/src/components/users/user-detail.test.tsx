@@ -7,8 +7,8 @@ import { UserDetail } from "./user-detail";
 // The delete control submits an api mutation through `useApiAction`; it is
 // stubbed here (rendering never fires it) and asserted on in its own right
 // through delete-user-button.test.tsx.
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/users", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/users")>();
 
 	return { ...actual, deleteUser: vi.fn(async () => ({ ok: true })) };
 });

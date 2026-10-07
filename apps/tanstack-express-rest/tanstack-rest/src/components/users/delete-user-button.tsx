@@ -9,8 +9,8 @@
 // written anything is refused (a 409 from the API) and the reason has to be
 // visible.
 
+import { deleteUser } from "@/api/users";
 import { useApiAction } from "@/hooks/use-api-action";
-import { deleteUser } from "@/lib/api";
 import type { User } from "@/lib/types";
 
 export function DeleteUserButton({ person }: { person: User }) {

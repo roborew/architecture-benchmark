@@ -18,7 +18,7 @@ import {
 	getTasks,
 	type TaskCountQuery,
 	type TaskListQuery,
-} from "@/lib/api";
+} from "@/api/tasks";
 
 /** Removes the values that do not reach the URL, so the key matches the request. */
 function keyPart(filters: TaskListQuery): Record<string, string | number> {

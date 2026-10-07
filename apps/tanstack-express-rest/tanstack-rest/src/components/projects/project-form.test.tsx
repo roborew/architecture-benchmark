@@ -3,11 +3,11 @@ import { makeProject } from "@tests/fixtures/builders";
 import { renderWithRouter, screen } from "@tests/helpers/render";
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, type FormValues, type MutationResult } from "@/lib/api";
+import { ApiError, type FormValues, type MutationResult } from "@/api/api";
 import { ProjectForm } from "./project-form";
 
 // The form submits through `useApiAction`, which sends the form's field bag to
-// the REST mutations in `@/lib/api`. Those are mocked rather than exercised:
+// the REST mutations in `@/api/projects`. Those are mocked rather than exercised:
 // their behaviour is covered by the API's own tests. What is asserted here is
 // the form's contract with them — which one is called, and with what.
 
@@ -21,8 +21,8 @@ const updateProjectMock = vi.fn(
 	async (_id: number, _values: FormValues): Promise<ApiReply> => ({ ok: true }),
 );
 
-vi.mock("@/lib/api", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/api/projects", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/api/projects")>();
 
 	// The spread keeps every other export — ApiError included — real, so the
 	// rejection paths below can throw the genuine class the hook branches on.

@@ -8,8 +8,8 @@
 // deleting a project is out of contract (`tasks.project_id` is ON DELETE
 // RESTRICT), so a refusal is an expected reply, not an error.
 
+import { deleteProject } from "@/api/projects";
 import { useApiAction } from "@/hooks/use-api-action";
-import { deleteProject } from "@/lib/api";
 
 export function DeleteProjectButton({
 	projectId,

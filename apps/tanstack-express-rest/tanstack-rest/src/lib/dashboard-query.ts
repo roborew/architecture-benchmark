@@ -9,7 +9,7 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
-import { getDashboard } from "@/lib/api";
+import { getDashboard } from "@/api/dashboard";
 
 export function dashboardQueryOptions() {
 	return queryOptions({

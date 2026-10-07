@@ -7,7 +7,7 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
-import { getComments } from "@/lib/api";
+import { getComments } from "@/api/comments";
 
 export function commentsQueryOptions(taskId: number) {
 	return queryOptions({

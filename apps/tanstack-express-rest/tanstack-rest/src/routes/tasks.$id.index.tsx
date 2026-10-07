@@ -13,10 +13,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-
+import { ApiError } from "@/api/api";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import { TasksError, TasksRouteError } from "@/components/tasks/tasks-error";
-import { ApiError } from "@/lib/api";
 import { commentsQueryOptions } from "@/lib/comments-query";
 import { taskQueryOptions } from "@/lib/tasks-query";
 import { usersQueryOptions } from "@/lib/users-query";

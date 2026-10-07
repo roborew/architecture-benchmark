@@ -12,9 +12,8 @@
 
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-
+import { createUser, updateUser } from "@/api/users";
 import { useApiAction } from "@/hooks/use-api-action";
-import { createUser, updateUser } from "@/lib/api";
 import {
 	cancelClass,
 	createClass,

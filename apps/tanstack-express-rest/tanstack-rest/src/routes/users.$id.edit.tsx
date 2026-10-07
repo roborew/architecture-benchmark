@@ -14,10 +14,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-
+import { ApiError } from "@/api/api";
 import { UserForm } from "@/components/users/user-form";
 import { UsersError, UsersRouteError } from "@/components/users/users-error";
-import { ApiError } from "@/lib/api";
 import { userQueryOptions } from "@/lib/users-query";
 
 export const Route = createFileRoute("/users/$id/edit")({

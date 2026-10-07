@@ -14,13 +14,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-
+import { ApiError } from "@/api/api";
 import { ProjectForm } from "@/components/projects/project-form";
 import {
 	ProjectsError,
 	ProjectsRouteError,
 } from "@/components/projects/projects-error";
-import { ApiError } from "@/lib/api";
 import { projectQueryOptions } from "@/lib/projects-query";
 
 export const Route = createFileRoute("/projects/$id/edit")({
