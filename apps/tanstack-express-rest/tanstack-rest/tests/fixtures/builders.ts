@@ -1,4 +1,4 @@
-import type { User } from "@/lib/types";
+import type { TaskWithProject, User } from "@/lib/types";
 
 // Deterministic fixtures for unit tests.
 //
@@ -16,6 +16,23 @@ export function makeUser(overrides: Partial<User> = {}): User {
 		assignedTaskCount: 1,
 		openTaskCount: 1,
 		commentCount: 0,
+		...overrides,
+	};
+}
+
+export function makeTaskWithProject(
+	overrides: Partial<TaskWithProject> = {},
+): TaskWithProject {
+	return {
+		id: 9101,
+		projectId: 1,
+		projectName: "Fixture Project",
+		title: "Fixture task",
+		description: "A fixture task description.",
+		status: "todo",
+		assigneeName: "Fixture Person",
+		commentCount: 0,
+		updatedAt: "2024-01-01T00:00:00Z",
 		...overrides,
 	};
 }

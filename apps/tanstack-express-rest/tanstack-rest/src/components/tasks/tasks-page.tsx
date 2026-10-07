@@ -1,10 +1,10 @@
 import { SearchInput } from "@/components/search-input";
-import { UserTable } from "@/components/users/user-table";
+import type { TaskWithProject } from "@/lib/types";
 import { TaskTable } from "./task-table";
-import { Link } from "@tanstack/react-router";
-import type { Task } from "#/lib/types";
 
-export function TasksPage({ tasks }: { tasks: Task[] }) {
+export function TasksPage({ tasks }: { tasks: TaskWithProject[] }) {
+  const count = tasks.length;
+
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -28,9 +28,15 @@ export function TasksPage({ tasks }: { tasks: Task[] }) {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">
+        <div className="border-b border-slate-100 p-4">
+          {/* SearchInput pushes `q` into the URL; the route's loaderDeps then
+              re-runs the loader and this query with the new term. */}
+          <SearchInput placeholder="Search tasks…" label="Search tasks" />
+        </div>
+
         {/*<TaskFilters
-          projects={data.projects}
-          people={data.people}
+          projects={tasks}
+          people={tasks.people}
           search={data.filters.search}
           status={data.filters.status}
           projectId={data.filters.projectId}
@@ -40,8 +46,10 @@ export function TasksPage({ tasks }: { tasks: Task[] }) {
         <TaskTable tasks={tasks} showProject showComments />
 
         <div className="flex items-center justify-between px-5 py-4 text-[11px] text-slate-500">
-          {/*<span>{formatRange({ ...data.range, filtered: data.filtered })}</span>*/}
-          {/* Keyset pagination (spec/queries.md). */}
+          {/*<span>
+            {count} {count === 1 ? "task" : "tasks"}
+          </span>*/}
+          {/*Keyset pagination (spec/queries.md). */}
           {/*<TaskPagination
             hasNewer={data.onLaterPage}
             hasOlder={data.hasMore}

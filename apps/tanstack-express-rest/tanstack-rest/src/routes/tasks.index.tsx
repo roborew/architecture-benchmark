@@ -1,25 +1,22 @@
-// src/routes/users.index.tsx — the People list.
+// src/routes/tasks.index.tsx — the workspace-wide task list.
 //
 // The data flow is the TanStack Query + Router pattern: the loader warms the
 // query cache (`ensureQueryData`) before the route renders, and the component
 // reads the same query with `useQuery` — the identical options object
-// (src/lib/users-query.ts) is what makes the two agree on the cache entry.
+// (src/lib/tasks-query.ts) is what makes the two agree on the cache entry.
 // The loader runs once per navigation; `useQuery` re-runs when the search
 // param changes, so typing in the search field refreshes the table without a
 // manual reload.
 
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { UsersError, UsersRouteError } from "@/components/users/users-error";
-import { UsersPage } from "@/components/users/users-page";
-import { usersQueryOptions } from "@/lib/users-query";
-import { parseUsersSearch } from "@/lib/users-search";
-import { TasksError } from "#/components/tasks/tasks-error";
-import { TasksPage } from "#/components/tasks/tasks-page";
-import { tasksQueryOptions } from "#/lib/tasks-query";
+import { TasksError, TasksRouteError } from "@/components/tasks/tasks-error";
+import { TasksPage } from "@/components/tasks/tasks-page";
+import { tasksQueryOptions } from "@/lib/tasks-query";
+import { parseTasksSearch } from "@/lib/tasks-search";
 
 export const Route = createFileRoute("/tasks/")({
-  validateSearch: parseUsersSearch,
+  validateSearch: parseTasksSearch,
   // Re-run the loader when the query changes, so the loader's prefetch
   // follows the search field.
   loaderDeps: ({ search }) => ({ q: search.q }),
@@ -28,7 +25,7 @@ export const Route = createFileRoute("/tasks/")({
   // A failed fetch renders HERE, inside the shell, rather than tearing the
   // route tree down to a blank screen (the router's CatchBoundary fallback).
   errorComponent: TasksRouteError,
-  component: TasksPage,
+  component: TasksRoute,
 });
 
 function TasksRoute() {

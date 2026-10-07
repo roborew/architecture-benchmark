@@ -18,11 +18,14 @@ test("shows the all tasks heading and page title", async ({ page }) => {
 
 test("lists the seeded tasks with their project", async ({ page }) => {
 	const main = page.getByRole("main");
+	const row = main.getByRole("row", {
+		name: new RegExp(E2E_FIXTURE.task.title),
+	});
 
-	await expect(
-		main.getByRole("row", { name: new RegExp(E2E_FIXTURE.task.title) }),
-	).toBeVisible();
-	await expect(main.getByText(E2E_FIXTURE.task.projectName)).toBeVisible();
+	await expect(row).toBeVisible();
+	// The project name is shared by several seeded tasks, so it is asserted
+	// inside this task's own row rather than across the whole table.
+	await expect(row.getByText(E2E_FIXTURE.task.projectName)).toBeVisible();
 });
 
 test("shows the task count and a search field", async ({ page }) => {

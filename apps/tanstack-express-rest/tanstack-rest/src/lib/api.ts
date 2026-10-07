@@ -4,7 +4,7 @@
 // the base URL, the error envelope ({ error }), and the JSON handling are
 // decided in exactly one place.
 
-import type { User } from "@/lib/types";
+import type { TaskWithProject, User } from "@/lib/types";
 
 /** Where the Express API lives. Overridable per environment (e2e points it at its own server). */
 export const API_URL: string =
@@ -49,7 +49,11 @@ export function getUsers(term = ""): Promise<User[]> {
   return requestJson<User[]>(`/api/users${query ? `?${query}` : ""}`);
 }
 
-export function getTasks(term = ""): Promise<User[]> {
+/**
+ * The workspace-wide task list. An empty term returns every task; a term
+ * filters server-side (ILIKE on title and description).
+ */
+export function getTasks(term = ""): Promise<TaskWithProject[]> {
   const params = new URLSearchParams();
 
   if (term) {
@@ -58,5 +62,7 @@ export function getTasks(term = ""): Promise<User[]> {
 
   const query = params.toString();
 
-  return requestJson<User[]>(`/api/tasks${query ? `?${query}` : ""}`);
+  return requestJson<TaskWithProject[]>(
+    `/api/tasks${query ? `?${query}` : ""}`,
+  );
 }

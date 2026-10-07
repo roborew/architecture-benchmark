@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
 // exist so far are listed; later slices add their own entries.
 const PAGE_TITLES: Array<[string, string]> = [
 	["/", "Dashboard"],
+	["/tasks", "All tasks"],
 	["/users", "People"],
 ];
 
@@ -42,7 +43,7 @@ export function isActivePath(pathname: string, href: string): boolean {
 // throws on render — so the menu can ship the full template before every
 // route exists. As each slice lands, add its path here and the anchor becomes
 // a Link.
-const BUILT_PATHS = new Set(["/", "/users"]);
+const BUILT_PATHS = new Set(["/", "/tasks", "/users"]);
 
 export function isBuiltPath(href: string): boolean {
 	return BUILT_PATHS.has(href);

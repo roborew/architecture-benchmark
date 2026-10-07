@@ -6,17 +6,17 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-// The /users route's errorComponent: the loader's query failed (the API
+// The /tasks route's errorComponent: the loader's query failed (the API
 // unreachable, or a 5xx), so the error renders INSIDE the page template
 // instead of tearing the route tree down to a blank screen.
 export function TasksError({ error }: { error: Error }) {
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <h1 className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
-        Could not load people.
+        Could not load tasks.
       </h1>
       <p className="mt-1.5 text-[13px] leading-6 text-slate-500">
-        The workspace members could not be fetched: {error.message}
+        The tasks could not be fetched: {error.message}
       </p>
       <p className="mt-1.5 text-[13px] leading-6 text-slate-500">
         Is the API server running? Start it from{" "}
@@ -34,6 +34,6 @@ export function TasksError({ error }: { error: Error }) {
 }
 
 // The route adapter; the component above stays router-free for unit tests.
-export function UsersRouteError({ error }: ErrorComponentProps) {
+export function TasksRouteError({ error }: ErrorComponentProps) {
   return <TasksError error={toError(error)} />;
 }

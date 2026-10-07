@@ -109,11 +109,11 @@ describe("Navigation", () => {
 	});
 
 	it("marks only routes the tree actually registers as built", () => {
-		// The guard that keeps unbuilt entries as anchors; when a later slice
-		// lands its route, this is the assertion that gets flipped.
+		// The guard that keeps unbuilt entries as anchors; flipped here now that
+		// the /tasks route has landed.
 		expect(isBuiltPath("/")).toBe(true);
+		expect(isBuiltPath("/tasks")).toBe(true);
 		expect(isBuiltPath("/users")).toBe(true);
 		expect(isBuiltPath("/projects")).toBe(false);
-		expect(isBuiltPath("/tasks")).toBe(false);
 	});
 });

@@ -19,3 +19,7 @@ export type Task = {
   commentCount: number;
   updatedAt: string;
 };
+
+// A task joined with its project name, for the workspace-wide listing: the
+// tasks model projects `projectName` from the projects join.
+export type TaskWithProject = Task & { projectName: string };

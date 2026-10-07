@@ -1,4 +1,4 @@
-import { makeUser } from "@tests/fixtures/builders";
+import { makeTaskWithProject } from "@tests/fixtures/builders";
 import { renderWithRouter, screen } from "@tests/helpers/render";
 import { describe, expect, it } from "vitest";
 import { TasksPage } from "./tasks-page";
@@ -8,48 +8,50 @@ import { TasksPage } from "./tasks-page";
 // is covered end-to-end.
 
 describe("TasksPage", () => {
-  it("shows the People heading and page copy", () => {
+  it("shows the All tasks heading and page copy", () => {
     renderWithRouter(<TasksPage tasks={[]} />);
 
     expect(
-      screen.getByRole("heading", { name: "People", level: 1 }),
+      screen.getByRole("heading", { name: "All tasks", level: 1 }),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        "Manage workspace members who are assigned tasks and author comments.",
-      ),
+      screen.getByText("A workspace-wide view of tasks across every project."),
     ).toBeVisible();
   });
 
-  it("shows the member count beside the section heading", () => {
+  it("shows the task count beside the table", () => {
     renderWithRouter(
       <TasksPage
-        tasks={[]}
+        tasks={[
+          makeTaskWithProject({ id: 1 }),
+          makeTaskWithProject({ id: 2 }),
+          makeTaskWithProject({ id: 3 }),
+        ]}
       />,
     );
 
-    expect(screen.getByText("3 people", { exact: true })).toBeVisible();
+    expect(screen.getByText("3 tasks", { exact: true })).toBeVisible();
   });
 
   it("shows a search field labelled for its purpose", () => {
-    renderWithRouter(<TasksPage people={[makeUser()]} />);
+    renderWithRouter(<TasksPage tasks={[makeTaskWithProject()]} />);
 
     expect(
-      screen.getByRole("searchbox", { name: "Search people" }),
+      screen.getByRole("searchbox", { name: "Search tasks" }),
     ).toBeVisible();
   });
 
-  it("lists the people it is given", () => {
-    const person = makeUser({ name: "Listed Person" });
+  it("lists the tasks it is given", () => {
+    const task = makeTaskWithProject({ title: "Listed Task" });
 
-    renderWithRouter(<TasksPage people={[person]} />);
+    renderWithRouter(<TasksPage tasks={[task]} />);
 
-    expect(screen.getByText(person.name)).toBeVisible();
+    expect(screen.getByText(task.title)).toBeVisible();
   });
 
-  it("shows the empty state when there are no people", () => {
-    renderWithRouter(<TasksPage people={[]} />);
+  it("shows the empty state when there are no tasks", () => {
+    renderWithRouter(<TasksPage tasks={[]} />);
 
-    expect(screen.getByText("No people in this workspace.")).toBeVisible();
+    expect(screen.getByText("No tasks match these filters.")).toBeVisible();
   });
 });

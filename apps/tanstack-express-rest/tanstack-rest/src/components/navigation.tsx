@@ -40,7 +40,7 @@ export default function Navigation() {
 					return isBuiltPath(item.href) ? (
 						<Link
 							key={item.href}
-							to={item.href as "/" | "/users"}
+							to={item.href as "/" | "/tasks" | "/users"}
 							aria-current={ariaCurrent}
 							className={className}
 						>

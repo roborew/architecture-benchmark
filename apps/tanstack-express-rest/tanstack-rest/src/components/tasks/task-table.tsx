@@ -1,7 +1,5 @@
-import { Link } from "@tanstack/react-router";
-
-import type { TaskWithProject } from "@/lib/types";
 import { StatusBadge } from "@/components/status-badge";
+import type { TaskWithProject } from "@/lib/types";
 
 const th = "px-3 py-3 first:px-5 last:px-5";
 const td = "px-3 py-3.5 first:px-5 last:px-5";
@@ -52,13 +50,14 @@ export function TaskTable({
               className="border-b border-slate-100 transition hover:bg-slate-50"
             >
               <td className={td}>
-                <Link
-                  to="/tasks/$id"
-                  params={{ id: String(task.id) }}
+                {/* A plain anchor until the /tasks/$id detail route lands: a
+                    router Link to an unregistered route throws on render. */}
+                <a
+                  href={`/tasks/${task.id}`}
                   className="font-bold text-slate-700 hover:text-brand-700"
                 >
                   {task.title}
-                </Link>
+                </a>
                 <span className="mt-0.5 block text-[10px] text-slate-500">
                   #{task.id}
                 </span>

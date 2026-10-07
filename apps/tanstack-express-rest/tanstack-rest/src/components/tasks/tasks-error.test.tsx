@@ -10,7 +10,7 @@ describe("TasksError", () => {
   it("shows an inline message naming the page that failed", () => {
     renderWithRouter(<TasksError error={new Error("Failed to fetch")} />);
 
-    expect(screen.getByText("Could not load people.")).toBeVisible();
+    expect(screen.getByText("Could not load tasks.")).toBeVisible();
   });
 
   it("shows the underlying error message", () => {
