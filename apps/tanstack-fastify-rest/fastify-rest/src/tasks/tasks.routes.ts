@@ -7,14 +7,11 @@
 // counterpart of the Express `Router()` the app factory `use()`s under a path
 // prefix.
 //
-// The read surface first; the write routes (POST/PATCH/DELETE, with-comment
-// and the comments endpoint) land with their own integration tier.
-//
-// `/count` cannot be captured by the `/:id` shapes here, unlike the Express
-// variant where registration order was the whole contract of that: Fastify's
-// router (find-my-way) matches by route specificity, so a literal segment
-// always wins over a parameter regardless of the order the routes are
-// declared in.
+// `/count` and `/with-comment` cannot be captured by the `/:id` shapes here,
+// unlike the Express variant where registration order was the whole contract
+// of that: Fastify's router (find-my-way) matches by route specificity, so a
+// literal segment always wins over a parameter regardless of the order the
+// routes are declared in.
 
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 
@@ -31,6 +28,11 @@ export const tasksRoutes: FastifyPluginAsync<TasksRoutesOptions> = async (
 ) => {
   app.get("/", options.controller.list);
   app.get("/count", options.controller.count);
+  app.post("/with-comment", options.controller.createWithComment);
+  app.post("/", options.controller.create);
   app.get("/:id/comments", options.controller.listComments);
+  app.post("/:id/comments", options.controller.addComment);
   app.get("/:id", options.controller.get);
+  app.patch("/:id", options.controller.update);
+  app.delete("/:id", options.controller.remove);
 };
