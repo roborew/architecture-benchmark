@@ -19,6 +19,9 @@ import { notFound } from "./middleware/not-found.ts";
 import { createUsersController } from "./users/users.controller.ts";
 import { createUsersModel } from "./users/users.model.ts";
 import { createUsersRouter } from "./users/users.routes.ts";
+import { createTasksRouter } from "./tasks/tasks.routes.ts";
+import { createTasksModel } from "./tasks/tasks.model.ts";
+import { createTasksController } from "./tasks/tasks.controller.ts";
 
 export interface CreateAppOptions {
   /**
@@ -51,9 +54,12 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const db = createConnection(requirePostgresUrl(options.postgresUrl));
   const usersModel = createUsersModel(db);
   const usersController = createUsersController(usersModel);
+  const tasksModel = createTasksModel(db);
+  const tasksController = createTasksController(tasksModel);
 
   mountHealthRoutes(app);
   app.use("/api/users", createUsersRouter(usersController));
+  app.use("/api/tasks", createTasksRouter(tasksController));
 
   // Mounted after every route, before the error handler — order is the whole
   // contract of these two.

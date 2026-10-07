@@ -6,7 +6,7 @@
 
 import type { Request, Response } from "express";
 
-import { parseSearchTerm } from "./users.validator.ts";
+import { parseSearchTerm } from "../lib/query.validator.ts";
 import type { UsersModel } from "./users.model.ts";
 
 export interface UsersController {

@@ -12,6 +12,7 @@ export function createUsersRouter(controller: UsersController): Router {
   const router = Router();
 
   router.get("/", controller.list);
+  router.get("/listy", controller.list);
 
   return router;
 }
