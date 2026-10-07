@@ -2,28 +2,26 @@
 //
 // How the SPA talks to the server — the shared half of the api layer.
 //
-// Every request goes through `requestJson` so the base URL, the error
-// envelope, and the JSON handling are decided in exactly one place. The
-// per-feature modules (projects, tasks, users, comments, dashboard) build on
-// these pieces and own their endpoints; nothing outside `src/api/` uses fetch
-// directly.
+// Every write goes through `call` so the procedure wiring, the outcome
+// envelope, and the error translation are decided in exactly one place. The
+// per-feature modules (projects, tasks, users, comments) build on these
+// pieces and own their procedures; nothing outside `src/api/` calls the oRPC
+// client for a write, and nothing inside hand-builds a request any more —
+// the reads are the query options' own procedures (src/queries/*, built from
+// src/orpc/client.ts), and the writes below are thin, typed wrappers.
 //
-// Reads build query params from plain filter objects; the API treats an
-// absent param and an empty one the same way, so absent filters are simply
-// omitted. Mutations send the form's fields as a JSON body, passing them
-// through untouched: the server owns every normalisation rule (an empty
-// assignee means "unassigned", a numeric string is a row id), so the client
-// cannot disagree with itself about how a value is spelled.
+// Mutations send the form's fields as the field bag, passing them through
+// untouched: the server owns every normalisation rule (an empty assignee
+// means "unassigned", a numeric string is a row id), so the client cannot
+// disagree with itself about how a value is spelled.
 
-/** Where the Express API lives. Overridable per environment (e2e points it at its own server). */
-export const API_URL: string =
-	import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { ORPCError } from "@orpc/client";
 
 /**
  * A failure the API reported deliberately.
  *
- * `message` is the user-visible string from the API's `{ error }` envelope;
- * `errors` is the field → messages map a 400 carries, keyed exactly as the
+ * `message` is the user-visible string from the API's error line; `errors` is
+ * the field → messages map a validation refusal carries, keyed exactly as the
  * API's validators key it. A network-level failure (fetch itself rejecting)
  * is not an ApiError — there is no status to report, only the browser's
  * generic message.
@@ -44,74 +42,39 @@ export class ApiError extends Error {
 	}
 }
 
-/** Every request, and the one place the error envelope is parsed. */
-export async function requestJson<T>(
-	path: string,
-	init?: RequestInit,
-): Promise<T> {
-	const response = await fetch(`${API_URL}${path}`, init);
-
-	if (!response.ok) {
-		// The API's error envelope is { error, errors? }, but a proxy or a crash
-		// can hand back anything; the status is the only guaranteed fact.
-		let message = `Request failed with ${response.status}`;
-		let errors: Record<string, string[]> = {};
-
-		try {
-			const body = (await response.json()) as {
-				error?: string;
-				errors?: Record<string, string[]>;
-			};
-			if (body && typeof body.error === "string") {
-				message = body.error;
-			}
-			if (body?.errors && typeof body.errors === "object") {
-				errors = body.errors;
-			}
-		} catch {
-			// Not JSON — keep the status-based message.
-		}
-
-		throw new ApiError(response.status, message, errors);
-	}
-
-	return response.json() as Promise<T>;
-}
+/** The HTTP status each oRPC error code maps onto, mirroring the API's envelope. */
+const STATUS_BY_CODE: Record<string, number> = {
+	BAD_REQUEST: 400,
+	NOT_FOUND: 404,
+	CONFLICT: 409,
+};
 
 /**
- * Builds a query string from defined values only.
- *
- * `undefined`, `null` and `""` are all "no filter": the API resolves each to
- * the same default, and a URL that says so explicitly (`?status=`) is noise
- * over the bare path.
+ * Runs one write, translating an ORPCError the API decided on into the
+ * `ApiError` the forms render — the same status/message/field-errors shape
+ * the REST envelope carried, which `useApiAction` and every form test were
+ * written against. Anything else (fetch itself rejecting, a client bug)
+ * propagates untouched: there is no envelope to derive, only the hook's
+ * generic network-failure branch.
  */
-export function toQuery(
-	filters: Record<string, string | number | undefined | null>,
-): string {
-	const params = new URLSearchParams();
+export async function call<T>(write: () => Promise<T>): Promise<T> {
+	try {
+		return await write();
+	} catch (error) {
+		if (error instanceof ORPCError) {
+			const data = error.data as
+				| { errors?: Record<string, string[]> }
+				| undefined;
 
-	for (const [key, value] of Object.entries(filters)) {
-		if (value !== undefined && value !== null && value !== "") {
-			params.set(key, String(value));
+			throw new ApiError(
+				STATUS_BY_CODE[error.code] ?? 500,
+				error.message,
+				data?.errors ?? {},
+			);
 		}
+
+		throw error;
 	}
-
-	const query = params.toString();
-
-	return query ? `?${query}` : "";
-}
-
-/** A POST/PATCH/DELETE with a JSON body; the mutations all share this shape. */
-export function send<T>(
-	path: string,
-	method: string,
-	body: unknown,
-): Promise<T> {
-	return requestJson<T>(path, {
-		method,
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
 }
 
 /**

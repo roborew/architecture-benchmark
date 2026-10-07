@@ -1,155 +1,115 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ORPCError } from "@orpc/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { API_URL } from "./api";
 import {
 	createTask,
 	createTaskWithComment,
 	deleteTask,
-	getTask,
-	getTaskCount,
-	getTasks,
 	updateTask,
 } from "./tasks";
 
-// The task endpoints, exercised against a stubbed global fetch: the URL each
-// read builds, and the method, path and JSON body each mutation sends.
+// The write half of the tasks api, exercised against a stubbed oRPC client:
+// which procedure each mutation reaches, the input it carries (the form's
+// field bag verbatim, plus the id the caller closed over — under REST the id
+// rode in the URL), and the outcome envelope / ApiError the hook renders.
+//
+// The field bag is passed through untouched: the server owns every
+// normalisation rule (an empty assignee means \"unassigned\", a numeric string
+// is a row id), so the client cannot disagree with itself about how a value
+// is spelled. That behaviour is the API's own contract, covered by its
+// integration suite; what is pinned here is the wiring.
 
-const fetchMock = vi.fn();
+const { tasksMock } = vi.hoisted(() => ({
+	tasksMock: {
+		create: vi.fn(),
+		createWithComment: vi.fn(),
+		update: vi.fn(),
+		remove: vi.fn(),
+		addComment: vi.fn(),
+	},
+}));
 
-function jsonResponse(body: unknown, status = 200): Response {
-	return {
-		ok: status < 400,
-		status,
-		json: () => Promise.resolve(body),
-	} as Response;
-}
+vi.mock("@/orpc/client", () => ({ client: { tasks: tasksMock } }));
 
 beforeEach(() => {
-	vi.stubGlobal("fetch", fetchMock);
-	fetchMock.mockResolvedValue(jsonResponse([]));
+	for (const fn of Object.values(tasksMock)) fn.mockReset();
 });
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-	fetchMock.mockReset();
-});
+describe("createTask", () => {
+	it("sends the form's field bag to tasks.create, verbatim", async () => {
+		tasksMock.create.mockResolvedValue({ ok: true, redirectTo: "/tasks/101" });
 
-/** The URL and request init of the first call. */
-function firstCall(): [url: string, init: RequestInit | undefined] {
-	return fetchMock.mock.calls[0] as [string, RequestInit | undefined];
-}
-
-describe("reads", () => {
-	it("lists tasks with every filter the workspace route offers", async () => {
-		await getTasks({
-			q: "navigation",
-			status: "todo",
-			projectId: 2,
-			assigneeId: 4,
-			cursor: "Y3Vyc29y",
-			limit: 6,
-		});
-
-		const [url] = firstCall();
-		const parsed = new URL(url);
-		expect(parsed.pathname).toBe("/api/tasks");
-		expect(parsed.searchParams.get("q")).toBe("navigation");
-		expect(parsed.searchParams.get("status")).toBe("todo");
-		expect(parsed.searchParams.get("projectId")).toBe("2");
-		expect(parsed.searchParams.get("assigneeId")).toBe("4");
-		expect(parsed.searchParams.get("cursor")).toBe("Y3Vyc29y");
-		expect(parsed.searchParams.get("limit")).toBe("6");
-	});
-
-	it("omits absent task filters rather than sending empties", async () => {
-		await getTasks();
-
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks`);
-	});
-
-	it("encodes a status with a space without hand-encoding it", async () => {
-		await getTasks({ status: "in progress" });
-
-		const [url] = firstCall();
-		expect(new URL(url).searchParams.get("status")).toBe("in progress");
-	});
-
-	it("counts tasks through the count endpoint", async () => {
-		fetchMock.mockResolvedValue(jsonResponse({ count: 7 }));
-
-		await expect(getTaskCount({ q: "draft", status: "todo" })).resolves.toBe(7);
-
-		const [url] = firstCall();
-		const parsed = new URL(url);
-		expect(parsed.pathname).toBe("/api/tasks/count");
-		expect(parsed.searchParams.get("q")).toBe("draft");
-		expect(parsed.searchParams.get("status")).toBe("todo");
-	});
-
-	it("fetches one task by id", async () => {
-		await getTask(9);
-
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks/9`);
-	});
-});
-
-describe("mutations", () => {
-	beforeEach(() => {
-		fetchMock.mockResolvedValue(
-			jsonResponse({ ok: true, message: "Saved.", redirectTo: "/tasks/9" }),
-		);
-	});
-
-	it("creates a task with the form's fields passed through", async () => {
-		await createTask({
+		const values = {
 			projectId: "2",
 			assigneeId: "",
 			title: "Draft the model",
 			description: "",
 			status: "todo",
+		};
+
+		await expect(createTask(values)).resolves.toEqual({
+			ok: true,
+			redirectTo: "/tasks/101",
 		});
 
-		const [url, init] = firstCall();
-		const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-		expect(url).toBe(`${API_URL}/api/tasks`);
-		expect(init?.method).toBe("POST");
 		// The empty assignee travels as the form submitted it — the server owns
-		// the one normalisation rule ("" means unassigned), so the client cannot
-		// disagree with itself about it.
-		expect(body).toEqual({
-			projectId: "2",
-			assigneeId: "",
-			title: "Draft the model",
-			description: "",
-			status: "todo",
-		});
+		// the one normalisation rule ("" means unassigned).
+		expect(tasksMock.create).toHaveBeenCalledWith(values);
 	});
 
-	it("updates a task with a PATCH to its id", async () => {
-		await updateTask(9, {
+	it("translates a refused write into the ApiError the form renders", async () => {
+		tasksMock.create.mockRejectedValue(
+			new ORPCError("BAD_REQUEST", {
+				message: "Missing fields. Failed to create task.",
+				data: {
+					error: "Missing fields. Failed to create task.",
+					errors: { title: ["Title is required."] },
+				},
+			}),
+		);
+
+		await expect(createTask({ title: "" })).rejects.toMatchObject({
+			status: 400,
+			message: "Missing fields. Failed to create task.",
+			errors: { title: ["Title is required."] },
+		});
+
+		expect(tasksMock.create).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("updateTask", () => {
+	it("sends the field bag plus the id to tasks.update", async () => {
+		tasksMock.update.mockResolvedValue({ ok: true });
+
+		const values = {
 			title: "Draft the model",
 			description: "",
 			status: "in progress",
 			assigneeId: "4",
-		});
+		};
 
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks/9`);
-		expect(init?.method).toBe("PATCH");
+		await updateTask(9, values);
+
+		expect(tasksMock.update).toHaveBeenCalledWith({ id: 9, ...values });
 	});
+});
 
-	it("deletes a task with a DELETE to its id", async () => {
+describe("deleteTask", () => {
+	it("sends the id alone to tasks.remove", async () => {
+		tasksMock.remove.mockResolvedValue({ ok: true });
+
 		await deleteTask(9);
 
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks/9`);
-		expect(init?.method).toBe("DELETE");
+		expect(tasksMock.remove).toHaveBeenCalledWith({ id: 9 });
 	});
+});
 
-	it("creates a task with its first comment atomically", async () => {
-		await createTaskWithComment({
+describe("createTaskWithComment", () => {
+	it("sends the form's field bag to tasks.createWithComment, verbatim", async () => {
+		tasksMock.createWithComment.mockResolvedValue({ ok: true });
+
+		const values = {
 			projectId: "2",
 			assigneeId: "",
 			title: "Draft the model",
@@ -157,18 +117,10 @@ describe("mutations", () => {
 			status: "todo",
 			commentBody: "Kicking this off.",
 			commentAuthorId: "4",
-		});
+		};
 
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks/with-comment`);
-		expect(init?.method).toBe("POST");
-	});
+		await createTaskWithComment(values);
 
-	it("resolves the API's outcome envelope", async () => {
-		await expect(createTask({ title: "Draft" })).resolves.toEqual({
-			ok: true,
-			message: "Saved.",
-			redirectTo: "/tasks/9",
-		});
+		expect(tasksMock.createWithComment).toHaveBeenCalledWith(values);
 	});
 });

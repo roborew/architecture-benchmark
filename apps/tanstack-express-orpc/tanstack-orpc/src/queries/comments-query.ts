@@ -12,5 +12,5 @@
 import { orpc } from "@/orpc/client";
 
 export function commentsQueryOptions(taskId: number) {
-  return orpc.tasks.comments.queryOptions({ input: { id: taskId } });
+	return orpc.tasks.comments.queryOptions({ input: { id: taskId } });
 }

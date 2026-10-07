@@ -1,104 +1,121 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ORPCError } from "@orpc/client";
+import { describe, expect, it } from "vitest";
 
-import { API_URL, ApiError } from "./api";
-import { getTasks } from "./tasks";
-import { getUsers } from "./users";
+import { ApiError, call } from "./api";
 
-// The shared half of the api layer, exercised against a stubbed global
-// fetch: the error envelope every endpoint shares, and the fallbacks when a
-// proxy or a crash hands back something the contract never promised. The
-// per-feature endpoint tests (URLs, methods, bodies) live beside their
-// modules; these are the pieces every request shares.
+// The shared half of the api layer: the one place an ORPCError from the
+// client is turned into the ApiError the forms render. The per-feature
+// modules' tests (procedure wiring, field-bag passthrough) live beside their
+// modules; these are the pieces every write shares.
+//
+// The mapping is deliberate: the REST variant's envelope is the contract the
+// `useApiAction` hook and every form test were written against (a status, a
+// message, a field → messages map), so the transport's error channel is
+// translated into that shape here rather than pushing ORPCError through the
+// whole app — one import boundary, one place to change if the wire ever does.
 
-const fetchMock = vi.fn();
-
-function jsonResponse(body: unknown, status = 200): Response {
-	return {
-		ok: status < 400,
-		status,
-		json: () => Promise.resolve(body),
-	} as Response;
+function refusal(
+	code: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT",
+	message: string,
+	data?: unknown,
+): ORPCError<string, unknown> {
+	return new ORPCError(code, { message, data });
 }
 
-function nonJsonResponse(status: number): Response {
-	return {
-		ok: status < 400,
-		status,
-		json: () => Promise.reject(new Error("Unexpected token in JSON")),
-	} as Response;
-}
+describe("call", () => {
+	it("resolves with the procedure's reply untouched", async () => {
+		const reply = { ok: true as const, message: "Task created." };
 
-beforeEach(() => {
-	vi.stubGlobal("fetch", fetchMock);
-});
-
-afterEach(() => {
-	vi.unstubAllGlobals();
-	fetchMock.mockReset();
-});
-
-describe("the error envelope", () => {
-	it("throws the server's error message on a failure", async () => {
-		fetchMock.mockResolvedValue(
-			jsonResponse({ error: "q must be a single value" }, 400),
-		);
-
-		await expect(getUsers("robin")).rejects.toThrow("q must be a single value");
+		await expect(call(() => Promise.resolve(reply))).resolves.toBe(reply);
 	});
 
-	it("falls back to the status when the error body is not JSON", async () => {
-		fetchMock.mockResolvedValue(nonJsonResponse(500));
-
-		await expect(getUsers()).rejects.toThrow("Request failed with 500");
-	});
-
-	it("carries the status and the field → messages map from a 400 body", async () => {
-		fetchMock.mockResolvedValue(
-			jsonResponse(
-				{
-					error: "Missing fields. Failed to create task.",
-					errors: { title: ["Title is required."] },
-				},
-				400,
-			),
+	it("translates a BAD_REQUEST into the 400 ApiError the forms render", async () => {
+		const error = refusal(
+			"BAD_REQUEST",
+			"Missing fields. Failed to create task.",
+			{
+				error: "Missing fields. Failed to create task.",
+				errors: { title: ["Title is required."] },
+			},
 		);
 
 		try {
-			await getTasks();
-			expect.unreachable("the request must reject");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ApiError);
-			if (error instanceof ApiError) {
-				expect(error.status).toBe(400);
-				expect(error.message).toBe("Missing fields. Failed to create task.");
-				expect(error.errors).toEqual({ title: ["Title is required."] });
+			await call(() => Promise.reject(error));
+			expect.unreachable("the call must reject");
+		} catch (caught) {
+			expect(caught).toBeInstanceOf(ApiError);
+			if (caught instanceof ApiError) {
+				expect(caught.status).toBe(400);
+				expect(caught.message).toBe("Missing fields. Failed to create task.");
+				expect(caught.errors).toEqual({ title: ["Title is required."] });
 			}
 		}
 	});
 
-	it("keeps an empty errors map when the body carries none", async () => {
-		fetchMock.mockResolvedValue(
-			jsonResponse({ error: "That task no longer exists." }, 404),
-		);
+	it("keeps an empty errors map when the refusal carries none", async () => {
+		const error = refusal("NOT_FOUND", "That task no longer exists.", {
+			error: "That task no longer exists.",
+		});
 
 		try {
-			await getTasks();
-			expect.unreachable("the request must reject");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ApiError);
-			if (error instanceof ApiError) {
-				expect(error.status).toBe(404);
-				expect(error.errors).toEqual({});
+			await call(() => Promise.reject(error));
+			expect.unreachable("the call must reject");
+		} catch (caught) {
+			expect(caught).toBeInstanceOf(ApiError);
+			if (caught instanceof ApiError) {
+				expect(caught.status).toBe(404);
+				expect(caught.errors).toEqual({});
 			}
 		}
 	});
 
-	it("prefixes every request with the configured base URL", async () => {
-		fetchMock.mockResolvedValue(jsonResponse([]));
+	it("translates the FK guard's CONFLICT into 409", async () => {
+		const error = refusal(
+			"CONFLICT",
+			"This project still has 1 task. Delete it before deleting the project.",
+			{
+				error:
+					"This project still has 1 task. Delete it before deleting the project.",
+			},
+		);
 
-		await getUsers();
+		await expect(call(() => Promise.reject(error))).rejects.toMatchObject({
+			status: 409,
+			message:
+				"This project still has 1 task. Delete it before deleting the project.",
+		});
+	});
 
-		const [url] = fetchMock.mock.calls[0] as [string];
-		expect(url).toBe(`${API_URL}/api/users`);
+	it("answers an unknown code with the generic 500", async () => {
+		const error = new ORPCError("INTERNAL_SERVER_ERROR", {
+			message: "Failed to fetch the tasks.",
+		});
+
+		await expect(call(() => Promise.reject(error))).rejects.toMatchObject({
+			status: 500,
+			errors: {},
+		});
+	});
+
+	it("rethrows anything that is not an ORPCError, for the hook's network branch", async () => {
+		const network = new TypeError("fetch failed");
+
+		await expect(call(() => Promise.reject(network))).rejects.toBe(network);
+	});
+});
+
+describe("ApiError", () => {
+	it("carries the envelope's error line as its message, for alerts and tests", () => {
+		expect(new ApiError(404, "That task no longer exists.", {}).message).toBe(
+			"That task no longer exists.",
+		);
+	});
+
+	it("is constructed only from a refusal the API decided on", () => {
+		// `call` is the one constructor caller; the shape is pinned so the
+		// hook's `state.errors?.title` branch cannot drift from it.
+		expect(new ApiError(400, "m", { title: ["e"] }).errors).toEqual({
+			title: ["e"],
+		});
 	});
 });

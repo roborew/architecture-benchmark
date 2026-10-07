@@ -18,50 +18,50 @@ import { userQueryOptions, userTasksQueryOptions } from "./users-query";
 // right input, and each id keys its own entry.
 
 describe("commentsQueryOptions", () => {
-  it("delegates to tasks.comments with the task id", () => {
-    expect(commentsQueryOptions(9).queryKey).toEqual(
-      orpc.tasks.comments.queryOptions({ input: { id: 9 } }).queryKey,
-    );
-    expect(commentsQueryOptions(10).queryKey).not.toEqual(
-      commentsQueryOptions(9).queryKey,
-    );
-  });
+	it("delegates to tasks.comments with the task id", () => {
+		expect(commentsQueryOptions(9).queryKey).toEqual(
+			orpc.tasks.comments.queryOptions({ input: { id: 9 } }).queryKey,
+		);
+		expect(commentsQueryOptions(10).queryKey).not.toEqual(
+			commentsQueryOptions(9).queryKey,
+		);
+	});
 });
 
 describe("taskQueryOptions", () => {
-  it("delegates to tasks.byId with the id, apart from the workspace-wide list", () => {
-    expect(taskQueryOptions(4).queryKey).toEqual(
-      orpc.tasks.byId.queryOptions({ input: { id: 4 } }).queryKey,
-    );
-    expect(taskQueryOptions(4).queryKey).not.toEqual(
-      orpc.tasks.list.queryOptions({ input: {} }).queryKey,
-    );
-  });
+	it("delegates to tasks.byId with the id, apart from the workspace-wide list", () => {
+		expect(taskQueryOptions(4).queryKey).toEqual(
+			orpc.tasks.byId.queryOptions({ input: { id: 4 } }).queryKey,
+		);
+		expect(taskQueryOptions(4).queryKey).not.toEqual(
+			orpc.tasks.list.queryOptions({ input: {} }).queryKey,
+		);
+	});
 });
 
 describe("dashboardQueryOptions", () => {
-  it("delegates to dashboard.get — the dashboard is one aggregate", () => {
-    expect(dashboardQueryOptions().queryKey).toEqual(
-      orpc.dashboard.get.queryOptions().queryKey,
-    );
-  });
+	it("delegates to dashboard.get — the dashboard is one aggregate", () => {
+		expect(dashboardQueryOptions().queryKey).toEqual(
+			orpc.dashboard.get.queryOptions().queryKey,
+		);
+	});
 });
 
 describe("userQueryOptions", () => {
-  it("delegates to users.byId with the id", () => {
-    expect(userQueryOptions(4).queryKey).toEqual(
-      orpc.users.byId.queryOptions({ input: { id: 4 } }).queryKey,
-    );
-  });
+	it("delegates to users.byId with the id", () => {
+		expect(userQueryOptions(4).queryKey).toEqual(
+			orpc.users.byId.queryOptions({ input: { id: 4 } }).queryKey,
+		);
+	});
 });
 
 describe("userTasksQueryOptions", () => {
-  it("delegates to users.tasks with the id, apart from the member's own row", () => {
-    expect(userTasksQueryOptions(4).queryKey).toEqual(
-      orpc.users.tasks.queryOptions({ input: { id: 4 } }).queryKey,
-    );
-    expect(userTasksQueryOptions(4).queryKey).not.toEqual(
-      userQueryOptions(4).queryKey,
-    );
-  });
+	it("delegates to users.tasks with the id, apart from the member's own row", () => {
+		expect(userTasksQueryOptions(4).queryKey).toEqual(
+			orpc.users.tasks.queryOptions({ input: { id: 4 } }).queryKey,
+		);
+		expect(userTasksQueryOptions(4).queryKey).not.toEqual(
+			userQueryOptions(4).queryKey,
+		);
+	});
 });

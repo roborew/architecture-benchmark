@@ -17,15 +17,15 @@
 import { orpc } from "@/orpc/client";
 
 export function usersQueryOptions(term = "") {
-  return orpc.users.list.queryOptions({
-    input: { q: term || undefined },
-  });
+	return orpc.users.list.queryOptions({
+		input: { q: term || undefined },
+	});
 }
 
 export function userQueryOptions(id: number) {
-  return orpc.users.byId.queryOptions({ input: { id } });
+	return orpc.users.byId.queryOptions({ input: { id } });
 }
 
 export function userTasksQueryOptions(id: number) {
-  return orpc.users.tasks.queryOptions({ input: { id } });
+	return orpc.users.tasks.queryOptions({ input: { id } });
 }

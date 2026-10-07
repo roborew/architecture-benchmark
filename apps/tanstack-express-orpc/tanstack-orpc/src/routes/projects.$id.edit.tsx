@@ -12,9 +12,9 @@
 // `not-found` testid. An unreachable API is NOT not-found: it renders the
 // errorComponent instead.
 
+import { ORPCError } from "@orpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ORPCError } from "@orpc/client";
 import { ProjectForm } from "@/components/projects/project-form";
 import {
 	ProjectsError,
@@ -38,7 +38,8 @@ export const Route = createFileRoute("/projects/$id/edit")({
 			// The API answers NOT_FOUND for a missing row: the same not-found page the
 			// NaN id produced. Anything else (the API unreachable, a 5xx) is a
 			// real error and propagates to the errorComponent.
-			if (error instanceof ORPCError && error.code === "NOT_FOUND") throw notFound();
+			if (error instanceof ORPCError && error.code === "NOT_FOUND")
+				throw notFound();
 			throw error;
 		}
 	},

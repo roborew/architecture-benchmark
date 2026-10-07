@@ -25,19 +25,19 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 
-import { contract } from "./contract.ts";
+import type { contract } from "./contract.ts";
 
 /**
  * Where the Express API lives. Overridable per environment (e2e points it at
  * its own server), exactly as the REST variant's API_URL was.
  */
 export const API_ORIGIN: string =
-  import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+	import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const link = new RPCLink({
-  origin: API_ORIGIN,
-  // Must match the prefix the API's RPCHandler is mounted under.
-  url: "/rpc",
+	origin: API_ORIGIN,
+	// Must match the prefix the API's RPCHandler is mounted under.
+	url: "/rpc",
 });
 
 /**
@@ -48,7 +48,7 @@ const link = new RPCLink({
  * client that must not import the server.
  */
 export const client: RouterContractClient<typeof contract> =
-  createORPCClient(link);
+	createORPCClient(link);
 
 /**
  * The option builders for the reads:

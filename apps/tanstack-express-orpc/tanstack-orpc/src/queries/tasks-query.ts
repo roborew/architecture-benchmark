@@ -17,37 +17,37 @@ import { orpc } from "@/orpc/client";
 
 /** The filters the workspace-wide task list accepts, as the SPA spells them. */
 export type TaskListQuery = {
-  /** Searches title and description. */
-  q?: string;
-  /** A single stored status, or absent for every status. */
-  status?: string;
-  projectId?: number;
-  assigneeId?: number;
-  /** The keyset cursor the previous page ended on; absent means the first page. */
-  cursor?: string | null;
-  /** Page size; the API clamps it to [1, 26] as the reference does. */
-  limit?: number;
+	/** Searches title and description. */
+	q?: string;
+	/** A single stored status, or absent for every status. */
+	status?: string;
+	projectId?: number;
+	assigneeId?: number;
+	/** The keyset cursor the previous page ended on; absent means the first page. */
+	cursor?: string | null;
+	/** Page size; the API clamps it to [1, 26] as the reference does. */
+	limit?: number;
 };
 
 /** Removes the values that do not reach the request, so the key matches it. */
 function input(filters: TaskListQuery) {
-  return {
-    q: filters.q || undefined,
-    status: filters.status || undefined,
-    projectId: filters.projectId ?? undefined,
-    assigneeId: filters.assigneeId ?? undefined,
-    cursor: filters.cursor ?? undefined,
-    limit: filters.limit ?? undefined,
-  };
+	return {
+		q: filters.q || undefined,
+		status: filters.status || undefined,
+		projectId: filters.projectId ?? undefined,
+		assigneeId: filters.assigneeId ?? undefined,
+		cursor: filters.cursor ?? undefined,
+		limit: filters.limit ?? undefined,
+	};
 }
 
 export function tasksQueryOptions(filters: TaskListQuery = {}) {
-  return orpc.tasks.list.queryOptions({ input: input(filters) });
+	return orpc.tasks.list.queryOptions({ input: input(filters) });
 }
 
 /** One task by id, with its project name; a missing row rejects as NOT_FOUND. */
 export function taskQueryOptions(id: number) {
-  return orpc.tasks.byId.queryOptions({ input: { id } });
+	return orpc.tasks.byId.queryOptions({ input: { id } });
 }
 
 /**
@@ -59,7 +59,7 @@ export function taskQueryOptions(id: number) {
  * only the filters — the same filters the list carries, minus the paging.
  */
 export function taskCountQueryOptions(filters: TaskListQuery = {}) {
-  const { cursor: _cursor, limit: _limit, ...rest } = filters;
+	const { cursor: _cursor, limit: _limit, ...rest } = filters;
 
-  return orpc.tasks.count.queryOptions({ input: input(rest) });
+	return orpc.tasks.count.queryOptions({ input: input(rest) });
 }

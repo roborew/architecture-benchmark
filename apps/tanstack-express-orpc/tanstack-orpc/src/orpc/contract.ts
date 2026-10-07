@@ -39,14 +39,14 @@ import { openapi } from "@orpc/openapi";
 import { z } from "zod";
 
 import {
-  CommentSchema,
-  DashboardDataSchema,
-  MutationResultSchema,
-  ProjectSchema,
-  ProjectTaskRowSchema,
-  TaskRowSchema,
-  TaskSchema,
-  UserSchema,
+	CommentSchema,
+	DashboardDataSchema,
+	MutationResultSchema,
+	ProjectSchema,
+	ProjectTaskRowSchema,
+	TaskRowSchema,
+	TaskSchema,
+	UserSchema,
 } from "./schemas.ts";
 
 /** One field of a form bag: a string, present or not. */
@@ -57,60 +57,60 @@ const field = z.string().nullish();
 // ---------------------------------------------------------------------------
 
 export const usersContract = {
-  list: oc
-    .meta(openapi({ method: "GET", path: "/users", summary: "List people" }))
-    .input(z.object({ q: z.string().optional() }).optional())
-    .output(z.array(UserSchema)),
+	list: oc
+		.meta(openapi({ method: "GET", path: "/users", summary: "List people" }))
+		.input(z.object({ q: z.string().optional() }).optional())
+		.output(z.array(UserSchema)),
 
-  byId: oc
-    .meta(
-      openapi({ method: "GET", path: "/users/{id}", summary: "One person" }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    // NOT_FOUND when no row matches, thrown by the router — the output is
-    // the row itself, so a client cannot render a missing member by accident.
-    .output(UserSchema),
+	byId: oc
+		.meta(
+			openapi({ method: "GET", path: "/users/{id}", summary: "One person" }),
+		)
+		.input(z.object({ id: z.number().int() }))
+		// NOT_FOUND when no row matches, thrown by the router — the output is
+		// the row itself, so a client cannot render a missing member by accident.
+		.output(UserSchema),
 
-  /** The tasks assigned to one member, scoped by assignee_id rather than name. */
-  tasks: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/users/{id}/tasks",
-        summary: "Tasks assigned to a person",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(z.array(TaskSchema)),
+	/** The tasks assigned to one member, scoped by assignee_id rather than name. */
+	tasks: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/users/{id}/tasks",
+				summary: "Tasks assigned to a person",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(z.array(TaskSchema)),
 
-  create: oc
-    .meta(
-      openapi({ method: "POST", path: "/users", summary: "Create a person" }),
-    )
-    .input(z.object({ name: field, email: field }))
-    .output(MutationResultSchema),
+	create: oc
+		.meta(
+			openapi({ method: "POST", path: "/users", summary: "Create a person" }),
+		)
+		.input(z.object({ name: field, email: field }))
+		.output(MutationResultSchema),
 
-  update: oc
-    .meta(
-      openapi({
-        method: "PATCH",
-        path: "/users/{id}",
-        summary: "Update a person",
-      }),
-    )
-    .input(z.object({ id: z.number().int(), name: field, email: field }))
-    .output(MutationResultSchema),
+	update: oc
+		.meta(
+			openapi({
+				method: "PATCH",
+				path: "/users/{id}",
+				summary: "Update a person",
+			}),
+		)
+		.input(z.object({ id: z.number().int(), name: field, email: field }))
+		.output(MutationResultSchema),
 
-  remove: oc
-    .meta(
-      openapi({
-        method: "DELETE",
-        path: "/users/{id}",
-        summary: "Delete a person",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(MutationResultSchema),
+	remove: oc
+		.meta(
+			openapi({
+				method: "DELETE",
+				path: "/users/{id}",
+				summary: "Delete a person",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(MutationResultSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -118,79 +118,79 @@ export const usersContract = {
 // ---------------------------------------------------------------------------
 
 export const projectsContract = {
-  list: oc
-    .meta(
-      openapi({ method: "GET", path: "/projects", summary: "List projects" }),
-    )
-    .input(z.object({ q: z.string().optional() }).optional())
-    .output(z.array(ProjectSchema)),
+	list: oc
+		.meta(
+			openapi({ method: "GET", path: "/projects", summary: "List projects" }),
+		)
+		.input(z.object({ q: z.string().optional() }).optional())
+		.output(z.array(ProjectSchema)),
 
-  byId: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/projects/{id}",
-        summary: "One project",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(ProjectSchema),
+	byId: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/projects/{id}",
+				summary: "One project",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(ProjectSchema),
 
-  /**
-   * One page of a project's board. The status and cursor stay optional so a
-   * page can ask for "the first page of everything" without naming every
-   * filter.
-   */
-  tasks: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/projects/{id}/tasks",
-        summary: "A page of a project's task board",
-      }),
-    )
-    .input(
-      z.object({
-        id: z.number().int(),
-        status: field,
-        cursor: field,
-        limit: z.number().int().nullish(),
-      }),
-    )
-    .output(z.array(ProjectTaskRowSchema)),
+	/**
+	 * One page of a project's board. The status and cursor stay optional so a
+	 * page can ask for "the first page of everything" without naming every
+	 * filter.
+	 */
+	tasks: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/projects/{id}/tasks",
+				summary: "A page of a project's task board",
+			}),
+		)
+		.input(
+			z.object({
+				id: z.number().int(),
+				status: field,
+				cursor: field,
+				limit: z.number().int().nullish(),
+			}),
+		)
+		.output(z.array(ProjectTaskRowSchema)),
 
-  create: oc
-    .meta(
-      openapi({
-        method: "POST",
-        path: "/projects",
-        summary: "Create a project",
-      }),
-    )
-    .input(z.object({ name: field, description: field }))
-    .output(MutationResultSchema),
+	create: oc
+		.meta(
+			openapi({
+				method: "POST",
+				path: "/projects",
+				summary: "Create a project",
+			}),
+		)
+		.input(z.object({ name: field, description: field }))
+		.output(MutationResultSchema),
 
-  update: oc
-    .meta(
-      openapi({
-        method: "PATCH",
-        path: "/projects/{id}",
-        summary: "Update a project",
-      }),
-    )
-    .input(z.object({ id: z.number().int(), name: field, description: field }))
-    .output(MutationResultSchema),
+	update: oc
+		.meta(
+			openapi({
+				method: "PATCH",
+				path: "/projects/{id}",
+				summary: "Update a project",
+			}),
+		)
+		.input(z.object({ id: z.number().int(), name: field, description: field }))
+		.output(MutationResultSchema),
 
-  remove: oc
-    .meta(
-      openapi({
-        method: "DELETE",
-        path: "/projects/{id}",
-        summary: "Delete a project",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(MutationResultSchema),
+	remove: oc
+		.meta(
+			openapi({
+				method: "DELETE",
+				path: "/projects/{id}",
+				summary: "Delete a project",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(MutationResultSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -205,155 +205,155 @@ export const projectsContract = {
  * count that disagrees with the rows beneath it.
  */
 const TaskFilterInput = z.object({
-  q: field,
-  status: field,
-  projectId: z.number().int().nullish(),
-  assigneeId: z.number().int().nullish(),
+	q: field,
+	status: field,
+	projectId: z.number().int().nullish(),
+	assigneeId: z.number().int().nullish(),
 });
 
 export const tasksContract = {
-  list: oc
-    .meta(openapi({ method: "GET", path: "/tasks", summary: "List tasks" }))
-    .input(
-      TaskFilterInput.extend({
-        cursor: field,
-        limit: z.number().int().nullish(),
-      }),
-    )
-    .output(z.array(TaskRowSchema)),
+	list: oc
+		.meta(openapi({ method: "GET", path: "/tasks", summary: "List tasks" }))
+		.input(
+			TaskFilterInput.extend({
+				cursor: field,
+				limit: z.number().int().nullish(),
+			}),
+		)
+		.output(z.array(TaskRowSchema)),
 
-  /**
-   * The total matching the same filters `list` applies. A separate aggregate
-   * on purpose: a window COUNT would force Postgres to materialise every
-   * matching row before discarding all but the first page. Returns the bare
-   * number — the RPC reply is the value, not a `{ count }` wrapper a second
-   * module has to unwrap.
-   */
-  count: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/tasks/count",
-        summary: "Total tasks matching a filter",
-      }),
-    )
-    .input(TaskFilterInput)
-    .output(z.number().int()),
+	/**
+	 * The total matching the same filters `list` applies. A separate aggregate
+	 * on purpose: a window COUNT would force Postgres to materialise every
+	 * matching row before discarding all but the first page. Returns the bare
+	 * number — the RPC reply is the value, not a `{ count }` wrapper a second
+	 * module has to unwrap.
+	 */
+	count: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/tasks/count",
+				summary: "Total tasks matching a filter",
+			}),
+		)
+		.input(TaskFilterInput)
+		.output(z.number().int()),
 
-  byId: oc
-    .meta(openapi({ method: "GET", path: "/tasks/{id}", summary: "One task" }))
-    .input(z.object({ id: z.number().int() }))
-    .output(TaskSchema),
+	byId: oc
+		.meta(openapi({ method: "GET", path: "/tasks/{id}", summary: "One task" }))
+		.input(z.object({ id: z.number().int() }))
+		.output(TaskSchema),
 
-  /** The most recent comments on one task; spec/queries.md caps the read at 10. */
-  comments: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/tasks/{id}/comments",
-        summary: "A task's comments, newest first",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(z.array(CommentSchema)),
+	/** The most recent comments on one task; spec/queries.md caps the read at 10. */
+	comments: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/tasks/{id}/comments",
+				summary: "A task's comments, newest first",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(z.array(CommentSchema)),
 
-  create: oc
-    .meta(openapi({ method: "POST", path: "/tasks", summary: "Create a task" }))
-    .input(
-      z.object({
-        projectId: field,
-        assigneeId: field,
-        title: field,
-        description: field,
-        status: field,
-      }),
-    )
-    .output(MutationResultSchema),
+	create: oc
+		.meta(openapi({ method: "POST", path: "/tasks", summary: "Create a task" }))
+		.input(
+			z.object({
+				projectId: field,
+				assigneeId: field,
+				title: field,
+				description: field,
+				status: field,
+			}),
+		)
+		.output(MutationResultSchema),
 
-  /**
-   * Create a task and its first comment in one round-trip.
-   *
-   * The form collects both, and doing it as two procedures would leave a task
-   * without its comment if the second write failed.
-   */
-  createWithComment: oc
-    .meta(
-      openapi({
-        method: "POST",
-        path: "/tasks/with-comment",
-        summary: "Create a task together with its first comment",
-      }),
-    )
-    .input(
-      z.object({
-        projectId: field,
-        assigneeId: field,
-        title: field,
-        description: field,
-        status: field,
-        commentBody: field,
-        commentAuthorId: field,
-      }),
-    )
-    .output(MutationResultSchema),
+	/**
+	 * Create a task and its first comment in one round-trip.
+	 *
+	 * The form collects both, and doing it as two procedures would leave a task
+	 * without its comment if the second write failed.
+	 */
+	createWithComment: oc
+		.meta(
+			openapi({
+				method: "POST",
+				path: "/tasks/with-comment",
+				summary: "Create a task together with its first comment",
+			}),
+		)
+		.input(
+			z.object({
+				projectId: field,
+				assigneeId: field,
+				title: field,
+				description: field,
+				status: field,
+				commentBody: field,
+				commentAuthorId: field,
+			}),
+		)
+		.output(MutationResultSchema),
 
-  // No `projectId`, deliberately. The contract lists the update form's fields
-  // as title, status, assignee and description only, so accepting one here
-  // would allow moving a task behind a form that never offers the choice.
-  update: oc
-    .meta(
-      openapi({
-        method: "PATCH",
-        path: "/tasks/{id}",
-        summary: "Update a task",
-      }),
-    )
-    .input(
-      z.object({
-        id: z.number().int(),
-        title: field,
-        description: field,
-        status: field,
-        assigneeId: field,
-      }),
-    )
-    .output(MutationResultSchema),
+	// No `projectId`, deliberately. The contract lists the update form's fields
+	// as title, status, assignee and description only, so accepting one here
+	// would allow moving a task behind a form that never offers the choice.
+	update: oc
+		.meta(
+			openapi({
+				method: "PATCH",
+				path: "/tasks/{id}",
+				summary: "Update a task",
+			}),
+		)
+		.input(
+			z.object({
+				id: z.number().int(),
+				title: field,
+				description: field,
+				status: field,
+				assigneeId: field,
+			}),
+		)
+		.output(MutationResultSchema),
 
-  remove: oc
-    .meta(
-      openapi({
-        method: "DELETE",
-        path: "/tasks/{id}",
-        summary: "Delete a task",
-      }),
-    )
-    .input(z.object({ id: z.number().int() }))
-    .output(MutationResultSchema),
+	remove: oc
+		.meta(
+			openapi({
+				method: "DELETE",
+				path: "/tasks/{id}",
+				summary: "Delete a task",
+			}),
+		)
+		.input(z.object({ id: z.number().int() }))
+		.output(MutationResultSchema),
 
-  /**
-   * Comment on an existing task.
-   *
-   * The field names are the form's own (`body`/`authorId`), not the
-   * with-comment form's (`commentBody`/`commentAuthorId`): the API keys its
-   * validation errors by the names the caller actually sent, so the form that
-   * renders those errors must submit the same spelling.
-   */
-  addComment: oc
-    .meta(
-      openapi({
-        method: "POST",
-        path: "/tasks/{id}/comments",
-        summary: "Comment on a task",
-      }),
-    )
-    .input(
-      z.object({
-        id: z.number().int(),
-        body: field,
-        authorId: field,
-      }),
-    )
-    .output(MutationResultSchema),
+	/**
+	 * Comment on an existing task.
+	 *
+	 * The field names are the form's own (`body`/`authorId`), not the
+	 * with-comment form's (`commentBody`/`commentAuthorId`): the API keys its
+	 * validation errors by the names the caller actually sent, so the form that
+	 * renders those errors must submit the same spelling.
+	 */
+	addComment: oc
+		.meta(
+			openapi({
+				method: "POST",
+				path: "/tasks/{id}/comments",
+				summary: "Comment on a task",
+			}),
+		)
+		.input(
+			z.object({
+				id: z.number().int(),
+				body: field,
+				authorId: field,
+			}),
+		)
+		.output(MutationResultSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -361,16 +361,16 @@ export const tasksContract = {
 // ---------------------------------------------------------------------------
 
 export const dashboardContract = {
-  /** The dashboard aggregate: stats, recent tasks and the busiest projects. */
-  get: oc
-    .meta(
-      openapi({
-        method: "GET",
-        path: "/dashboard",
-        summary: "The dashboard's three sections, in one reply",
-      }),
-    )
-    .output(DashboardDataSchema),
+	/** The dashboard aggregate: stats, recent tasks and the busiest projects. */
+	get: oc
+		.meta(
+			openapi({
+				method: "GET",
+				path: "/dashboard",
+				summary: "The dashboard's three sections, in one reply",
+			}),
+		)
+		.output(DashboardDataSchema),
 };
 
 // ---------------------------------------------------------------------------
@@ -384,10 +384,10 @@ export const dashboardContract = {
  * API's router serves.
  */
 export const contract = {
-  users: usersContract,
-  tasks: tasksContract,
-  projects: projectsContract,
-  dashboard: dashboardContract,
+	users: usersContract,
+	tasks: tasksContract,
+	projects: projectsContract,
+	dashboard: dashboardContract,
 };
 
 export type AppContract = typeof contract;

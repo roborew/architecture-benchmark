@@ -12,9 +12,9 @@
 // testid. Throwing rather than returning matters: it unwinds the loader, so
 // nothing renders on a bad id.
 
+import { ORPCError } from "@orpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ORPCError } from "@orpc/client";
 import { UserForm } from "@/components/users/user-form";
 import { UsersError, UsersRouteError } from "@/components/users/users-error";
 import { userQueryOptions } from "@/queries/users-query";
@@ -35,7 +35,8 @@ export const Route = createFileRoute("/users/$id/edit")({
 			// The API answers NOT_FOUND for a missing row: the same not-found page the
 			// NaN id produced. Anything else (the API unreachable, a 5xx) is a
 			// real error and propagates to the errorComponent.
-			if (error instanceof ORPCError && error.code === "NOT_FOUND") throw notFound();
+			if (error instanceof ORPCError && error.code === "NOT_FOUND")
+				throw notFound();
 			throw error;
 		}
 	},

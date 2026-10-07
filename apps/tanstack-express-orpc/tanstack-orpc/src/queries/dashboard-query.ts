@@ -14,5 +14,5 @@
 import { orpc } from "@/orpc/client";
 
 export function dashboardQueryOptions() {
-  return orpc.dashboard.get.queryOptions();
+	return orpc.dashboard.get.queryOptions();
 }

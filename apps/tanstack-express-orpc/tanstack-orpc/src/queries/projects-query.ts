@@ -16,34 +16,34 @@ import { orpc } from "@/orpc/client";
 
 /** The filters a project board's task list accepts. */
 export type ProjectTaskQuery = {
-  /** A single stored status, or absent for every status. */
-  status?: string;
-  /** The keyset cursor the previous page ended on; absent means the first page. */
-  cursor?: string | null;
-  /** Page size; the API clamps it to [1, 26] as the reference does. */
-  limit?: number;
+	/** A single stored status, or absent for every status. */
+	status?: string;
+	/** The keyset cursor the previous page ended on; absent means the first page. */
+	cursor?: string | null;
+	/** Page size; the API clamps it to [1, 26] as the reference does. */
+	limit?: number;
 };
 
 export function projectsQueryOptions(term = "") {
-  return orpc.projects.list.queryOptions({
-    input: { q: term || undefined },
-  });
+	return orpc.projects.list.queryOptions({
+		input: { q: term || undefined },
+	});
 }
 
 export function projectQueryOptions(id: number) {
-  return orpc.projects.byId.queryOptions({ input: { id } });
+	return orpc.projects.byId.queryOptions({ input: { id } });
 }
 
 export function projectTasksQueryOptions(
-  projectId: number,
-  filters: ProjectTaskQuery = {},
+	projectId: number,
+	filters: ProjectTaskQuery = {},
 ) {
-  return orpc.projects.tasks.queryOptions({
-    input: {
-      id: projectId,
-      status: filters.status || undefined,
-      cursor: filters.cursor ?? undefined,
-      limit: filters.limit ?? undefined,
-    },
-  });
+	return orpc.projects.tasks.queryOptions({
+		input: {
+			id: projectId,
+			status: filters.status || undefined,
+			cursor: filters.cursor ?? undefined,
+			limit: filters.limit ?? undefined,
+		},
+	});
 }

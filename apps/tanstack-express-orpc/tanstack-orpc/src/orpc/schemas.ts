@@ -34,25 +34,25 @@ export const TaskStatusSchema = z.enum(["todo", "in progress", "done"]);
 
 /** Mirrors `User`. */
 export const UserSchema = z.object({
-  id: z.number().int(),
-  name: z.string(),
-  email: z.string(),
-  assignedTaskCount: z.number().int(),
-  openTaskCount: z.number().int(),
-  commentCount: z.number().int(),
+	id: z.number().int(),
+	name: z.string(),
+	email: z.string(),
+	assignedTaskCount: z.number().int(),
+	openTaskCount: z.number().int(),
+	commentCount: z.number().int(),
 });
 
 /** Mirrors `Task` — a task joined with its project and assignee names. */
 export const TaskSchema = z.object({
-  id: z.number().int(),
-  projectId: z.number().int(),
-  projectName: z.string(),
-  title: z.string(),
-  description: z.string(),
-  status: TaskStatusSchema,
-  assigneeName: z.string(),
-  commentCount: z.number().int(),
-  updatedAt: z.string(),
+	id: z.number().int(),
+	projectId: z.number().int(),
+	projectName: z.string(),
+	title: z.string(),
+	description: z.string(),
+	status: TaskStatusSchema,
+	assigneeName: z.string(),
+	commentCount: z.number().int(),
+	updatedAt: z.string(),
 });
 
 /**
@@ -62,9 +62,9 @@ export const TaskSchema = z.object({
  * and the list is ordered by `updated_at`.
  */
 export const TaskRowSchema = TaskSchema.extend({
-  /** Opaque `(updated_at, id)` keyset; the next page starts after it. */
-  cursorFor: z.string(),
-  updatedAtRaw: z.string(),
+	/** Opaque `(updated_at, id)` keyset; the next page starts after it. */
+	cursorFor: z.string(),
+	updatedAtRaw: z.string(),
 });
 
 /**
@@ -75,67 +75,67 @@ export const TaskRowSchema = TaskSchema.extend({
  * merged schema with both optional would stop asserting either.
  */
 export const ProjectTaskRowSchema = TaskSchema.extend({
-  /** Opaque `(created_at, id)` keyset; the next page starts after it. */
-  cursorFor: z.string(),
-  createdAtRaw: z.string(),
+	/** Opaque `(created_at, id)` keyset; the next page starts after it. */
+	cursorFor: z.string(),
+	createdAtRaw: z.string(),
 });
 
 /** Mirrors `Comment`. */
 export const CommentSchema = z.object({
-  id: z.number().int(),
-  taskId: z.number().int(),
-  authorName: z.string(),
-  body: z.string(),
-  createdAt: z.string(),
+	id: z.number().int(),
+	taskId: z.number().int(),
+	authorName: z.string(),
+	body: z.string(),
+	createdAt: z.string(),
 });
 
 /** Mirrors `Project`. */
 export const ProjectSchema = z.object({
-  id: z.number().int(),
-  name: z.string(),
-  description: z.string(),
-  taskCount: z.number().int(),
-  openTaskCount: z.number().int(),
-  peopleCount: z.number().int(),
-  createdAt: z.string(),
+	id: z.number().int(),
+	name: z.string(),
+	description: z.string(),
+	taskCount: z.number().int(),
+	openTaskCount: z.number().int(),
+	peopleCount: z.number().int(),
+	createdAt: z.string(),
 });
 
 /** Mirrors `DashboardStats`. */
 export const DashboardStatsSchema = z.object({
-  projectCount: z.number().int(),
-  totalTasks: z.number().int(),
-  openTasks: z.number().int(),
-  peopleCount: z.number().int(),
-  todoTasks: z.number().int(),
-  inProgressTasks: z.number().int(),
-  doneTasks: z.number().int(),
+	projectCount: z.number().int(),
+	totalTasks: z.number().int(),
+	openTasks: z.number().int(),
+	peopleCount: z.number().int(),
+	todoTasks: z.number().int(),
+	inProgressTasks: z.number().int(),
+	doneTasks: z.number().int(),
 });
 
 /** Mirrors `DashboardTask` — the recent-tasks table's slimmer row. */
 export const DashboardTaskSchema = z.object({
-  id: z.number().int(),
-  title: z.string(),
-  projectName: z.string(),
-  status: TaskStatusSchema,
-  assigneeName: z.string(),
-  updatedAt: z.string(),
+	id: z.number().int(),
+	title: z.string(),
+	projectName: z.string(),
+	status: TaskStatusSchema,
+	assigneeName: z.string(),
+	updatedAt: z.string(),
 });
 
 /** Mirrors `DashboardProject` — the dashboard card, without the creation date. */
 export const DashboardProjectSchema = z.object({
-  id: z.number().int(),
-  name: z.string(),
-  description: z.string(),
-  taskCount: z.number().int(),
-  openTaskCount: z.number().int(),
-  peopleCount: z.number().int(),
+	id: z.number().int(),
+	name: z.string(),
+	description: z.string(),
+	taskCount: z.number().int(),
+	openTaskCount: z.number().int(),
+	peopleCount: z.number().int(),
 });
 
 /** Mirrors `DashboardData` — the dashboard aggregate, one reply for the page. */
 export const DashboardDataSchema = z.object({
-  stats: DashboardStatsSchema,
-  recentTasks: z.array(DashboardTaskSchema),
-  projects: z.array(DashboardProjectSchema),
+	stats: DashboardStatsSchema,
+	recentTasks: z.array(DashboardTaskSchema),
+	projects: z.array(DashboardProjectSchema),
 });
 
 /**
@@ -147,8 +147,8 @@ export const DashboardDataSchema = z.object({
  * schema (`Record<string, string[]>`) would reject every failed write.
  */
 export const FieldErrorsSchema = z.record(
-  z.string(),
-  z.array(z.string()).optional(),
+	z.string(),
+	z.array(z.string()).optional(),
 );
 
 /**
@@ -159,7 +159,7 @@ export const FieldErrorsSchema = z.record(
  * `redirectTo` (adding a comment) means: stay on this page and refresh.
  */
 export const MutationResultSchema = z.object({
-  ok: z.literal(true),
-  message: z.string().optional(),
-  redirectTo: z.string().optional(),
+	ok: z.literal(true),
+	message: z.string().optional(),
+	redirectTo: z.string().optional(),
 });

@@ -16,27 +16,27 @@ import { usersQueryOptions } from "./users-query";
 // entry, or the prefetch and the read would silently miss each other).
 
 describe("usersQueryOptions", () => {
-  it("delegates to users.list with the term as q", () => {
-    expect(usersQueryOptions("robin").queryKey).toEqual(
-      orpc.users.list.queryOptions({ input: { q: "robin" } }).queryKey,
-    );
-  });
+	it("delegates to users.list with the term as q", () => {
+		expect(usersQueryOptions("robin").queryKey).toEqual(
+			orpc.users.list.queryOptions({ input: { q: "robin" } }).queryKey,
+		);
+	});
 
-  it("treats an absent term and an empty one as the same entry", () => {
-    // The loader passes `q` straight from the search params; an undefined
-    // key part would make "?q=" and "/" different cache entries for the
-    // same server result. The empty value is normalised away — the same
-    // normalisation every listing options object applies — so the spelling
-    // of "no filter" cannot fork the cache.
-    expect(usersQueryOptions().queryKey).toEqual(
-      usersQueryOptions("").queryKey,
-    );
-  });
+	it("treats an absent term and an empty one as the same entry", () => {
+		// The loader passes `q` straight from the search params; an undefined
+		// key part would make "?q=" and "/" different cache entries for the
+		// same server result. The empty value is normalised away — the same
+		// normalisation every listing options object applies — so the spelling
+		// of "no filter" cannot fork the cache.
+		expect(usersQueryOptions().queryKey).toEqual(
+			usersQueryOptions("").queryKey,
+		);
+	});
 
-  it("builds distinct keys for distinct terms", () => {
-    const first = usersQueryOptions("robin").queryKey;
-    const second = usersQueryOptions("sam").queryKey;
+	it("builds distinct keys for distinct terms", () => {
+		const first = usersQueryOptions("robin").queryKey;
+		const second = usersQueryOptions("sam").queryKey;
 
-    expect(first).not.toEqual(second);
-  });
+		expect(first).not.toEqual(second);
+	});
 });

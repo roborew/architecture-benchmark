@@ -1,120 +1,60 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { API_URL } from "./api";
-import {
-	createUser,
-	deleteUser,
-	getUser,
-	getUsers,
-	getUserTasks,
-	updateUser,
-} from "./users";
+import { createUser, deleteUser, updateUser } from "./users";
 
-// The user endpoints, exercised against a stubbed global fetch: the URL each
-// read builds, the rows it returns, and the method, path and JSON body each
-// mutation sends.
+// The write half of the users api, exercised against a stubbed oRPC client:
+// which procedure each mutation reaches, and the input it carries (the form's
+// field bag verbatim, plus the id the caller closed over — under REST the id
+// rode in the URL). The reads (the listing, a member and her tasks) are the
+// query options' own procedures now (src/queries/users-query.ts).
 
-const fetchMock = vi.fn();
+const { usersMock } = vi.hoisted(() => ({
+	usersMock: {
+		create: vi.fn(),
+		update: vi.fn(),
+		remove: vi.fn(),
+	},
+}));
 
-function jsonResponse(body: unknown, status = 200): Response {
-	return {
-		ok: status < 400,
-		status,
-		json: () => Promise.resolve(body),
-	} as Response;
-}
+vi.mock("@/orpc/client", () => ({ client: { users: usersMock } }));
 
 beforeEach(() => {
-	vi.stubGlobal("fetch", fetchMock);
-	fetchMock.mockResolvedValue(jsonResponse([]));
+	for (const fn of Object.values(usersMock)) fn.mockReset();
 });
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-	fetchMock.mockReset();
-});
+describe("createUser", () => {
+	it("sends the form's field bag to users.create, verbatim", async () => {
+		usersMock.create.mockResolvedValue({ ok: true, redirectTo: "/users/4" });
 
-/** The URL and request init of the first call. */
-function firstCall(): [url: string, init: RequestInit | undefined] {
-	return fetchMock.mock.calls[0] as [string, RequestInit | undefined];
-}
+		const values = { name: "New Person", email: "new@example.test" };
 
-describe("reads", () => {
-	it("requests the users endpoint with no query for an empty term", async () => {
-		await getUsers("");
+		await expect(createUser(values)).resolves.toEqual({
+			ok: true,
+			redirectTo: "/users/4",
+		});
 
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users`);
-	});
-
-	it("encodes the search term as the q param", async () => {
-		await getUsers("Robin Andrew");
-
-		const [url] = firstCall();
-		const parsed = new URL(url);
-		expect(parsed.pathname).toBe("/api/users");
-		expect(parsed.searchParams.get("q")).toBe("Robin Andrew");
-	});
-
-	it("returns the parsed rows", async () => {
-		const people = [
-			{
-				id: 1,
-				name: "Robin Andrew",
-				email: "robin@example.test",
-				assignedTaskCount: 2,
-				openTaskCount: 2,
-				commentCount: 1,
-			},
-		];
-		fetchMock.mockResolvedValue(jsonResponse(people));
-
-		await expect(getUsers()).resolves.toEqual(people);
-	});
-
-	it("fetches one user by id", async () => {
-		await getUser(4);
-
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users/4`);
-	});
-
-	it("fetches a user's assigned tasks by id", async () => {
-		await getUserTasks(4);
-
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users/4/tasks`);
+		expect(usersMock.create).toHaveBeenCalledWith(values);
 	});
 });
 
-describe("mutations", () => {
-	beforeEach(() => {
-		fetchMock.mockResolvedValue(
-			jsonResponse({ ok: true, message: "Saved.", redirectTo: "/users/4" }),
-		);
+describe("updateUser", () => {
+	it("sends the field bag plus the id to users.update", async () => {
+		usersMock.update.mockResolvedValue({ ok: true });
+
+		const values = { name: "Renamed", email: "renamed@example.test" };
+
+		await updateUser(1, values);
+
+		expect(usersMock.update).toHaveBeenCalledWith({ id: 1, ...values });
 	});
+});
 
-	it("creates a user with a POST", async () => {
-		await createUser({ name: "Robin", email: "robin@example.test" });
+describe("deleteUser", () => {
+	it("sends the id alone to users.remove", async () => {
+		usersMock.remove.mockResolvedValue({ ok: true });
 
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users`);
-		expect(init?.method).toBe("POST");
-	});
+		await deleteUser(3);
 
-	it("updates a user with a PATCH to its id", async () => {
-		await updateUser(4, { name: "Robin", email: "robin@example.test" });
-
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users/4`);
-		expect(init?.method).toBe("PATCH");
-	});
-
-	it("deletes a user with a DELETE to its id", async () => {
-		await deleteUser(4);
-
-		const [url, init] = firstCall();
-		expect(url).toBe(`${API_URL}/api/users/4`);
-		expect(init?.method).toBe("DELETE");
+		expect(usersMock.remove).toHaveBeenCalledWith({ id: 3 });
 	});
 });

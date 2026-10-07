@@ -1,54 +1,41 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { API_URL } from "./api";
-import { createComment, getComments } from "./comments";
+import { createComment } from "./comments";
 
-// The comment endpoints, exercised against a stubbed global fetch: the
-// bounded recent-comments read, and the add-comment mutation with the
-// endpoint's own field names (`body`/`authorId`).
+// The write half of the comments api, exercised against a stubbed oRPC
+// client: which procedure the mutation reaches, and the input it carries.
+//
+// The field names are the form's own (`body`/`authorId`), not the
+// with-comment form's (`commentBody`/`commentAuthorId`): the API keys its
+// validation errors by the names the caller actually sent, so the form that
+// renders those errors must submit the same spelling. The comments read (the
+// 10 most recent on one task) is the query options' own procedure now
+// (src/queries/comments-query.ts).
 
-const fetchMock = vi.fn();
+const { tasksMock } = vi.hoisted(() => ({
+	tasksMock: {
+		addComment: vi.fn(),
+	},
+}));
 
-function jsonResponse(body: unknown, status = 200): Response {
-	return {
-		ok: status < 400,
-		status,
-		json: () => Promise.resolve(body),
-	} as Response;
-}
+vi.mock("@/orpc/client", () => ({ client: { tasks: tasksMock } }));
 
 beforeEach(() => {
-	vi.stubGlobal("fetch", fetchMock);
-	fetchMock.mockResolvedValue(jsonResponse([]));
+	tasksMock.addComment.mockReset();
 });
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-	fetchMock.mockReset();
-});
+describe("createComment", () => {
+	it("sends the field bag plus the task id to tasks.addComment", async () => {
+		tasksMock.addComment.mockResolvedValue({ ok: true });
 
-/** The URL and request init of the first call. */
-function firstCall(): [url: string, init: RequestInit | undefined] {
-	return fetchMock.mock.calls[0] as [string, RequestInit | undefined];
-}
+		const values = { body: "A note.", authorId: "1" };
 
-describe("comments", () => {
-	it("fetches a task's comments by id", async () => {
-		await getComments(9);
+		await expect(createComment(101, values)).resolves.toEqual({ ok: true });
 
-		const [url] = firstCall();
-		expect(url).toBe(`${API_URL}/api/tasks/9/comments`);
-	});
-
-	it("adds a comment with the endpoint's own field names", async () => {
-		fetchMock.mockResolvedValue(jsonResponse({ ok: true }, 201));
-
-		await createComment(9, { body: "Notes here.", authorId: "4" });
-
-		const [url, init] = firstCall();
-		const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-		expect(url).toBe(`${API_URL}/api/tasks/9/comments`);
-		expect(init?.method).toBe("POST");
-		expect(body).toEqual({ body: "Notes here.", authorId: "4" });
+		expect(tasksMock.addComment).toHaveBeenCalledWith({
+			id: 101,
+			body: "A note.",
+			authorId: "1",
+		});
 	});
 });
