@@ -16,12 +16,18 @@ import { createConnection } from "./db/connection.ts";
 import { mountHealthRoutes } from "./health/health.routes.ts";
 import { errorHandler } from "./middleware/error-handler.ts";
 import { notFound } from "./middleware/not-found.ts";
-import { createUsersController } from "./users/users.controller.ts";
-import { createUsersModel } from "./users/users.model.ts";
-import { createUsersRouter } from "./users/users.routes.ts";
+import { createDashboardController } from "./dashboard/dashboard.controller.ts";
+import { createDashboardModel } from "./dashboard/dashboard.model.ts";
+import { createDashboardRouter } from "./dashboard/dashboard.routes.ts";
+import { createProjectsController } from "./projects/projects.controller.ts";
+import { createProjectsModel } from "./projects/projects.model.ts";
+import { createProjectsRouter } from "./projects/projects.routes.ts";
 import { createTasksRouter } from "./tasks/tasks.routes.ts";
 import { createTasksModel } from "./tasks/tasks.model.ts";
 import { createTasksController } from "./tasks/tasks.controller.ts";
+import { createUsersRouter } from "./users/users.routes.ts";
+import { createUsersModel } from "./users/users.model.ts";
+import { createUsersController } from "./users/users.controller.ts";
 
 export interface CreateAppOptions {
   /**
@@ -56,10 +62,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const usersController = createUsersController(usersModel);
   const tasksModel = createTasksModel(db);
   const tasksController = createTasksController(tasksModel);
+  const projectsModel = createProjectsModel(db);
+  const projectsController = createProjectsController(projectsModel);
+  const dashboardModel = createDashboardModel(db);
+  const dashboardController = createDashboardController(dashboardModel);
 
   mountHealthRoutes(app);
   app.use("/api/users", createUsersRouter(usersController));
   app.use("/api/tasks", createTasksRouter(tasksController));
+  app.use("/api/projects", createProjectsRouter(projectsController));
+  app.use("/api/dashboard", createDashboardRouter(dashboardController));
 
   // Mounted after every route, before the error handler — order is the whole
   // contract of these two.

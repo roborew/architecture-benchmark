@@ -12,7 +12,11 @@ export function createUsersRouter(controller: UsersController): Router {
   const router = Router();
 
   router.get("/", controller.list);
-  router.get("/listy", controller.list);
+  router.get("/:id/tasks", controller.listTasks);
+  router.get("/:id", controller.get);
+  router.post("/", controller.create);
+  router.patch("/:id", controller.update);
+  router.delete("/:id", controller.remove);
 
   return router;
 }
