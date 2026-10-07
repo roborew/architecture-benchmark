@@ -1,194 +1,58 @@
-Welcome to your new TanStack Start app!
+# tanstack-rest
 
-# Getting Started
+The TanStack Query + REST variant of the architecture benchmark: a TanStack
+Router SPA whose every read and write goes through the sibling `fastify-rest`
+API (one directory down) — the browser half of the
+`apps/tanstack-fastify-rest/` pair. It is the same example the
+`apps/tanstack-express-rest/` pair builds, so the two pairs can be compared on
+the backend's architecture alone: this SPA is identical between them, and any
+difference a user can see is a difference in the backend.
 
-To run this application:
+## Run
 
-```bash
-pnpm install
-pnpm dev
+```
+pnpm install          # in both halves of the pair
+cd ../fastify-rest
+echo 'POSTGRES_URL=postgresql://…' > .env
+pnpm db:reset         # apply spec/schema.sql + seed the dev fixture
+pnpm dev              # the API, on http://localhost:4000
+cd ..
+pnpm dev              # the SPA, on http://localhost:3000
 ```
 
-# Building For Production
+The SPA is a separate origin from the API (`VITE_API_URL` overrides where the
+fetch client points, defaulting to `http://localhost:4000`); the API reflects
+the request origin so every cross-origin fetch the browser makes succeeds.
 
-To build this application for production:
+## Architecture
 
-```bash
-pnpm build
-```
+`src/api/` is how the SPA talks to the server: `api.ts` owns the base URL and
+the one `requestJson` every request goes through, where the API's
+`{ error, errors? }` envelope becomes an `ApiError`; the per-feature modules
+(projects, tasks, users, comments, dashboard) own their endpoints. Mutations
+send the form's fields untouched — the server owns every normalisation rule,
+so the client cannot disagree with itself about how a value is spelled.
 
-## Styling
+`src/queries/` turns those endpoints into TanStack Query options; the routes'
+loaders wire them in with `ensureQueryData` so a page paints with data on
+first render, and the components read the same queries through `useQuery`.
+`src/lib/types.ts` mirrors the Fastify API's row shapes one for one, because
+the API is the contract: a row that differed in shape would make one of the
+two wrong about the data.
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+## Tests
 
-### Removing Tailwind CSS
+- `pnpm test:run` — the Vitest suite (jsdom, fetch mocked at the requestJson
+  boundary): the api layer's URLs and error-envelope parsing, the queries'
+  wiring, and every component's rendering, no server needed.
+- `pnpm test:e2e` — the Playwright browser suite: real browser, real Fastify
+  server, real Postgres. Playwright boots both halves of the pair (the
+  `../fastify-rest` webServer on `E2E_API_PORT`, this app's Vite dev server on
+  `E2E_WEB_PORT`), and the browser suite runs against its OWN database — the
+  same `architecture_tanstack_fastify_rest_e2e` the fastify-rest integration
+  suite uses, so both tiers assert against the same shared fixture rows.
+  `pnpm test:e2e:ui` for the interactive runner.
 
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
-
-## Linting & Formatting
-
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
-
-
-```bash
-pnpm lint
-pnpm format
-pnpm check
-```
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+The API surface itself — every endpoint, envelope and message string — is
+`../fastify-rest/README.md`'s table, including the express↔fastify
+architecture comparison.
