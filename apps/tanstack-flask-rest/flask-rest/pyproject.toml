@@ -1,0 +1,24 @@
+[project]
+name = "flask-rest"
+version = "0.1.0"
+description = "The REST API variant of the architecture benchmark: Flask 3 + psycopg2 against the canonical PostgreSQL schema."
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1,<4",
+    "psycopg2-binary>=2.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+# The suite is two halves, like the express variant's vitest projects:
+#   tests/unit        no database — pure validators, cursor, controllers with
+#                     the model layer stubbed.
+#   tests/integration real database — the HTTP surface (blueprints ->
+#                     controllers -> models -> Postgres) through the test
+#                     client, against an isolated per-run database the
+#                     integration conftest creates and drops.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
