@@ -7,8 +7,8 @@ import {
 } from "./tests/e2e/database";
 
 // The suite always runs against its own database, never the developer's. The
-// connection string is derived from express-rest's POSTGRES_URL with only the
-// database name swapped, and is handed to the Express server so it cannot
+// connection string is derived from fastapi-rest's POSTGRES_URL with only the
+// database name swapped, and is handed to the FastAPI server so it cannot
 // disagree about which database is under test.
 const E2E_DATABASE_URL = e2eConnectionString();
 
@@ -36,21 +36,24 @@ export default defineConfig({
 			use: { ...devices["Desktop Chrome"] },
 		},
 	],
-	// Two servers, started before the tests: the Express API the browser
+	// Two servers, started before the tests: the FastAPI API the browser
 	// fetches from, and the Vite dev server that serves the app. Playwright
 	// starts web servers *before* globalSetup creates the database, so the
-	// Express wait URL is /healthz, which deliberately never touches the
+	// uvicorn wait URL is /healthz, which deliberately never touches the
 	// database.
 	webServer: [
 		{
-			command: "pnpm start",
-			cwd: "../express-rest",
+			// uvicorn loads the app factory (`--factory`), which reads
+			// POSTGRES_URL at startup — the same factory every other entry
+			// point uses. The app's .venv is the environment that owns
+			// fastapi/psycopg.
+			command: `.venv/bin/python -m uvicorn app.main:create_app --factory --port ${E2E_API_PORT}`,
+			cwd: "../fastapi-rest",
 			url: `http://localhost:${E2E_API_PORT}/healthz`,
 			// Never reuse an already-running dev server: it would be serving the
 			// developer's database rather than the isolated e2e one.
 			reuseExistingServer: false,
 			env: {
-				PORT: String(E2E_API_PORT),
 				POSTGRES_URL: E2E_DATABASE_URL,
 			},
 		},

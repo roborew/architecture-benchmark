@@ -1,6 +1,6 @@
 // src/lib/types.ts
 //
-// The row shapes the Express API returns. They mirror the reference variant's
+// The row shapes the FastAPI API returns. They mirror the reference variant's
 // types (apps/tanstack-start-react/src/lib/types.ts) one for one, because both
 // apps read the same database through the same projections — a row that
 // differed in shape between the two would make one of them wrong about the
