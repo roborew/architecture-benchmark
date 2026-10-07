@@ -9,7 +9,7 @@ import { env } from "./config/env.ts";
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
-  console.log(`[express-rest] listening on http://localhost:${env.PORT}`);
+  console.log(`[express-orpc] listening on http://localhost:${env.PORT}`);
 });
 
 // Graceful shutdown: stop accepting connections, let in-flight requests

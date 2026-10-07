@@ -1,19 +1,20 @@
 // tests/integration/projects.routes.integration.test.ts
 //
-// The /api/projects surface — the reads behind the project listing and board
-// pages, and the writes behind the project forms. Exercises the full HTTP
-// stack (routes → controller → model → Postgres) through supertest against
-// the seeded test database, and asserts the exact rows the shared fixture
-// produces so a SQL drift is caught here, not in the browser.
+// The projects procedures — the reads behind the project listing and board
+// pages, and the writes behind the project forms. Exercises the full stack
+// (Express mount → RPCHandler → router → model → Postgres) through an oRPC
+// client against the seeded test database — the same RPCLink transport the
+// SPA's client uses — and asserts the exact rows the shared fixture produces
+// so a SQL drift is caught here, not in the browser.
 //
 // The row shapes and orderings mirror the reference variant (getProjects,
 // getProject, getProjectTasks), including the board's keyset paging over
 // `(created_at, id)`.
 
-import { describe, expect, it } from "vitest";
-import request from "supertest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app.ts";
+import { startRpcServer, stopRpcServer } from "../helpers/rpc-server.ts";
+import type { RpcServer } from "../helpers/rpc-server.ts";
 import { encodeCursor } from "../../src/lib/cursor.ts";
 
 // The seeded fixture (spec/snapshots/correctness), worked through by hand:
@@ -101,36 +102,42 @@ const PROJECT_1_TASKS = [
   cursorFor: encodeCursor(task.createdAtRaw, task.id),
 }));
 
-describe("GET /api/projects", () => {
-  it("returns 200 with a JSON array", async () => {
-    const response = await request(createApp()).get("/api/projects");
+let rpc: RpcServer;
 
-    expect(response.status).toBe(200);
-    expect(response.headers["content-type"]).toMatch(/json/);
-    expect(Array.isArray(response.body)).toBe(true);
+beforeAll(() => {
+  rpc = startRpcServer();
+});
+
+afterAll(async () => {
+  await stopRpcServer(rpc.server);
+});
+
+describe("projects.list", () => {
+  it("resolves to an array", async () => {
+    const projects = await rpc.client.projects.list({});
+
+    expect(Array.isArray(projects)).toBe(true);
   });
 
   it("returns exactly the seeded projects and aggregate columns", async () => {
-    const response = await request(createApp()).get("/api/projects");
+    const projects = await rpc.client.projects.list({});
 
     // toEqual (not toMatchObject): the row shape is the API contract — an
     // extra or missing key is a breaking change for the client that renders it.
-    expect(response.body).toEqual(EXPECTED_PROJECTS);
+    expect(projects).toEqual(EXPECTED_PROJECTS);
   });
 
   it("orders projects by created_at descending, then id descending", async () => {
-    const response = await request(createApp()).get("/api/projects");
+    const projects = await rpc.client.projects.list({});
 
-    expect(response.body.map((project: { id: number }) => project.id)).toEqual([
-      1, 2, 3,
-    ]);
+    expect(projects.map((project) => project.id)).toEqual([1, 2, 3]);
   });
 
   it("matches a project name case-insensitively", async () => {
-    const response = await request(createApp()).get("/api/projects?q=REDESIGN");
+    const projects = await rpc.client.projects.list({ q: "REDESIGN" });
 
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0]).toMatchObject({
+    expect(projects).toHaveLength(1);
+    expect(projects[0]).toMatchObject({
       id: 1,
       name: "Website redesign",
     });
@@ -139,201 +146,161 @@ describe("GET /api/projects", () => {
   it("matches on description as well as name", async () => {
     // "platform" appears in project 3's description and its name; "onboarding"
     // only in project 1's description.
-    const platform = await request(createApp()).get("/api/projects?q=platform");
-    const onboarding = await request(createApp()).get(
-      "/api/projects?q=onboarding",
-    );
+    const platform = await rpc.client.projects.list({ q: "platform" });
+    const onboarding = await rpc.client.projects.list({ q: "onboarding" });
 
-    expect(platform.body.map((p: { id: number }) => p.id)).toEqual([3]);
-    expect(onboarding.body.map((p: { id: number }) => p.id)).toEqual([1]);
+    expect(platform.map((project) => project.id)).toEqual([3]);
+    expect(onboarding.map((project) => project.id)).toEqual([1]);
   });
 
   it("treats LIKE wildcards in the term as literal characters", async () => {
-    const percent = await request(createApp()).get("/api/projects?q=%");
-    const underscore = await request(createApp()).get("/api/projects?q=_");
+    const percent = await rpc.client.projects.list({ q: "%" });
+    const underscore = await rpc.client.projects.list({ q: "_" });
 
-    expect(percent.body).toEqual([]);
-    expect(underscore.body).toEqual([]);
-  });
-
-  it("returns 400 when q is repeated", async () => {
-    const response = await request(createApp()).get(
-      "/api/projects?q=redesign&q=migration",
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: "q must be a single value" });
+    expect(percent).toEqual([]);
+    expect(underscore).toEqual([]);
   });
 });
 
-describe("GET /api/projects/:id", () => {
+describe("projects.byId", () => {
   it("returns exactly the project row", async () => {
-    const response = await request(createApp()).get("/api/projects/2");
+    const project = await rpc.client.projects.byId({ id: 2 });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(EXPECTED_PROJECTS[1]);
+    expect(project).toEqual(EXPECTED_PROJECTS[1]);
   });
 
-  it("returns the plain 404 envelope for an unknown id", async () => {
-    const response = await request(createApp()).get("/api/projects/999");
-
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: "Not found" });
-  });
-
-  it("returns 400 for an id that cannot name a row", async () => {
-    const response = await request(createApp()).get("/api/projects/abc");
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: "id must be a positive integer" });
+  it("rejects with the plain not-found envelope for an unknown id", async () => {
+    await expect(rpc.client.projects.byId({ id: 999 })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      data: { error: "Not found" },
+    });
   });
 });
 
-describe("GET /api/projects/:id/tasks", () => {
+describe("projects.tasks", () => {
   it("returns the board's rows with their cursor fields", async () => {
-    const response = await request(createApp()).get("/api/projects/1/tasks");
+    const tasks = await rpc.client.projects.tasks({ id: 1 });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(PROJECT_1_TASKS);
+    expect(tasks).toEqual(PROJECT_1_TASKS);
   });
 
   it("orders the board by created_at descending, then id descending", async () => {
-    const response = await request(createApp()).get("/api/projects/1/tasks");
+    const tasks = await rpc.client.projects.tasks({ id: 1 });
 
-    expect(response.body.map((task: { id: number }) => task.id)).toEqual([
-      101, 102, 103,
-    ]);
+    expect(tasks.map((task) => task.id)).toEqual([101, 102, 103]);
   });
 
   it("returns an empty board for an unknown project", async () => {
     // Mirror getProjectTasks: the board of a project that has no tasks — or
     // that no longer exists — is empty, not an error.
-    const response = await request(createApp()).get("/api/projects/999/tasks");
+    const tasks = await rpc.client.projects.tasks({ id: 999 });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual([]);
+    expect(tasks).toEqual([]);
   });
 
   it("filters the board by status", async () => {
-    const todo = await request(createApp()).get(
-      "/api/projects/1/tasks?status=todo",
-    );
-    const done = await request(createApp()).get(
-      "/api/projects/1/tasks?status=done",
-    );
+    const todo = await rpc.client.projects.tasks({ id: 1, status: "todo" });
+    const done = await rpc.client.projects.tasks({ id: 1, status: "done" });
 
-    expect(todo.body.map((task: { id: number }) => task.id)).toEqual([102]);
-    expect(done.body.map((task: { id: number }) => task.id)).toEqual([103]);
+    expect(todo.map((task) => task.id)).toEqual([102]);
+    expect(done.map((task) => task.id)).toEqual([103]);
   });
 
-  it("returns 400 with the reference's message for an unknown status", async () => {
-    const response = await request(createApp()).get(
-      "/api/projects/1/tasks?status=shipped",
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: "Unknown task status: shipped" });
+  it("rejects with the reference's message for an unknown status", async () => {
+    await expect(
+      rpc.client.projects.tasks({ id: 1, status: "shipped" }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: { error: "Unknown task status: shipped" },
+    });
   });
 
   it("pages the board by keyset over (created_at, id)", async () => {
-    const first = await request(createApp()).get(
-      "/api/projects/1/tasks?limit=2",
-    );
+    const first = await rpc.client.projects.tasks({ id: 1, limit: 2 });
 
-    expect(first.body.map((task: { id: number }) => task.id)).toEqual([
-      101, 102,
-    ]);
+    expect(first.map((task) => task.id)).toEqual([101, 102]);
 
     // The last row's cursorFor is the (created_at, id) tuple the next page
     // starts after.
-    const cursor = first.body[1].cursorFor;
-    const second = await request(createApp()).get(
-      `/api/projects/1/tasks?limit=2&cursor=${encodeURIComponent(cursor)}`,
-    );
+    const cursor = first[1].cursorFor;
+    const second = await rpc.client.projects.tasks({
+      id: 1,
+      limit: 2,
+      cursor,
+    });
 
-    expect(second.body.map((task: { id: number }) => task.id)).toEqual([103]);
+    expect(second.map((task) => task.id)).toEqual([103]);
   });
 
   it("is stable and repeatable: the same cursor yields the same page", async () => {
-    const first = await request(createApp()).get(
-      "/api/projects/1/tasks?limit=1",
-    );
-    const cursor = first.body[0].cursorFor;
-    const url = `/api/projects/1/tasks?limit=2&cursor=${encodeURIComponent(cursor)}`;
+    const first = await rpc.client.projects.tasks({ id: 1, limit: 1 });
+    const cursor = first[0].cursorFor;
 
-    const second = await request(createApp()).get(url);
-    const third = await request(createApp()).get(url);
+    const second = await rpc.client.projects.tasks({
+      id: 1,
+      limit: 2,
+      cursor,
+    });
+    const third = await rpc.client.projects.tasks({
+      id: 1,
+      limit: 2,
+      cursor,
+    });
 
     // spec/queries.md: the cursor "must be stable and repeatable".
-    expect(second.body).toEqual(third.body);
-    expect(second.body.map((task: { id: number }) => task.id)).toEqual([
-      102, 103,
-    ]);
+    expect(second).toEqual(third);
+    expect(second.map((task) => task.id)).toEqual([102, 103]);
   });
 
   it("keeps the status filter while paging", async () => {
-    const first = await request(createApp()).get(
-      "/api/projects/1/tasks?status=todo&limit=1",
-    );
+    const first = await rpc.client.projects.tasks({
+      id: 1,
+      status: "todo",
+      limit: 1,
+    });
 
-    expect(first.body.map((task: { id: number }) => task.id)).toEqual([102]);
+    expect(first.map((task) => task.id)).toEqual([102]);
 
     // The cursor must not silently reset the filter: the next page is the
     // NEXT TODO TASK, not the next task.
-    const cursor = first.body[0].cursorFor;
-    const second = await request(createApp()).get(
-      `/api/projects/1/tasks?status=todo&limit=1&cursor=${encodeURIComponent(cursor)}`,
-    );
+    const cursor = first[0].cursorFor;
+    const second = await rpc.client.projects.tasks({
+      id: 1,
+      status: "todo",
+      limit: 1,
+      cursor,
+    });
 
-    expect(second.body).toEqual([]);
+    expect(second).toEqual([]);
   });
 
   it("reads the first page for a cursor nothing could have produced", async () => {
-    const response = await request(createApp()).get(
-      "/api/projects/1/tasks?cursor=!!!!",
-    );
+    const tasks = await rpc.client.projects.tasks({ id: 1, cursor: "!!!!" });
 
-    expect(response.status).toBe(200);
-    expect(response.body.map((task: { id: number }) => task.id)).toEqual([
-      101, 102, 103,
-    ]);
+    expect(tasks.map((task) => task.id)).toEqual([101, 102, 103]);
   });
 
   it("clamps the limit to [1, 26] like the reference", async () => {
-    const zero = await request(createApp()).get(
-      "/api/projects/1/tasks?limit=0",
-    );
+    const zero = await rpc.client.projects.tasks({ id: 1, limit: 0 });
 
-    expect(zero.body).toHaveLength(1);
+    expect(zero).toHaveLength(1);
 
-    const huge = await request(createApp()).get(
-      "/api/projects/1/tasks?limit=99",
-    );
+    const huge = await rpc.client.projects.tasks({ id: 1, limit: 99 });
 
     // Three tasks in the project: the ceiling only shows once the fixture
     // outgrows it.
-    expect(huge.body).toHaveLength(3);
-  });
-
-  it("returns 400 for a non-integer limit", async () => {
-    const response = await request(createApp()).get(
-      "/api/projects/1/tasks?limit=many",
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: "limit must be an integer" });
+    expect(huge).toHaveLength(3);
   });
 });
 
-describe("POST /api/projects", () => {
+describe("projects.create", () => {
   it("creates the project and redirects to its board", async () => {
-    const response = await request(createApp()).post("/api/projects").send({
+    const result = await rpc.client.projects.create({
       name: "Accessibility audit",
       description: "Audit every surface against WCAG AA.",
     });
 
-    expect(response.status).toBe(201);
-    expect(response.body).toEqual({
+    expect(result).toEqual({
       ok: true,
       message: "Project created.",
       redirectTo: "/projects/4",
@@ -341,10 +308,9 @@ describe("POST /api/projects", () => {
 
     // A persisted id must have been allocated: the redirect target resolves to
     // the committed row, with a fresh project's empty aggregates.
-    const detail = await request(createApp()).get("/api/projects/4");
+    const detail = await rpc.client.projects.byId({ id: 4 });
 
-    expect(detail.status).toBe(200);
-    expect(detail.body).toEqual({
+    expect(detail).toEqual({
       id: 4,
       name: "Accessibility audit",
       description: "Audit every surface against WCAG AA.",
@@ -356,49 +322,49 @@ describe("POST /api/projects", () => {
   });
 
   it("reports the reference's field errors for an empty name", async () => {
-    const response = await request(createApp())
-      .post("/api/projects")
-      .send({ name: "", description: "d" });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing fields. Failed to create project.",
-      errors: { name: ["Project name is required."] },
+    await expect(
+      rpc.client.projects.create({ name: "", description: "d" }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        error: "Missing fields. Failed to create project.",
+        errors: { name: ["Project name is required."] },
+      },
     });
   });
 
   it("requires a description, exactly as the reference's schema does", async () => {
-    const response = await request(createApp())
-      .post("/api/projects")
-      .send({ name: "No description" });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing fields. Failed to create project.",
-      errors: {
-        description: ["Invalid input: expected string, received null"],
+    await expect(
+      rpc.client.projects.create({ name: "No description" }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        error: "Missing fields. Failed to create project.",
+        errors: {
+          description: ["Invalid input: expected string, received null"],
+        },
       },
     });
   });
 });
 
-describe("PATCH /api/projects/:id", () => {
+describe("projects.update", () => {
   it("updates the project and redirects to it", async () => {
-    const response = await request(createApp()).patch("/api/projects/2").send({
+    const result = await rpc.client.projects.update({
+      id: 2,
       name: "Mobile application (v2)",
       description: "Ship the second mobile experience.",
     });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
+    expect(result).toEqual({
       ok: true,
       message: "Project updated.",
       redirectTo: "/projects/2",
     });
 
-    const detail = await request(createApp()).get("/api/projects/2");
+    const detail = await rpc.client.projects.byId({ id: 2 });
 
-    expect(detail.body).toMatchObject({
+    expect(detail).toMatchObject({
       id: 2,
       name: "Mobile application (v2)",
       description: "Ship the second mobile experience.",
@@ -408,77 +374,86 @@ describe("PATCH /api/projects/:id", () => {
   });
 
   it("reports the reference's field errors for a too-long name", async () => {
-    const response = await request(createApp())
-      .patch("/api/projects/2")
-      .send({ name: "a".repeat(201), description: "d" });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      error: "Missing fields. Failed to update project.",
-      errors: { name: ["Project name must be 200 characters or fewer."] },
+    await expect(
+      rpc.client.projects.update({
+        id: 2,
+        name: "a".repeat(201),
+        description: "d",
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      data: {
+        error: "Missing fields. Failed to update project.",
+        errors: { name: ["Project name must be 200 characters or fewer."] },
+      },
     });
   });
 
   it("returns the reference's 404 message for an unknown project", async () => {
-    const response = await request(createApp())
-      .patch("/api/projects/999")
-      .send({ name: "No such", description: "d" });
-
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: "That project no longer exists." });
+    await expect(
+      rpc.client.projects.update({
+        id: 999,
+        name: "No such",
+        description: "d",
+      }),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      data: { error: "That project no longer exists." },
+    });
   });
 });
 
-describe("DELETE /api/projects/:id", () => {
+describe("projects.remove", () => {
   it("deletes an empty project and redirects to the listing", async () => {
-    const created = await request(createApp()).post("/api/projects").send({
+    const created = await rpc.client.projects.create({
       name: "Short-lived project",
       description: "d",
     });
-    const id = created.body.redirectTo.split("/")[2];
+    const id = Number(created.redirectTo!.split("/")[2]);
 
-    const response = await request(createApp()).delete(`/api/projects/${id}`);
+    const result = await rpc.client.projects.remove({ id });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
+    expect(result).toEqual({
       ok: true,
       message: "Project deleted.",
       redirectTo: "/projects",
     });
 
-    const detail = await request(createApp()).get(`/api/projects/${id}`);
-
-    expect(detail.status).toBe(404);
-    expect(detail.body).toEqual({ error: "Not found" });
+    await expect(rpc.client.projects.byId({ id })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      data: { error: "Not found" },
+    });
   });
 
   it("refuses a project that still has tasks, with the reference's guard", async () => {
-    const singular = await request(createApp()).delete("/api/projects/3");
-
-    expect(singular.status).toBe(409);
-    expect(singular.body).toEqual({
-      error:
-        "This project still has 1 task. Delete it before deleting the project.",
+    await expect(rpc.client.projects.remove({ id: 3 })).rejects.toMatchObject({
+      code: "CONFLICT",
+      data: {
+        error:
+          "This project still has 1 task. Delete it before deleting the project.",
+      },
     });
 
-    const plural = await request(createApp()).delete("/api/projects/1");
-
-    expect(plural.status).toBe(409);
-    expect(plural.body).toEqual({
-      error:
-        "This project still has 3 tasks. Delete them before deleting the project.",
+    await expect(rpc.client.projects.remove({ id: 1 })).rejects.toMatchObject({
+      code: "CONFLICT",
+      data: {
+        error:
+          "This project still has 3 tasks. Delete them before deleting the project.",
+      },
     });
 
-    // The refused delete changed nothing.
-    const detail = await request(createApp()).get("/api/projects/1");
+    // The refused delete changed nothing: the project still resolves.
+    const detail = await rpc.client.projects.byId({ id: 1 });
 
-    expect(detail.status).toBe(200);
+    expect(detail.id).toBe(1);
   });
 
   it("returns the reference's 404 message for an unknown project", async () => {
-    const response = await request(createApp()).delete("/api/projects/999");
-
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({ error: "That project no longer exists." });
+    await expect(rpc.client.projects.remove({ id: 999 })).rejects.toMatchObject(
+      {
+        code: "NOT_FOUND",
+        data: { error: "That project no longer exists." },
+      },
+    );
   });
 });

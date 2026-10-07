@@ -1,18 +1,22 @@
 // tests/unit/tasks.validator.test.ts
 //
-// The tasks validator's pure contract: the list query params, and the write
-// bodies. The zod message strings are pinned verbatim against the reference
-// variant's actions.ts (TaskSchema / CommentSchema) — a drift here is a
-// client-visible change to the API's error contract. No database, no Express.
+// The tasks validator's pure contract: the status filter's value rule, and
+// the write bodies. The zod message strings are pinned verbatim against the
+// reference variant's actions.ts (TaskSchema / CommentSchema) — a drift here
+// is a client-visible change to the API's error contract. No database, no
+// transport.
+//
+// The query-string parsing suites this file used to carry are gone with the
+// functions they tested: under oRPC the contract's `.input()` owns the shape
+// check (an integer id, a single-value filter), so the validators keep only
+// the VALUE rules whose messages the reference owns.
 
 import { describe, expect, it } from "vitest";
 
 import {
   parseCommentBody,
   parseCreateTaskRefs,
-  parseProjectTaskListQuery,
   parseTaskFields,
-  parseTaskListQuery,
   parseTaskStatus,
   parseUpdateAssignee,
   parseWithCommentFields,
@@ -41,97 +45,6 @@ describe("parseTaskStatus", () => {
     expect(parseTaskStatus(["todo", "done"])).toEqual({
       ok: false,
       error: "status must be a single value",
-    });
-  });
-});
-
-describe("parseTaskListQuery", () => {
-  it("parses every filter at once", () => {
-    expect(
-      parseTaskListQuery({
-        q: "navigation",
-        status: "todo",
-        projectId: "1",
-        assigneeId: "2",
-        cursor: "abc",
-        limit: "10",
-      }),
-    ).toEqual({
-      ok: true,
-      filters: {
-        search: "navigation",
-        status: "todo",
-        projectId: 1,
-        assigneeId: 2,
-        cursor: "abc",
-        limit: 10,
-      },
-    });
-  });
-
-  it("treats an absent everything as the unfiltered first page", () => {
-    expect(parseTaskListQuery({})).toEqual({
-      ok: true,
-      filters: {
-        search: "",
-        status: "",
-        cursor: null,
-      },
-    });
-  });
-
-  it("keeps the reference's q envelopes for malformed q", () => {
-    expect(parseTaskListQuery({ q: ["a", "b"] })).toEqual({
-      ok: false,
-      error: "q must be a single value",
-    });
-    expect(parseTaskListQuery({ q: "a".repeat(101) })).toEqual({
-      ok: false,
-      error: "q must be at most 100 characters",
-    });
-  });
-
-  it("rejects non-integer filter ids", () => {
-    expect(parseTaskListQuery({ projectId: "one" })).toEqual({
-      ok: false,
-      error: "projectId must be an integer",
-    });
-    expect(parseTaskListQuery({ assigneeId: "1.5" })).toEqual({
-      ok: false,
-      error: "assigneeId must be an integer",
-    });
-    expect(parseTaskListQuery({ assigneeId: ["1", "2"] })).toEqual({
-      ok: false,
-      error: "assigneeId must be a single value",
-    });
-  });
-
-  it("rejects a non-integer or repeated limit", () => {
-    expect(parseTaskListQuery({ limit: "many" })).toEqual({
-      ok: false,
-      error: "limit must be an integer",
-    });
-    expect(parseTaskListQuery({ limit: ["1", "2"] })).toEqual({
-      ok: false,
-      error: "limit must be a single value",
-    });
-  });
-});
-
-describe("parseProjectTaskListQuery", () => {
-  it("parses status, cursor and limit", () => {
-    expect(
-      parseProjectTaskListQuery({ status: "todo", cursor: "x", limit: "2" }),
-    ).toEqual({
-      ok: true,
-      filters: { status: "todo", cursor: "x", limit: 2 },
-    });
-  });
-
-  it("shares the workspace list's status rejection", () => {
-    expect(parseProjectTaskListQuery({ status: "nope" })).toEqual({
-      ok: false,
-      error: "Unknown task status: nope",
     });
   });
 });

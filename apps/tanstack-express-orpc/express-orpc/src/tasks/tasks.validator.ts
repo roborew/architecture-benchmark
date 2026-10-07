@@ -1,20 +1,25 @@
 // src/tasks/tasks.validator.ts
 //
 // Input validation for the tasks surface, kept pure so it can be unit tested
-// without Express: the list query params (status/projectId/assigneeId/cursor/
-// limit), and the JSON bodies of every write. The controller maps an error case
-// onto the JSON 400 envelope; the model never sees an invalid value.
+// without a transport: the status filter value rules, and the bodies of every
+// write. The router maps an error case onto the error envelope; the model
+// never sees an invalid value.
 //
 // The zod rules and their message strings are ported verbatim from the
 // reference variant's actions.ts (TaskSchema / CommentSchema), so a client that
 // rendered the reference app's validation errors renders ours unchanged. A
-// JSON body's absent field is normalised to null before parsing: the reference
+// body's absent field is normalised to null before parsing: the reference
 // parses FormData, where a field the form did not submit reads back as null,
 // and zod's own messages ("received null") are part of that contract.
+//
+// The query-string parsing this file used to carry (parseTaskListQuery /
+// parseProjectTaskListQuery and the integer/single-value param helpers) is
+// gone: under REST those values rode in a URL as strings, so something had to
+// parse them; under oRPC the contract's `.input()` types them, so the shape
+// check moved into the contract. What stays are the VALUE rules whose messages
+// the reference owns (an unknown status) and the write-side body schemas.
 
 import { z } from "zod";
-
-import { parseSearchTerm } from "../lib/query.validator.ts";
 
 /** The stored status values (spec/contract.md) — identical to the reference's. */
 export const TASK_STATUSES = ["todo", "in progress", "done"] as const;
@@ -66,43 +71,6 @@ export function parseTaskStatus(raw: unknown): ParsedTaskStatus {
 }
 
 /** A single-value string param; absent is fine, an array is a client bug. */
-function parseSingleString(
-  raw: unknown,
-  name: string,
-): { ok: true; value: string | undefined } | { ok: false; error: string } {
-  if (raw === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  if (typeof raw !== "string") {
-    return { ok: false, error: `${name} must be a single value` };
-  }
-
-  return { ok: true, value: raw };
-}
-
-/** An integer filter param (`projectId`/`assigneeId`/`limit`). */
-function parseIntegerParam(
-  raw: unknown,
-  name: string,
-): { ok: true; value: number | undefined } | { ok: false; error: string } {
-  if (raw === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  // A repeated param arrives as an array; like `q`, picking one of the two
-  // values would hide the client bug.
-  if (typeof raw !== "string") {
-    return { ok: false, error: `${name} must be a single value` };
-  }
-
-  if (!/^-?\d+$/.test(raw)) {
-    return { ok: false, error: `${name} must be an integer` };
-  }
-
-  return { ok: true, value: Number(raw) };
-}
-
 export type TaskListFilters = {
   search: string;
   status: string;
@@ -113,88 +81,11 @@ export type TaskListFilters = {
   limit?: number;
 };
 
-export type ParsedTaskListQuery =
-  | { readonly ok: true; readonly filters: TaskListFilters }
-  | { readonly ok: false; readonly error: string };
-
-/**
- * Parses the workspace list's query params: `q` searches title/description,
- * `status`/`projectId`/`assigneeId` filter, `cursor`/`limit` page.
- *
- * Validation order is fixed (q, status, projectId, assigneeId, cursor, limit)
- * so a request with several bad params always reports the same one.
- */
-export function parseTaskListQuery(
-  query: Record<string, unknown>,
-): ParsedTaskListQuery {
-  const q = parseSearchTerm(query.q);
-  if (!q.ok) return { ok: false, error: q.error };
-
-  const status = parseTaskStatus(query.status);
-  if (!status.ok) return { ok: false, error: status.error };
-
-  const projectId = parseIntegerParam(query.projectId, "projectId");
-  if (!projectId.ok) return { ok: false, error: projectId.error };
-
-  const assigneeId = parseIntegerParam(query.assigneeId, "assigneeId");
-  if (!assigneeId.ok) return { ok: false, error: assigneeId.error };
-
-  const cursor = parseSingleString(query.cursor, "cursor");
-  if (!cursor.ok) return { ok: false, error: cursor.error };
-
-  const limit = parseIntegerParam(query.limit, "limit");
-  if (!limit.ok) return { ok: false, error: limit.error };
-
-  return {
-    ok: true,
-    filters: {
-      search: q.term,
-      status: status.status,
-      projectId: projectId.value,
-      assigneeId: assigneeId.value,
-      // An absent cursor is the first page; an empty one decodes to nothing.
-      cursor: cursor.value ?? null,
-      limit: limit.value,
-    },
-  };
-}
-
 export type ProjectTaskFilters = {
   status: string;
   cursor: string | null;
   limit?: number;
 };
-
-export type ParsedProjectTaskListQuery =
-  | { readonly ok: true; readonly filters: ProjectTaskFilters }
-  | { readonly ok: false; readonly error: string };
-
-/**
- * Parses a project board's query params: `status`, `cursor`, `limit` — the
- * workspace list's filters minus the ones a board cannot vary (its project is
- * the URL; its order is `created_at`, so no search).
- */
-export function parseProjectTaskListQuery(
-  query: Record<string, unknown>,
-): ParsedProjectTaskListQuery {
-  const status = parseTaskStatus(query.status);
-  if (!status.ok) return { ok: false, error: status.error };
-
-  const cursor = parseSingleString(query.cursor, "cursor");
-  if (!cursor.ok) return { ok: false, error: cursor.error };
-
-  const limit = parseIntegerParam(query.limit, "limit");
-  if (!limit.ok) return { ok: false, error: limit.error };
-
-  return {
-    ok: true,
-    filters: {
-      status: status.status,
-      cursor: cursor.value ?? null,
-      limit: limit.value,
-    },
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Write-side bodies (zod rules ported verbatim from the reference's actions.ts)

@@ -1,19 +1,20 @@
 // tests/integration/dashboard.routes.integration.test.ts
 //
-// GET /api/dashboard — the three sections the dashboard page renders. Exercises
-// the full HTTP stack (routes → controller → model → Postgres) through
-// supertest against the seeded test database, and asserts the exact rows the
-// shared fixture produces so a SQL drift is caught here, not in the browser.
+// dashboard.get — the three sections the dashboard page renders. Exercises the
+// full stack (Express mount → RPCHandler → router → model → Postgres) through
+// an oRPC client against the seeded test database — the same RPCLink transport
+// the SPA's client uses — and asserts the exact rows the shared fixture
+// produces so a SQL drift is caught here, not in the browser.
 //
 // The three sections mirror the reference variant (getDashboardStats,
 // getRecentTasks, getDashboardProjects): the totals in one statement, the
 // three most recently updated tasks, and the two busiest projects
 // (COUNT(t.id) DESC, p.id ASC).
 
-import { describe, expect, it } from "vitest";
-import request from "supertest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApp } from "../../src/app.ts";
+import { startRpcServer, stopRpcServer } from "../helpers/rpc-server.ts";
+import type { RpcServer } from "../helpers/rpc-server.ts";
 
 // The seeded fixture (spec/snapshots/correctness), worked through by hand:
 //
@@ -23,15 +24,22 @@ import { createApp } from "../../src/app.ts";
 //   tasks    101 (u1, in progress), 102 (u2, todo), 103 (u3, done),
 //            104 (u2, todo), 105 (u1, in progress), 106 (u3, todo)
 
-describe("GET /api/dashboard", () => {
-  it("returns the stats, recent tasks and busiest projects in one body", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+let rpc: RpcServer;
 
-    expect(response.status).toBe(200);
-    expect(response.headers["content-type"]).toMatch(/json/);
+beforeAll(() => {
+  rpc = startRpcServer();
+});
 
-    // toEqual (not toMatchObject): the body shape is the API contract.
-    expect(response.body).toEqual({
+afterAll(async () => {
+  await stopRpcServer(rpc.server);
+});
+
+describe("dashboard.get", () => {
+  it("returns the stats, recent tasks and busiest projects in one reply", async () => {
+    const data = await rpc.client.dashboard.get();
+
+    // toEqual (not toMatchObject): the reply shape is the API contract.
+    expect(data).toEqual({
       stats: {
         projectCount: 3,
         totalTasks: 6,
@@ -90,20 +98,16 @@ describe("GET /api/dashboard", () => {
   });
 
   it("orders recent tasks by most recently updated, then id descending", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+    const data = await rpc.client.dashboard.get();
 
     // "Recent activity" is when the work last moved (updated_at), which is
-    // also what PATCH /api/tasks/:id advances.
-    expect(response.body.recentTasks.map((task: { id: number }) => task.id)).toEqual([
-      101, 102, 105,
-    ]);
+    // also what tasks.update advances.
+    expect(data.recentTasks.map((task) => task.id)).toEqual([101, 102, 105]);
   });
 
   it("orders the projects by task count descending, then id ascending", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+    const data = await rpc.client.dashboard.get();
 
-    expect(response.body.projects.map((p: { id: number }) => p.id)).toEqual([
-      1, 2,
-    ]);
+    expect(data.projects.map((project) => project.id)).toEqual([1, 2]);
   });
 });

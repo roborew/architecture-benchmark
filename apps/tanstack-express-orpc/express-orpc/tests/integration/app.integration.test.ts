@@ -4,10 +4,22 @@
 // and every Playwright webServer waits on, and the JSON 404/500 envelopes so a
 // client never receives an HTML error page from an API.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 
 import { createApp } from "../../src/app.ts";
+import { startRpcServer, stopRpcServer } from "../helpers/rpc-server.ts";
+import type { RpcServer } from "../helpers/rpc-server.ts";
+
+let rpc: RpcServer;
+
+beforeAll(() => {
+  rpc = startRpcServer();
+});
+
+afterAll(async () => {
+  await stopRpcServer(rpc.server);
+});
 
 describe("GET /healthz", () => {
   it("returns 200 with the readiness body", async () => {
@@ -39,6 +51,19 @@ describe("unknown routes", () => {
     expect(response.status).toBe(404);
     expect(response.headers["content-type"]).toMatch(/json/);
     expect(response.body).toEqual({ error: "Not found" });
+  });
+
+  it("returns a JSON 404 envelope for an unmatched RPC path", async () => {
+    // The RPCHandler reports `matched: false` when no procedure owns the
+    // path, so the fall-through 404 below answers it — a client must never
+    // receive an HTML error page from the RPC mount either.
+    const response = await fetch(rpc.origin + "/rpc/does-not-exist", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toMatch(/json/);
+    expect(await response.json()).toEqual({ error: "Not found" });
   });
 });
 

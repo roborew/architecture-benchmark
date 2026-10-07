@@ -1,13 +1,17 @@
 // tests/unit/error-handler.test.ts
 //
-// The error handler's mapping contract: a controller's HttpError becomes its
-// exact JSON envelope; a malformed JSON body becomes a 400; anything else is
-// logged once and answered with the generic 500. No database, no supertest —
-// the response is a fake.
+// The Express error handler's mapping contract: a malformed JSON body becomes
+// a 400; anything else is logged once and answered with the generic 500. No
+// database, no supertest — the response is a fake.
+//
+// Note how little is left to pin: under REST, controllers threw HttpError and
+// this middleware mapped each throw to its envelope. Under oRPC the routers
+// throw ORPCError and the handlers serialise it themselves, so the outcomes
+// the API decided on never reach Express (the router tests in this directory
+// pin those). What remains is Express's own failures only.
 
 import { describe, expect, it, vi } from "vitest";
 
-import { HttpError } from "../../src/lib/http-error.ts";
 import { errorHandler } from "../../src/middleware/error-handler.ts";
 
 function makeResponse() {
@@ -27,43 +31,6 @@ function invoke(error: unknown) {
 }
 
 describe("errorHandler", () => {
-  it("maps a HttpError to its own status and payload, untouched", () => {
-    const res = invoke(
-      HttpError.validation("Missing fields. Failed to create task.", {
-        title: ["Title is required."],
-      }),
-    );
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "Missing fields. Failed to create task.",
-      errors: { title: ["Title is required."] },
-    });
-  });
-
-  it("maps a 404 HttpError to the plain envelope", () => {
-    const res = invoke(HttpError.notFound("That task no longer exists."));
-
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({
-      error: "That task no longer exists.",
-    });
-  });
-
-  it("maps a 409 HttpError to the reference guard message", () => {
-    const res = invoke(
-      HttpError.conflict(
-        "This project still has 1 task. Delete it before deleting the project.",
-      ),
-    );
-
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({
-      error:
-        "This project still has 1 task. Delete it before deleting the project.",
-    });
-  });
-
   it("answers a malformed JSON body as a 400, not a server fault", () => {
     const parseError = Object.assign(new SyntaxError("Unexpected token"), {
       status: 400,
@@ -90,14 +57,5 @@ describe("errorHandler", () => {
     } finally {
       log.mockRestore();
     }
-  });
-});
-
-describe("HttpError", () => {
-  it("carries the envelope's error line as its message, for logs and tests", () => {
-    expect(new HttpError(404, { error: "Not found" }).message).toBe(
-      "Not found",
-    );
-    expect(new HttpError(503, {}).message).toBe("HTTP 503");
   });
 });
