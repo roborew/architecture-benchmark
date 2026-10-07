@@ -1,5 +1,5 @@
 {
-  "name": "express-rest",
+  "name": "express-orpc",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,12 +15,18 @@
     "db:reset": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
+    "@orpc/contract": "2.0.0-beta.42",
+    "@orpc/json-schema": "2.0.0-beta.42",
+    "@orpc/openapi": "2.0.0-beta.42",
+    "@orpc/server": "2.0.0-beta.42",
+    "@orpc/zod": "2.0.0-beta.42",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@orpc/client": "2.0.0-beta.42",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
