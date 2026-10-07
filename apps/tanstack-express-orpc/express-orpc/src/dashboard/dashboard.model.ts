@@ -12,6 +12,7 @@
 // card never renders would cost the join for nothing.
 
 import type { Db } from "../db/connection.ts";
+import type { TaskStatus } from "../tasks/tasks.model.ts";
 
 /** How many rows each dashboard section shows. */
 const DASHBOARD_RECENT_TASKS = 3;
@@ -32,7 +33,7 @@ export type DashboardTask = {
   id: number;
   title: string;
   projectName: string;
-  status: string;
+  status: TaskStatus;
   assigneeName: string;
   updatedAt: string;
 };

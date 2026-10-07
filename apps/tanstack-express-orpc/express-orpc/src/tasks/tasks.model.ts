@@ -41,7 +41,7 @@ export type Task = {
   projectName: string;
   title: string;
   description: string;
-  status: string;
+  status: TaskStatus;
   assigneeName: string;
   commentCount: number;
   updatedAt: string;

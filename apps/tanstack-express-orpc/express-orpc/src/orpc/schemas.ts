@@ -21,6 +21,9 @@
 
 import { z } from "zod";
 
+/** The stored status values (spec/contract.md) — the database CHECK bounds them. */
+export const TaskStatusSchema = z.enum(["todo", "in progress", "done"]);
+
 /** Mirrors `User`. */
 export const UserSchema = z.object({
   id: z.number().int(),
@@ -38,7 +41,7 @@ export const TaskSchema = z.object({
   projectName: z.string(),
   title: z.string(),
   description: z.string(),
-  status: z.string(),
+  status: TaskStatusSchema,
   assigneeName: z.string(),
   commentCount: z.number().int(),
   updatedAt: z.string(),
@@ -105,7 +108,7 @@ export const DashboardTaskSchema = z.object({
   id: z.number().int(),
   title: z.string(),
   projectName: z.string(),
-  status: z.string(),
+  status: TaskStatusSchema,
   assigneeName: z.string(),
   updatedAt: z.string(),
 });
