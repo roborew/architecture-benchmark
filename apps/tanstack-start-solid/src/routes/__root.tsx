@@ -4,6 +4,7 @@ import {
 	Outlet,
 	Scripts,
 } from "@tanstack/solid-router";
+import type { JSX } from "solid-js";
 import { HydrationScript } from "solid-js/web";
 
 import { AppShell } from "@/components/app-shell";
@@ -55,8 +56,14 @@ export const Route = createRootRoute({
 	component: RootLayout,
 });
 
-/** Static HTML document shell — no reactive router state. */
-function RootDocument() {
+/** Static HTML document shell — no reactive router state.
+ *
+ * The route tree (including RootLayout/AppShell below) arrives via
+ * `props.children`. An `<Outlet />` must NOT be used here: inside the shell
+ * it skips the root route's `component` and renders the matched leaf route
+ * directly, dropping the AppShell (sidebar menu and header) entirely.
+ */
+function RootDocument(props: { children?: JSX.Element }) {
 	return (
 		<html lang="en" class="h-full antialiased">
 			<head>
@@ -64,7 +71,7 @@ function RootDocument() {
 				<HeadContent />
 			</head>
 			<body class="min-w-80 bg-slate-50 font-sans text-slate-800">
-				<Outlet />
+				{props.children}
 				<Scripts />
 			</body>
 		</html>
