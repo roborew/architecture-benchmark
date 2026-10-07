@@ -1,5 +1,28 @@
 {
+  "name": "fastify-rest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:migrate": "node src/db/migrate.ts",
+    "db:seed": "node src/db/seed.ts",
+    "db:reset": "npm run db:migrate && npm run db:seed"
+  },
   "dependencies": {
-    "fastify": "^5.12.5"
+    "@fastify/cors": "^11.3.0",
+    "fastify": "^5.12.5",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   }
 }
