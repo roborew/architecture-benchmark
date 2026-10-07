@@ -1,3 +1,10 @@
+// src/components/users/users-page.tsx
+//
+// The People list page: heading, member count, search field, and the table.
+// Presentational — the rows arrive as a prop from the route's query.
+
+import { Link } from "@tanstack/react-router";
+
 import { SearchInput } from "@/components/search-input";
 import { UserTable } from "@/components/users/user-table";
 import type { User } from "@/lib/types";
@@ -17,14 +24,14 @@ export function UsersPage({ people }: { people: User[] }) {
 						Manage workspace members who are assigned tasks and author comments.
 					</p>
 				</div>
-				{/* A plain anchor until the /users/new form route lands in a later
-						slice; the href contract is the reference app's. */}
-				<a
-					href="/users/new"
+				{/* The form route is registered, so the header action is a router
+						Link now; the href contract is the reference app's. */}
+				<Link
+					to="/users/new"
 					className="inline-flex items-center justify-center rounded-lg border border-brand-600 bg-brand-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:border-brand-700 hover:bg-brand-700"
 				>
 					＋ New user
-				</a>
+				</Link>
 			</div>
 
 			<section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-panel">

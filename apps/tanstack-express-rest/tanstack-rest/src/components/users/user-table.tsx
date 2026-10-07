@@ -1,3 +1,10 @@
+// src/components/users/user-table.tsx
+//
+// The People listing table: one row per member, linking to their detail
+// page with their email and the three count columns beside it.
+
+import { Link } from "@tanstack/react-router";
+
 import { initials } from "@/lib/initials";
 import type { User } from "@/lib/types";
 
@@ -31,10 +38,11 @@ export function UserTable({ people }: { people: User[] }) {
 							className="border-b border-slate-100 transition hover:bg-slate-50"
 						>
 							<td className={td}>
-								{/* A plain anchor until the /users/$id detail route lands in a
-										later slice; the href contract is the reference app's. */}
-								<a
-									href={`/users/${person.id}`}
+								{/* The detail route is registered, so the row is a router
+										Link now; the href contract is the reference app's. */}
+								<Link
+									to="/users/$id"
+									params={{ id: String(person.id) }}
 									className="flex items-center gap-2 text-left"
 								>
 									<span
@@ -49,7 +57,7 @@ export function UserTable({ people }: { people: User[] }) {
 											{person.email}
 										</small>
 									</span>
-								</a>
+								</Link>
 							</td>
 							<td className={td}>{person.assignedTaskCount}</td>
 							<td className={td}>{person.openTaskCount}</td>
