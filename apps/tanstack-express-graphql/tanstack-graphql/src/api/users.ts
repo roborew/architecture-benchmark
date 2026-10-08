@@ -2,54 +2,133 @@
 //
 // How the SPA talks to the server about people: the listing, one member and
 // her assigned tasks, and the mutations her forms submit. Transport details
-// (the base URL, the error envelope, the JSON handling) live in `api/api.ts`.
+// (the endpoint, the error envelope, the response handling) live in
+// `api/api.ts`.
 
 import type { TaskWithProject, User } from "@/lib/types";
-import {
-	type FormValues,
-	type MutationResult,
-	requestJson,
-	send,
-	toQuery,
-} from "./api";
+import { type FormValues, type MutationResult, request } from "./api";
 
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
+
+const USERS_QUERY = /* GraphQL */ `
+  query Users($q: String) {
+    users(q: $q) {
+      id
+      name
+      email
+      assignedTaskCount
+      openTaskCount
+      commentCount
+    }
+  }
+`;
 
 /**
  * The People listing rows. An empty term returns every member; a term filters
  * server-side (ILIKE on name and email).
  */
 export function getUsers(term = ""): Promise<User[]> {
-	return requestJson<User[]>(`/api/users${toQuery({ q: term })}`);
+	return request<{ users: User[] }>(USERS_QUERY, { q: term }).then(
+		(data) => data.users,
+	);
 }
 
-/** One member by id; 404 surfaces as an ApiError. */
+const USER_QUERY = /* GraphQL */ `
+  query User($id: Int!) {
+    user(id: $id) {
+      id
+      name
+      email
+      assignedTaskCount
+      openTaskCount
+      commentCount
+    }
+  }
+`;
+
+/** One member by id; a missing row surfaces as an ApiError. */
 export function getUser(id: number): Promise<User> {
-	return requestJson<User>(`/api/users/${id}`);
+	return request<{ user: User }>(USER_QUERY, { id }).then((data) => data.user);
 }
+
+const USER_TASKS_QUERY = /* GraphQL */ `
+  query UserTasks($userId: Int!) {
+    userTasks(userId: $userId) {
+      id
+      projectId
+      projectName
+      title
+      description
+      status
+      assigneeName
+      commentCount
+      updatedAt
+    }
+  }
+`;
 
 /** The tasks assigned to one member, newest first. */
 export function getUserTasks(id: number): Promise<TaskWithProject[]> {
-	return requestJson<TaskWithProject[]>(`/api/users/${id}/tasks`);
+	return request<{ userTasks: TaskWithProject[] }>(USER_TASKS_QUERY, {
+		userId: id,
+	}).then((data) => data.userTasks);
 }
 
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 
+const CREATE_USER_MUTATION = /* GraphQL */ `
+  mutation CreateUser($name: String, $email: String) {
+    createUser(name: $name, email: $email) {
+      ok
+      message
+      redirectTo
+    }
+  }
+`;
+
 export function createUser(values: FormValues): Promise<MutationResult> {
-	return send("/api/users", "POST", values);
+	return request<{ createUser: MutationResult }>(
+		CREATE_USER_MUTATION,
+		values,
+	).then((data) => data.createUser);
 }
+
+const UPDATE_USER_MUTATION = /* GraphQL */ `
+  mutation UpdateUser($id: Int!, $name: String, $email: String) {
+    updateUser(id: $id, name: $name, email: $email) {
+      ok
+      message
+      redirectTo
+    }
+  }
+`;
 
 export function updateUser(
 	id: number,
 	values: FormValues,
 ): Promise<MutationResult> {
-	return send(`/api/users/${id}`, "PATCH", values);
+	return request<{ updateUser: MutationResult }>(UPDATE_USER_MUTATION, {
+		id,
+		...values,
+	}).then((data) => data.updateUser);
 }
 
+const DELETE_USER_MUTATION = /* GraphQL */ `
+  mutation DeleteUser($id: Int!) {
+    deleteUser(id: $id) {
+      ok
+      message
+      redirectTo
+    }
+  }
+`;
+
 export function deleteUser(id: number): Promise<MutationResult> {
-	return send(`/api/users/${id}`, "DELETE", undefined);
+	return request<{ deleteUser: MutationResult }>(DELETE_USER_MUTATION, {
+		id,
+	}).then((data) => data.deleteUser);
 }

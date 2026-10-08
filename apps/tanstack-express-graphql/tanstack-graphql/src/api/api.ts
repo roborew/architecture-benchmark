@@ -2,31 +2,65 @@
 //
 // How the SPA talks to the server — the shared half of the api layer.
 //
-// Every request goes through `requestJson` so the base URL, the error
-// envelope, and the JSON handling are decided in exactly one place. The
+// Every operation goes through `request`, so the endpoint, the error
+// envelope, and the response handling are decided in exactly one place. The
 // per-feature modules (projects, tasks, users, comments, dashboard) build on
-// these pieces and own their endpoints; nothing outside `src/api/` uses fetch
-// directly.
+// this piece and own their documents; nothing outside `src/api/` talks to the
+// GraphQL endpoint directly.
 //
-// Reads build query params from plain filter objects; the API treats an
-// absent param and an empty one the same way, so absent filters are simply
-// omitted. Mutations send the form's fields as a JSON body, passing them
-// through untouched: the server owns every normalisation rule (an empty
-// assignee means "unassigned", a numeric string is a row id), so the client
-// cannot disagree with itself about how a value is spelled.
+// The transport is `graphql-request` (the client the TanStack Query GraphQL
+// guide builds on): one GraphQLClient for the app, pointed at the API's
+// /graphql route. A document's variables travel exactly as the caller built
+// them — reads pass their filter objects (absent filters are undefined, which
+// JSON drops, the same as the REST layer's omit-empties rule), mutations pass
+// the form's field bag through untouched: the server owns every
+// normalisation rule (an empty assignee means "unassigned", a numeric string
+// is a row id), so the client cannot disagree with itself about how a value
+// is spelled.
+//
+// GraphQL answers every request with HTTP 200 and carries outcomes in
+// `errors`; the API throws GraphQLErrors whose `extensions` carry the parts
+// of the REST envelope (`code` — the status line — and `errors`, the field →
+// messages map). `toApiError` reverses that mapping, so everything above this
+// layer still sees the `ApiError` it was built against: routes branch on
+// `status === 404` for their not-found states, and forms render
+// `errors.title` from the same field keys the REST API used.
+
+import { ClientError, GraphQLClient } from "graphql-request";
+
+/**
+ * The platform's fetch, resolved at call time rather than import time.
+ *
+ * graphql-request defaults to cross-fetch, which captures the platform fetch
+ * when its module is imported — too early for an environment whose fetch can
+ * still change (a test stubbing it, a polyfill installed later). Resolving
+ * through the ambient fetch here keeps the client honest about which fetch
+ * is in effect when the request runs.
+ */
+const ambientFetch: typeof fetch = (input, init) => fetch(input, init);
 
 /** Where the Express API lives. Overridable per environment (e2e points it at its own server). */
 export const API_URL: string =
 	import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
+/** One client for the app: the API's GraphQL route, and nothing else. */
+const client = new GraphQLClient(`${API_URL}/graphql`, { fetch: ambientFetch });
+
+/** The codes the API's deliberate errors carry, and the status each stands for. */
+const STATUS_BY_CODE: Record<string, number> = {
+	BAD_INPUT: 400,
+	NOT_FOUND: 404,
+	CONFLICT: 409,
+};
+
 /**
  * A failure the API reported deliberately.
  *
- * `message` is the user-visible string from the API's `{ error }` envelope;
- * `errors` is the field → messages map a 400 carries, keyed exactly as the
- * API's validators key it. A network-level failure (fetch itself rejecting)
- * is not an ApiError — there is no status to report, only the browser's
- * generic message.
+ * `message` is the user-visible string from the error the API threw (the REST
+ * envelope's `{ error }` line, verbatim); `errors` is the field → messages map
+ * a validation failure carries, keyed exactly as the API's validators key it.
+ * A network-level failure (fetch itself rejecting) is not an ApiError — there
+ * is no status to report, only the browser's generic message.
  */
 export class ApiError extends Error {
 	readonly status: number;
@@ -44,74 +78,62 @@ export class ApiError extends Error {
 	}
 }
 
-/** Every request, and the one place the error envelope is parsed. */
-export async function requestJson<T>(
-	path: string,
-	init?: RequestInit,
-): Promise<T> {
-	const response = await fetch(`${API_URL}${path}`, init);
+/** The first GraphQL error a response carries, with the extensions typed. */
+function firstError(error: ClientError): {
+	message?: string;
+	code?: unknown;
+	errors?: unknown;
+} {
+	const first = error.response.errors?.[0];
 
-	if (!response.ok) {
-		// The API's error envelope is { error, errors? }, but a proxy or a crash
-		// can hand back anything; the status is the only guaranteed fact.
-		let message = `Request failed with ${response.status}`;
-		let errors: Record<string, string[]> = {};
-
-		try {
-			const body = (await response.json()) as {
-				error?: string;
-				errors?: Record<string, string[]>;
-			};
-			if (body && typeof body.error === "string") {
-				message = body.error;
-			}
-			if (body?.errors && typeof body.errors === "object") {
-				errors = body.errors;
-			}
-		} catch {
-			// Not JSON — keep the status-based message.
-		}
-
-		throw new ApiError(response.status, message, errors);
+	if (!first) {
+		return {};
 	}
 
-	return response.json() as Promise<T>;
+	return {
+		message: first.message,
+		code: first.extensions?.code,
+		errors: first.extensions?.errors,
+	};
+}
+
+/** A GraphQL response's error back into the ApiError shape the app is built on. */
+function toApiError(error: ClientError): ApiError {
+	// The extensions are the only guaranteed facts; a proxy or a crash can
+	// hand back an errors array without them, so each falls back the same way
+	// the REST envelope's parser did.
+	const first = firstError(error);
+	const code = typeof first.code === "string" ? first.code : undefined;
+	const status = (code !== undefined && STATUS_BY_CODE[code]) || 400;
+	const errors =
+		first.errors && typeof first.errors === "object"
+			? (first.errors as Record<string, string[]>)
+			: {};
+
+	return new ApiError(status, first.message ?? "Request failed", errors);
 }
 
 /**
- * Builds a query string from defined values only.
+ * Runs one operation and unwraps the field the caller asked for.
  *
- * `undefined`, `null` and `""` are all "no filter": the API resolves each to
- * the same default, and a URL that says so explicitly (`?status=`) is noise
- * over the bare path.
+ * Resolves with the response's `data`; rejects with an `ApiError` when the API
+ * answered deliberately (its errors carry the codes and field maps above) and
+ * rethrows anything else — a network failure the user still needs to see, not
+ * an unhandled rejection inside a transition.
  */
-export function toQuery(
-	filters: Record<string, string | number | undefined | null>,
-): string {
-	const params = new URLSearchParams();
-
-	for (const [key, value] of Object.entries(filters)) {
-		if (value !== undefined && value !== null && value !== "") {
-			params.set(key, String(value));
+export async function request<TData>(
+	query: string,
+	variables?: Record<string, unknown>,
+): Promise<TData> {
+	try {
+		return await client.request<TData>(query, variables);
+	} catch (error) {
+		if (error instanceof ClientError) {
+			throw toApiError(error);
 		}
+
+		throw error;
 	}
-
-	const query = params.toString();
-
-	return query ? `?${query}` : "";
-}
-
-/** A POST/PATCH/DELETE with a JSON body; the mutations all share this shape. */
-export function send<T>(
-	path: string,
-	method: string,
-	body: unknown,
-): Promise<T> {
-	return requestJson<T>(path, {
-		method,
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
 }
 
 /**

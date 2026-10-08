@@ -1,5 +1,5 @@
 {
-  "name": "tanstack-rest",
+  "name": "tanstack-graphql",
   "private": true,
   "type": "module",
   "imports": {
@@ -29,6 +29,7 @@
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-router": "1.170.41",
     "@tanstack/react-router-devtools": "1.167.2",
+    "graphql-request": "^5.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.18"
