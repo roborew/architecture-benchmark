@@ -50,5 +50,9 @@ defmodule PhoenixRestWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+
+  # In front of the router: a preflight OPTIONS names a real path that has no
+  # OPTIONS route, so it must be answered and halted before routing.
+  plug PhoenixRestWeb.Plugs.CORS
   plug PhoenixRestWeb.Router
 end
