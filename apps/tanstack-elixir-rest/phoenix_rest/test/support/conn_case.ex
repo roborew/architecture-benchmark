@@ -27,6 +27,7 @@ defmodule PhoenixRestWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import PhoenixRest.Fixtures
       import PhoenixRestWeb.ConnCase
     end
   end

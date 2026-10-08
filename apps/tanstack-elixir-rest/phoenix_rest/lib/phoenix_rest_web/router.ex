@@ -22,6 +22,18 @@ defmodule PhoenixRestWeb.Router do
     get "/healthz", HealthController, :show
   end
 
+  scope "/api", PhoenixRestWeb do
+    pipe_through :api
+
+    # `/:id/tasks` is listed before `/:id` so the more specific path wins.
+    get "/users", UserController, :index
+    get "/users/:id/tasks", UserController, :tasks
+    get "/users/:id", UserController, :show
+    post "/users", UserController, :create
+    patch "/users/:id", UserController, :update
+    delete "/users/:id", UserController, :delete
+  end
+
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:phoenix_rest, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
