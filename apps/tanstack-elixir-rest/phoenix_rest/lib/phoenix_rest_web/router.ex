@@ -40,11 +40,17 @@ defmodule PhoenixRestWeb.Router do
     patch "/projects/:id", ProjectController, :update
     delete "/projects/:id", ProjectController, :delete
 
-    # `count` is listed before `/:id`, so it is not captured as a task id.
+    # `count` and `with-comment` are listed before the `/:id` shapes, so a
+    # literal segment is not captured as a task id.
     get "/tasks", TaskController, :index
     get "/tasks/count", TaskController, :count
+    post "/tasks/with-comment", TaskController, :create_with_comment
+    post "/tasks", TaskController, :create
     get "/tasks/:id/comments", TaskController, :comments
+    post "/tasks/:id/comments", TaskController, :add_comment
     get "/tasks/:id", TaskController, :show
+    patch "/tasks/:id", TaskController, :update
+    delete "/tasks/:id", TaskController, :delete
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
