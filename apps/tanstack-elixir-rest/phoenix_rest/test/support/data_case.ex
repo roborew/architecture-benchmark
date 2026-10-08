@@ -24,6 +24,7 @@ defmodule PhoenixRest.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import PhoenixRest.DataCase
+      import PhoenixRest.Fixtures
     end
   end
 
