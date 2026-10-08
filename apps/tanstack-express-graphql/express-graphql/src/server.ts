@@ -9,13 +9,13 @@ import { env } from "./config/env.ts";
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
-  console.log(`[express-rest] listening on http://localhost:${env.PORT}`);
+  console.log(`[express-graphql] listening on http://localhost:${env.PORT}`);
 });
 
 // Graceful shutdown: stop accepting connections, let in-flight requests
 // finish, and don't let a stuck keep-alive connection hold the process.
 function shutdown() {
-  console.log("[express-rest] shutting down");
+  console.log("[express-graphql] shutting down");
   server.close(() => {
     process.exit(0);
   });
