@@ -39,6 +39,12 @@ defmodule PhoenixRestWeb.Router do
     post "/projects", ProjectController, :create
     patch "/projects/:id", ProjectController, :update
     delete "/projects/:id", ProjectController, :delete
+
+    # `count` is listed before `/:id`, so it is not captured as a task id.
+    get "/tasks", TaskController, :index
+    get "/tasks/count", TaskController, :count
+    get "/tasks/:id/comments", TaskController, :comments
+    get "/tasks/:id", TaskController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
