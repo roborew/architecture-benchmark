@@ -1,8 +1,10 @@
 // tests/integration/app.integration.test.ts
 //
 // The app factory's cross-cutting behaviour: the readiness endpoint the rig
-// and every Playwright webServer waits on, and the JSON 404/500 envelopes so a
-// client never receives an HTML error page from an API.
+// and every Playwright webServer waits on, the framework header that stays
+// off, and the fate of a path no route answers. The REST JSON 404/500
+// envelopes left with the REST surface — GraphQL has no status codes of its
+// own, and an unknown path now falls through to Express's default 404.
 
 import { describe, expect, it } from "vitest";
 import request from "supertest";
@@ -32,13 +34,24 @@ describe("GET /healthz", () => {
   });
 });
 
+describe("framework headers", () => {
+  it("does not advertise the framework (x-powered-by stays off)", async () => {
+    const response = await request(createApp()).get("/healthz");
+
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+});
+
 describe("unknown routes", () => {
-  it("returns a JSON 404 envelope for an unknown API path", async () => {
+  // CHANGE from the REST variant: the JSON 404 envelope (`{ error: "Not
+  // found" }`) was written by the REST error handler, which was deleted with
+  // the REST surface. No middleware answers unknown paths anymore, so
+  // Express's own default 404 applies — the status is still contractual, the
+  // body is Express's HTML.
+  it("answers Express's default 404 for an unknown path", async () => {
     const response = await request(createApp()).get("/api/does-not-exist");
 
     expect(response.status).toBe(404);
-    expect(response.headers["content-type"]).toMatch(/json/);
-    expect(response.body).toEqual({ error: "Not found" });
   });
 });
 

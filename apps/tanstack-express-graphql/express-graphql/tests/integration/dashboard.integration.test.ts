@@ -1,7 +1,7 @@
-// tests/integration/dashboard.routes.integration.test.ts
+// tests/integration/dashboard.integration.test.ts
 //
-// GET /api/dashboard — the three sections the dashboard page renders. Exercises
-// the full HTTP stack (routes → controller → model → Postgres) through
+// query Dashboard — the three sections the dashboard page renders. Exercises
+// the full stack (POST /graphql → resolvers → models → Postgres) through
 // supertest against the seeded test database, and asserts the exact rows the
 // shared fixture produces so a SQL drift is caught here, not in the browser.
 //
@@ -23,15 +23,54 @@ import { createApp } from "../../src/app.ts";
 //   tasks    101 (u1, in progress), 102 (u2, todo), 103 (u3, done),
 //            104 (u2, todo), 105 (u1, in progress), 106 (u3, todo)
 
-describe("GET /api/dashboard", () => {
-  it("returns the stats, recent tasks and busiest projects in one body", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+// One document, no arguments: the SPA fetches all three sections together.
+const DASHBOARD_QUERY = `
+  query Dashboard {
+    dashboard {
+      stats {
+        projectCount
+        totalTasks
+        openTasks
+        peopleCount
+        todoTasks
+        inProgressTasks
+        doneTasks
+      }
+      recentTasks {
+        id
+        title
+        projectName
+        status
+        assigneeName
+        updatedAt
+      }
+      projects {
+        id
+        name
+        description
+        taskCount
+        openTaskCount
+        peopleCount
+      }
+    }
+  }
+`;
+
+function queryDashboard() {
+  return request(createApp())
+    .post("/graphql")
+    .send({ query: DASHBOARD_QUERY, variables: {} });
+}
+
+describe("query Dashboard", () => {
+  it("returns the stats, recent tasks and busiest projects in one document", async () => {
+    const response = await queryDashboard();
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toMatch(/json/);
 
-    // toEqual (not toMatchObject): the body shape is the API contract.
-    expect(response.body).toEqual({
+    // toEqual (not toMatchObject): the document's shape is the API contract.
+    expect(response.body.data.dashboard).toEqual({
       stats: {
         projectCount: 3,
         totalTasks: 6,
@@ -90,20 +129,22 @@ describe("GET /api/dashboard", () => {
   });
 
   it("orders recent tasks by most recently updated, then id descending", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+    const response = await queryDashboard();
 
     // "Recent activity" is when the work last moved (updated_at), which is
-    // also what PATCH /api/tasks/:id advances.
-    expect(response.body.recentTasks.map((task: { id: number }) => task.id)).toEqual([
-      101, 102, 105,
-    ]);
+    // also what the updateTask mutation advances.
+    expect(
+      response.body.data.dashboard.recentTasks.map(
+        (task: { id: number }) => task.id,
+      ),
+    ).toEqual([101, 102, 105]);
   });
 
   it("orders the projects by task count descending, then id ascending", async () => {
-    const response = await request(createApp()).get("/api/dashboard");
+    const response = await queryDashboard();
 
-    expect(response.body.projects.map((p: { id: number }) => p.id)).toEqual([
-      1, 2,
-    ]);
+    expect(
+      response.body.data.dashboard.projects.map((p: { id: number }) => p.id),
+    ).toEqual([1, 2]);
   });
 });
