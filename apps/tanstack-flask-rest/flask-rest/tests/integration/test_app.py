@@ -1,8 +1,12 @@
 # tests/integration/test_app.py
 #
 # The app factory's cross-cutting behaviour: the readiness endpoint the rig
-# and every Playwright webServer waits on, and the JSON 404 envelopes so a
-# client never receives an HTML error page from an API.
+# and every Playwright webServer waits on, the JSON 404 envelopes so a
+# client never receives an HTML error page from an API, and the connection
+# pool's behaviour under the burst of parallel fetches the SPA's TanStack
+# Query layer fires.
+
+import threading
 
 from src.app import create_app
 
@@ -47,6 +51,35 @@ class TestUnknownRoutes:
 
         assert response.status_code == 404
         assert response.get_json() == {"error": "Not found"}
+
+
+class TestConnectionPool:
+    def test_serves_a_burst_of_parallel_requests_without_exhausting_the_pool(
+        self, e2e_url
+    ):
+        # The SPA's TanStack Query layer fires bursts of parallel fetches (the
+        # e2e browser suite caught exactly that burst erroring a pool that
+        # refused waiters, answering 500s mid-listing). The gateway queues like
+        # postgres.js does, so a burst larger than the pool still answers every
+        # request.
+        application = create_app(postgres_url=e2e_url)
+        statuses: list[int] = []
+        lock = threading.Lock()
+
+        def hit() -> None:
+            with application.test_client() as client:
+                status = client.get("/api/tasks?limit=25").status_code
+            with lock:
+                statuses.append(status)
+
+        # Twice the pool's ceiling, all in flight at once.
+        threads = [threading.Thread(target=hit) for _ in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert statuses == [200] * 20
 
 
 class TestCreateApp:
