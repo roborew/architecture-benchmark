@@ -33,6 +33,20 @@ export function peopleCountLabel(count: number) {
 	return `${count} people`;
 }
 
-export function tasksCountLabel(count: number) {
-	return `${count} task${count === 1 ? "" : "s"}`;
+/**
+ * The tasks page's summary line (lib/pagination.ts `formatRange`) for a result
+ * set that fits a single page: the fixture's task totals are all below the
+ * default page size, so the first page spans the whole set, `to` equals the
+ * total, and `from` is always 1.
+ */
+export function tasksSummaryLabel(
+	total: number,
+	{ filtered = false }: { filtered?: boolean } = {},
+) {
+	const noun = total === 1 ? "task" : "tasks";
+
+	return (
+		`Showing 1-${total} of ${total} ${noun}` +
+		(filtered ? " matching your filters" : "")
+	);
 }

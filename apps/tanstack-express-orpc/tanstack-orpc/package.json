@@ -1,5 +1,5 @@
 {
-  "name": "tanstack-rest",
+  "name": "tanstack-orpc",
   "private": true,
   "type": "module",
   "imports": {

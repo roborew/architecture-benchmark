@@ -7,7 +7,7 @@ import {
 } from "./tests/e2e/database";
 
 // The suite always runs against its own database, never the developer's. The
-// connection string is derived from express-rest's POSTGRES_URL with only the
+// connection string is derived from express-orpc's POSTGRES_URL with only the
 // database name swapped, and is handed to the Express server so it cannot
 // disagree about which database is under test.
 const E2E_DATABASE_URL = e2eConnectionString();
@@ -44,7 +44,7 @@ export default defineConfig({
 	webServer: [
 		{
 			command: "pnpm start",
-			cwd: "../express-rest",
+			cwd: "../express-orpc",
 			url: `http://localhost:${E2E_API_PORT}/healthz`,
 			// Never reuse an already-running dev server: it would be serving the
 			// developer's database rather than the isolated e2e one.

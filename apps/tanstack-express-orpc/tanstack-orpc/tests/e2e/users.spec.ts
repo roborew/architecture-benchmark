@@ -86,12 +86,12 @@ test("clearing the search restores the full list", async ({ page }) => {
 test("keeps the page template when the API is unreachable", async ({
 	page,
 }) => {
-	// Simulate the backend being down: every users request is aborted at the
+	// Simulate the backend being down: every RPC request is aborted at the
 	// network layer, which is exactly what the browser sees when the Express
 	// server is not running. The loader's query fails, and the route must show
 	// the error inside the template — header, sidebar, page title — rather
 	// than tearing the route tree down to a blank screen.
-	await page.route("**/api/users**", (route) => route.abort("failed"));
+	await page.route("**/rpc/**", (route) => route.abort("failed"));
 
 	await page.goto("/users");
 
@@ -102,19 +102,14 @@ test("keeps the page template when the API is unreachable", async ({
 	await expect(page.getByText("Could not load people.")).toBeVisible();
 });
 
-test("an unbuilt menu entry shows the not-found page, not a crash", async ({
+test("an unknown URL shows the not-found page, not a crash", async ({
 	page,
 }) => {
-	// Menu entries for routes that do not exist yet are plain anchors, so
-	// clicking one is a full page navigation to a URL the router cannot match
-	// (e.g. /projects). The app must boot into the not-found page inside the
-	// template — not an unhandled error boundary or a blank screen.
-	await page.goto("/users");
-
-	await page
-		.getByRole("navigation")
-		.getByRole("link", { name: "Projects" })
-		.click();
+	// A URL that matches no route — a typo, or a stale link — is a full page
+	// load the router cannot resolve. The app must boot into the not-found page
+	// inside the template — header, sidebar, page title — not an unhandled
+	// error boundary or a blank screen.
+	await page.goto("/does-not-exist");
 
 	await expect(
 		page.getByRole("heading", { name: "Page not found", level: 1 }),
