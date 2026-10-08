@@ -51,6 +51,8 @@ defmodule PhoenixRestWeb.Router do
     get "/tasks/:id", TaskController, :show
     patch "/tasks/:id", TaskController, :update
     delete "/tasks/:id", TaskController, :delete
+
+    get "/dashboard", DashboardController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
