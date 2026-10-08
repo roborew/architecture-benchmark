@@ -14,13 +14,13 @@ defmodule PhoenixRestWeb.UserController do
 
   alias PhoenixRest.{QueryParams, Users}
   alias PhoenixRest.Users.Validator
-  alias PhoenixRestWeb.ApiError
+  alias PhoenixRestWeb.{ApiError, Params}
 
   action_fallback PhoenixRestWeb.FallbackController
 
   @doc "GET /api/users?q=… — the People listing page's rows."
   def index(conn, _params) do
-    case conn |> search_term() |> QueryParams.parse_search_term() do
+    case conn |> Params.search_term() |> QueryParams.parse_search_term() do
       {:ok, term} -> json(conn, Users.list(term))
       {:error, message} -> {:error, ApiError.bad_request(message)}
     end
@@ -28,7 +28,7 @@ defmodule PhoenixRestWeb.UserController do
 
   @doc "GET /api/users/:id — one member with the same shape `list` returns."
   def show(conn, %{"id" => raw}) do
-    with {:ok, id} <- parse_id(raw),
+    with {:ok, id} <- Params.id(raw),
          %{} = user <- Users.get(id) do
       json(conn, user)
     else
@@ -39,7 +39,7 @@ defmodule PhoenixRestWeb.UserController do
 
   @doc "GET /api/users/:id/tasks — the tasks assigned to one member."
   def tasks(conn, %{"id" => raw}) do
-    with {:ok, id} <- parse_id(raw) do
+    with {:ok, id} <- Params.id(raw) do
       json(conn, Users.list_tasks(id))
     end
   end
@@ -61,7 +61,7 @@ defmodule PhoenixRestWeb.UserController do
 
   @doc "PATCH /api/users/:id — update one member by primary key."
   def update(conn, %{"id" => raw}) do
-    with {:ok, id} <- parse_id(raw) do
+    with {:ok, id} <- Params.id(raw) do
       case Validator.parse_body(conn.body_params) do
         {:ok, data} ->
           case Users.update(id, data) do
@@ -84,7 +84,7 @@ defmodule PhoenixRestWeb.UserController do
 
   @doc "DELETE /api/users/:id — delete one member, or 409 while they authored comments."
   def delete(conn, %{"id" => raw}) do
-    with {:ok, id} <- parse_id(raw) do
+    with {:ok, id} <- Params.id(raw) do
       case Users.remove(id) do
         :ok ->
           json(conn, %{"ok" => true, "message" => "User deleted.", "redirectTo" => "/users"})
@@ -95,20 +95,6 @@ defmodule PhoenixRestWeb.UserController do
         {:error, {:restricted, message}} ->
           {:error, ApiError.conflict(message)}
       end
-    end
-  end
-
-  # The raw `q` value, Express-style: a repeated param arrives as a list so the
-  # validator can reject it. Plug collapses repeats before a controller would
-  # ever see them, which would hide the client bug.
-  defp search_term(conn) do
-    conn.query_string |> QueryParams.parse_query() |> Map.get("q")
-  end
-
-  defp parse_id(raw) do
-    case QueryParams.parse_id_param(raw) do
-      {:ok, id} -> {:ok, id}
-      {:error, message} -> {:error, ApiError.bad_request(message)}
     end
   end
 end

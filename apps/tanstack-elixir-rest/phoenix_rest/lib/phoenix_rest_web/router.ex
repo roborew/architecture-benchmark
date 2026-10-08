@@ -32,6 +32,13 @@ defmodule PhoenixRestWeb.Router do
     post "/users", UserController, :create
     patch "/users/:id", UserController, :update
     delete "/users/:id", UserController, :delete
+
+    get "/projects", ProjectController, :index
+    get "/projects/:id/tasks", ProjectController, :tasks
+    get "/projects/:id", ProjectController, :show
+    post "/projects", ProjectController, :create
+    patch "/projects/:id", ProjectController, :update
+    delete "/projects/:id", ProjectController, :delete
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
