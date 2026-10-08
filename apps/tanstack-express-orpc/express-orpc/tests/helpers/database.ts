@@ -3,7 +3,7 @@
 // Lifecycle for the isolated test database.
 //
 // The integration suite runs against its OWN database —
-// `architecture_tanstack_express_rest_e2e` on the same Postgres server —
+// `architecture_tanstack_express_orpc_e2e` on the same Postgres server —
 // created, migrated, seeded and dropped around the run. The developer's
 // database is never read or written, so a failing (or mutating) test run
 // cannot disturb local work, and dev data changes cannot break the suite.
@@ -20,7 +20,7 @@ import postgres from "postgres";
 import { schemaPath } from "../../src/db/spec-dir.ts";
 import { fixtureDirectory, FIXTURE_TABLES } from "../fixtures/load.ts";
 
-export const E2E_DATABASE = "architecture_tanstack_express_rest_e2e";
+export const E2E_DATABASE = "architecture_tanstack_express_orpc_e2e";
 
 /**
  * Connection string for the test database.
