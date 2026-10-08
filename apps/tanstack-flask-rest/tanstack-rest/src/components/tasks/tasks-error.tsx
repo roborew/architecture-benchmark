@@ -21,11 +21,11 @@ export function TasksError({ error }: { error: Error }) {
 			<p className="mt-1.5 text-[13px] leading-6 text-slate-500">
 				Is the API server running? Start it from{" "}
 				<code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px]">
-					apps/tanstack-express-rest/express-rest
+					apps/tanstack-flask-rest/flask-rest
 				</code>{" "}
 				with{" "}
 				<code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px]">
-					pnpm dev
+					.venv/bin/python -m src.server
 				</code>
 				.
 			</p>

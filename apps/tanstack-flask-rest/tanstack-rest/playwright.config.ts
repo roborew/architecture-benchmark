@@ -7,8 +7,8 @@ import {
 } from "./tests/e2e/database";
 
 // The suite always runs against its own database, never the developer's. The
-// connection string is derived from express-rest's POSTGRES_URL with only the
-// database name swapped, and is handed to the Express server so it cannot
+// connection string is derived from flask-rest's POSTGRES_URL with only the
+// database name swapped, and is handed to the Flask server so it cannot
 // disagree about which database is under test.
 const E2E_DATABASE_URL = e2eConnectionString();
 
@@ -36,15 +36,19 @@ export default defineConfig({
 			use: { ...devices["Desktop Chrome"] },
 		},
 	],
-	// Two servers, started before the tests: the Express API the browser
+	// Two servers, started before the tests: the Flask API the browser
 	// fetches from, and the Vite dev server that serves the app. Playwright
 	// starts web servers *before* globalSetup creates the database, so the
-	// Express wait URL is /healthz, which deliberately never touches the
-	// database.
+	// Flask wait URL is /healthz, which deliberately never touches the
+	// database (and the app's Db connects lazily, so booting the server never
+	// reaches Postgres either).
 	webServer: [
 		{
-			command: "pnpm start",
-			cwd: "../express-rest",
+			// The backend's own entry point (src/server.py is the only module
+			// allowed to bind a port), driven by its virtualenv python — no
+			// activation needed — with the e2e port and database handed to it.
+			command: ".venv/bin/python -m src.server",
+			cwd: "../flask-rest",
 			url: `http://localhost:${E2E_API_PORT}/healthz`,
 			// Never reuse an already-running dev server: it would be serving the
 			// developer's database rather than the isolated e2e one.

@@ -3,17 +3,18 @@
 // Lifecycle for the e2e database.
 //
 // The browser suite runs against its OWN database —
-// `architecture_tanstack_express_rest_e2e` on the same Postgres server —
+// `architecture_tanstack_flask_rest_e2e` on the same Postgres server —
 // created, migrated, seeded and dropped around the run. The developer's
-// database (and the Express app's dev database) is never read or written.
+// database (and the Flask app's dev database) is never read or written.
 //
-// It is the same database the Express integration suite uses: both tiers
+// It is the same database the Flask integration suite uses (tests/
+// integration/conftest.py in the sibling flask-rest package): both tiers
 // assert against the same shared fixture rows, and the two suites run
 // sequentially, so the name is shared deliberately.
 //
 // Self-contained on purpose: the spec directory is located by walking up to
 // the repo root (the same way every app variant's db scripts do), so nothing
-// here imports from the sibling express-rest package.
+// here imports from the sibling flask-rest package.
 
 import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
@@ -22,7 +23,7 @@ import { fileURLToPath, URL as NodeURL } from "node:url";
 
 import postgres from "postgres";
 
-export const E2E_DATABASE = "architecture_tanstack_express_rest_e2e";
+export const E2E_DATABASE = "architecture_tanstack_flask_rest_e2e";
 export const E2E_API_PORT = 4200;
 export const E2E_WEB_PORT = 3300;
 
@@ -54,14 +55,14 @@ const fixtureDirectory = path.join(specDirectory, "snapshots", FIXTURE_PROFILE);
 /**
  * Connection string for the e2e database.
  *
- * Derived from the Express app's `POSTGRES_URL` (its `.env`) by swapping only
+ * Derived from the Flask app's `POSTGRES_URL` (its `.env`) by swapping only
  * the database name, so host and credentials come from the one place the
  * backend already reads them.
  */
 export function e2eConnectionString(): string {
 	const envPath = path.resolve(
 		path.dirname(fileURLToPath(import.meta.url)),
-		"../../../express-rest/.env",
+		"../../../flask-rest/.env",
 	);
 
 	if (!process.env.POSTGRES_URL && existsSync(envPath)) {
@@ -72,7 +73,7 @@ export function e2eConnectionString(): string {
 
 	if (!base) {
 		throw new Error(
-			"Missing POSTGRES_URL: set it in express-rest/.env so the e2e database can be created.",
+			"Missing POSTGRES_URL: set it in flask-rest/.env so the e2e database can be created.",
 		);
 	}
 
@@ -124,7 +125,7 @@ export async function seedDatabase(): Promise<void> {
 
 	try {
 		// `COPY ... FROM STDIN` streams the fixture CSVs straight in — the same
-		// path `express-rest/src/db/seed.ts` uses, so the two seeders cannot
+		// path `flask-rest/src/db/seed.py` uses, so the two seeders cannot
 		// diverge in behaviour.
 		await sql.begin(async (tx) => {
 			for (const table of FIXTURE_TABLES) {
