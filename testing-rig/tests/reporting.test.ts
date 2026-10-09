@@ -1,0 +1,86 @@
+import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { collectInventory, countDirectDependencies } from "../src/reporting/inventory.js";
+import { buildMatrix, toCsv, toHtml, toMarkdown, type RunSummary } from "../src/reporting/matrix.js";
+import { loadManifestDirectory } from "../src/config/load.js";
+
+const rigRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(rigRoot, "..");
+
+describe("static inventory", () => {
+  it("counts a real app and excludes deps, build output and generated code", () => {
+    const inventory = collectInventory({
+      variantId: "next-actions",
+      appDirectory: path.join(repoRoot, "apps", "next-actions"),
+      serviceCount: 3,
+      imageCount: 3,
+    });
+    expect(inventory.source.files).toBeGreaterThan(20);
+    expect(inventory.source.loc).toBeGreaterThan(1000);
+    // The bug the counting rules exist to catch: generated/build output must not
+    // inflate source. node_modules/`.next` must be excluded.
+    expect(inventory.source.files).toBeLessThan(500);
+    expect(inventory.tests.files).toBeGreaterThan(0);
+    expect(inventory.infrastructure.files).toBeGreaterThan(0);
+    expect(inventory.directDependencies).toBeGreaterThan(3);
+  });
+
+  it("counts direct dependencies from package.json", () => {
+    expect(countDirectDependencies(path.join(repoRoot, "apps", "next-actions"))).toBeGreaterThan(3);
+  });
+});
+
+describe("decision matrix", () => {
+  const summary: RunSummary = {
+    runId: "test-run",
+    effectiveManifestSha256: "abc123",
+    results: [
+      {
+        id: "next-actions",
+        cohort: "next-fullstack",
+        status: "ok",
+        performanceEligible: true,
+        ports: { APP_PORT: 1 },
+        stages: { build: { ok: true, ms: 10 }, seed: { ok: true, ms: 20 }, verifyDigest: { ok: true, ms: 5 } },
+        error: null,
+      },
+      {
+        id: "tanstack-express-rest",
+        cohort: "spa-api",
+        status: "failed",
+        performanceEligible: false,
+        ports: { API_PORT: 2, SPA_PORT: 3 },
+        stages: { build: { ok: true, ms: 11 } },
+        error: "boom",
+      },
+    ],
+  };
+
+  it("renders CSV, Markdown and HTML from raw data", async () => {
+    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
+    const rows = buildMatrix(summary, new Map(), manifests);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.gate).toBe("pass");
+    expect(rows[1]!.gate).toBe("fail");
+    expect(rows[0]!.orm).toBe("none");
+    expect(rows[0]!.buildMs).toBe(10);
+    // Not-yet-measured perf columns stay empty, never zero.
+    expect(rows[0]!.renderTtfbMs).toBeNull();
+    expect(rows[0]!.loadOpsPerSecond).toBeNull();
+
+    const csv = toCsv(rows);
+    expect(csv.split("\n")[0]).toContain("variant,cohort,orm");
+    expect(csv).toContain("next-actions");
+
+    const md = toMarkdown(rows, { runId: summary.runId, sha256: summary.effectiveManifestSha256 });
+    expect(md).toContain("Decision matrix");
+    expect(md).toContain("| variant |");
+
+    const html = toHtml(rows, { runId: summary.runId, sha256: summary.effectiveManifestSha256 });
+    expect(html).toContain("<table>");
+    expect(html).toContain("gate-pass");
+    expect(html).toContain("gate-fail");
+  });
+});

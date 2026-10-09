@@ -1,0 +1,18 @@
+# Variant manifest — next-drizzle (next-fullstack). Plan §4, schema v2.
+# Server Actions mutate through Drizzle; RSC reads through Drizzle.
+schemaVersion: 2
+id: next-drizzle
+cohort: next-fullstack
+appDirectory: ../apps/next-drizzle
+composeFile: ../apps/next-drizzle/compose.yaml
+projectPrefix: bench-next-drizzle
+services:
+  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: rsc-direct-db
+mutationMode: server-action
+orm: drizzle

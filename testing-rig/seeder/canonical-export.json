@@ -1,0 +1,11 @@
+{
+  "comment": "Canonical export SQL, shared by the seeder (seed.mjs) and the controller's independent verifier. `tables` is the byte-concatenation order that defines combinedSha256 (spec/seed-spec.md). Each `select` is wrapped as COPY (<select>) TO STDOUT WITH (FORMAT csv, HEADER true). Timestamps are cast with to_char so the export is ISO-8601 UTC at whole-second precision, byte-identical to the golden CSV.",
+  "tables": ["users", "projects", "tasks", "comments"],
+  "timestampMask": "YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"",
+  "select": {
+    "users": "SELECT id, display_name, email FROM users ORDER BY id",
+    "projects": "SELECT id, name, description, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at FROM projects ORDER BY id",
+    "tasks": "SELECT id, project_id, assignee_id, title, description, status, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at, to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at FROM tasks ORDER BY id",
+    "comments": "SELECT id, task_id, author_id, body, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at FROM comments ORDER BY id"
+  }
+}

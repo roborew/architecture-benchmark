@@ -1,0 +1,24 @@
+# Variant manifest — tanstack-elixir-rest (spa-api). Plan §4, schema v2.
+# The API half is a Phoenix app (Bandit); Ecto owns the schema/queries.
+schemaVersion: 2
+id: tanstack-elixir-rest
+cohort: spa-api
+appDirectory: ../apps/tanstack-elixir-rest
+composeFile: ../apps/tanstack-elixir-rest/compose.yaml
+projectPrefix: bench-tanstack-elixir-rest
+services:
+  api: { composeService: api, kind: api, healthPath: /healthz, hostPortEnv: API_PORT }
+  spa:
+    composeService: spa
+    kind: spa
+    healthPath: /
+    hostPortEnv: SPA_PORT
+    buildArgs: { VITE_API_URL: "http://localhost:{{API_PORT}}" }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: spa-fetch-rest
+mutationMode: rest
+orm: ecto

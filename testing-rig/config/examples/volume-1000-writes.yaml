@@ -6,7 +6,7 @@
 
 schemaVersion: 1
 name: medium-crud-volume-1000
-variants: [template-next]
+variants: [next-actions]
 trials: 3
 variantOrder: rotate
 
@@ -54,6 +54,9 @@ resources:
   appMemoryMb: 2048
   dbCpus: 2
   dbMemoryMb: 2048
+
+load:
+  generatorMaxCpuPercent: 75
 
 report:
   keepRawSamples: true

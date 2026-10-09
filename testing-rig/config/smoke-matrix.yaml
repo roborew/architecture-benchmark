@@ -1,0 +1,76 @@
+# Smoke matrix — the reduced first-pass budget (plan §8.3).
+# One trial, the small fixture, one volume scenario, all 14 variants. It is the
+# config the R8 "first full matrix" gate is rehearsed against before the long
+# default run, and the one CI-style local checks should use.
+
+schemaVersion: 1
+name: smoke-matrix
+variants:
+  - next-actions
+  - next-drizzle
+  - next-prisma
+  - next-trpc
+  - next-orpc
+  - tanstack-start-react
+  - tanstack-start-solid
+  - tanstack-express-rest
+  - tanstack-fastify-rest
+  - tanstack-flask-rest
+  - tanstack-fastapi-rest
+  - tanstack-elixir-rest
+  - tanstack-express-graphql
+  - tanstack-express-orpc
+trials: 1
+variantOrder: rotate
+
+fixture:
+  seedVersion: 1
+  seed: 42
+  projectCount: 5
+  userCount: 20
+  taskCount: 1000
+  commentCount: 1000
+  baseTimestamp: "2025-01-01T00:00:00Z"
+  statusPercent: { todo: 50, "in progress": 30, done: 20 }
+  workingSetFraction: 0.20
+
+reset:
+  betweenPhases: true
+  betweenTrials: true
+  method: database-recreate
+
+browser:
+  engine: chromium
+  workers: 1
+  warmupSamples: 5
+  measuredSamples: 10
+  viewport: { width: 1365, height: 768 }
+  cacheProfile: cold-browser-context
+  prefetch: disabled
+  operations: [list, detail, create, update, delete]
+
+scenarios:
+  - id: volume-50-writes
+    kind: volume
+    counts: { list: 100, detail: 50, create: 50, update: 50, delete: 50 }
+    concurrency: 5
+    maxAttemptsPerOperation: 60
+    maxDurationSeconds: 300
+    resetBefore: true
+
+network:
+  browserToAppAddedRttMs: 0
+  appToApiAddedRttMs: 0
+
+resources:
+  appCpus: 2
+  appMemoryMb: 2048
+  dbCpus: 2
+  dbMemoryMb: 2048
+
+load:
+  generatorMaxCpuPercent: 75
+
+report:
+  keepRawSamples: true
+  outputFormats: [json, csv, html]

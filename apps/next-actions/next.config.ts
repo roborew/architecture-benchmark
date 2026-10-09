@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The container runs the traced standalone server (`node server.js`) rather
+  // than the full `next start`, so the runtime image ships only what it uses.
+  output: "standalone",
+
   /* config options here */
 
   // The e2e suite starts its own dev server against the isolated test

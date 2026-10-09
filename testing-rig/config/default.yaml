@@ -1,10 +1,24 @@
 # Default experiment config (normative `scenarios:` shape — plan §4).
-# Only `template-next` exists so far; M4 variants are added to `variants:`
-# and manifests/ only after their copy-out gates pass.
+# All 14 DB-backed variants. `next-template` is excluded deliberately: it has
+# no database, so it cannot participate in DB-backed runs (plan §8.4).
 
 schemaVersion: 1
 name: medium-crud-volume-100
-variants: [template-next]
+variants:
+  - next-actions
+  - next-drizzle
+  - next-prisma
+  - next-trpc
+  - next-orpc
+  - tanstack-start-react
+  - tanstack-start-solid
+  - tanstack-express-rest
+  - tanstack-fastify-rest
+  - tanstack-flask-rest
+  - tanstack-fastapi-rest
+  - tanstack-elixir-rest
+  - tanstack-express-graphql
+  - tanstack-express-orpc
 trials: 5
 variantOrder: rotate
 
@@ -62,6 +76,11 @@ resources:
   appMemoryMb: 2048
   dbCpus: 2
   dbMemoryMb: 2048
+
+load:
+  # A trial whose generator process exceeds this share of a core is rejected
+  # as generator-saturated, not counted as an app measurement (plan §6.5).
+  generatorMaxCpuPercent: 75
 
 report:
   keepRawSamples: true

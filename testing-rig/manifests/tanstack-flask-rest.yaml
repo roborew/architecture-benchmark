@@ -1,0 +1,25 @@
+# Variant manifest — tanstack-flask-rest (spa-api). Plan §4, schema v2.
+# The API half is a Python Flask app served by a production WSGI server
+# (gunicorn); the worker count is recorded in the API image/README.
+schemaVersion: 2
+id: tanstack-flask-rest
+cohort: spa-api
+appDirectory: ../apps/tanstack-flask-rest
+composeFile: ../apps/tanstack-flask-rest/compose.yaml
+projectPrefix: bench-tanstack-flask-rest
+services:
+  api: { composeService: api, kind: api, healthPath: /healthz, hostPortEnv: API_PORT }
+  spa:
+    composeService: spa
+    kind: spa
+    healthPath: /
+    hostPortEnv: SPA_PORT
+    buildArgs: { VITE_API_URL: "http://localhost:{{API_PORT}}" }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: spa-fetch-rest
+mutationMode: rest
+orm: none

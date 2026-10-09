@@ -1,0 +1,10 @@
+{
+	"name": "bench-seeder",
+	"private": true,
+	"type": "module",
+	"description": "Rig-owned canonical fixture loader. One image, used by every variant stack.",
+	"dependencies": {
+		"pg": "^8.16.3",
+		"pg-copy-streams": "^7.0.0"
+	}
+}

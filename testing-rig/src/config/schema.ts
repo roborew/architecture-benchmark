@@ -17,6 +17,21 @@ export const OPERATION_KINDS = [
 ] as const;
 export type OperationKind = (typeof OPERATION_KINDS)[number];
 
+/** A capability is an operation *plus* the composite `create-with-comment`. */
+export const CAPABILITY_KINDS = [
+  ...OPERATION_KINDS,
+  "create-with-comment",
+] as const;
+export type CapabilityKind = (typeof CAPABILITY_KINDS)[number];
+
+/** The three cohorts the reports group by (plan §1.1/§4). */
+export const COHORTS = ["next-fullstack", "tanstack-start", "spa-api"] as const;
+export type Cohort = (typeof COHORTS)[number];
+
+/** What a Compose service *is*, so the controller can plan ports/health. */
+export const SERVICE_KINDS = ["app", "api", "spa", "db", "seeder"] as const;
+export type ServiceKind = (typeof SERVICE_KINDS)[number];
+
 const positiveInt = z.number().int().positive();
 const nonnegativeInt = z.number().int().nonnegative();
 
@@ -78,6 +93,19 @@ export const browserSchema = z
     cacheProfile: z.enum(["cold-browser-context"]),
     prefetch: z.enum(["disabled"]),
     operations: z.array(z.enum(OPERATION_KINDS)).min(1),
+  })
+  .strict();
+
+/**
+ * Load-generator limits (plan §6.5/§7). The generator-saturation rejection
+ * criterion needs an explicit ceiling: a trial whose generator process burns
+ * more than `generatorMaxCpuPercent` of a core while producing load is not a
+ * measurement of the app and is rejected. Default 75 keeps every existing
+ * config valid.
+ */
+export const loadSchema = z
+  .object({
+    generatorMaxCpuPercent: z.number().positive().max(100).default(75),
   })
   .strict();
 
@@ -152,6 +180,7 @@ export const rigConfigSchema = z
     scenarios: z.array(scenarioSchema).min(1),
     network: networkSchema,
     resources: resourcesSchema,
+    load: loadSchema.default({ generatorMaxCpuPercent: 75 }),
     report: reportSchema,
   })
   .strict()
@@ -166,6 +195,20 @@ export const rigConfigSchema = z
           "phase-1 cohort has no separate backend service; appToApiAddedRttMs must be 0 (add a labelled profile when external backends exist)",
       });
     }
+
+    // A variant listed twice would silently double its trials and confound the
+    // rotated order; reject it at validation time.
+    const seen = new Set<string>();
+    for (const id of cfg.variants) {
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["variants"],
+          message: `duplicate variant id '${id}'`,
+        });
+      }
+      seen.add(id);
+    }
   });
 
 export type RigConfig = z.infer<typeof rigConfigSchema>;
@@ -174,43 +217,123 @@ export type VolumeScenario = z.infer<typeof volumeScenarioSchema>;
 export type CapacityScenario = z.infer<typeof capacityScenarioSchema>;
 
 // ---------------------------------------------------------------------------
-// Variant manifest (plan §4). Command arrays are a design shape only: the
-// controller resolves app-relative paths and the unique Compose project name
-// itself; it never executes an unvalidated shell string from YAML.
+// Variant manifest, schema version 2 (plan §4).
+//
+// A manifest describes one variant as one Compose stack. Single-service
+// variants have an `app`; `spa-api` pairs have an `api` and a `spa`. Every
+// stack owns its `db` and a rig-supplied `seeder`. Command arrays are a design
+// shape only: the controller resolves app-relative paths, the unique Compose
+// project name, allocated ports, and `{{TOKEN}}` build args itself; it never
+// executes an unvalidated shell string from YAML.
+
+/**
+ * A service the controller needs to know about. `healthPath`/`hostPortEnv`
+ * are present exactly for the services that are published to the host and
+ * polled for readiness (app/api/spa) — not for `db` (reached in-network) or
+ * `seeder` (one-shot).
+ */
+export const serviceSchema = z
+  .object({
+    composeService: z.string().min(1),
+    kind: z.enum(SERVICE_KINDS),
+    healthPath: z.string().startsWith("/").optional(),
+    hostPortEnv: z.string().min(1).optional(),
+    /** Build-time args, values may contain `{{OTHER_HOST_PORT_ENV}}` tokens. */
+    buildArgs: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
+
+export type ServiceManifest = z.infer<typeof serviceSchema>;
+
+const commandSchema = z
+  .object({ command: z.array(z.string()).min(1) })
+  .strict();
+
+export type CommandManifest = z.infer<typeof commandSchema>;
 
 export const variantManifestSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     id: z.string().min(1),
+    cohort: z.enum(COHORTS),
     appDirectory: z.string().min(1),
     composeFile: z.string().min(1),
     projectPrefix: z.string().min(1),
-    healthPath: z.string().startsWith("/"),
-    appHostPortEnv: z.string().min(1),
-    composeServices: z
+    services: z
       .object({
-        app: z.string().min(1),
-        db: z.string().min(1),
-        seeder: z.string().min(1),
+        app: serviceSchema.optional(),
+        api: serviceSchema.optional(),
+        spa: serviceSchema.optional(),
+        db: serviceSchema,
+        seeder: serviceSchema,
       })
       .strict(),
-    seedCommand: z.array(z.string()).min(1),
-    resetCommand: z.array(z.string()).min(1),
-    capabilities: z
-      .array(
-        z.enum([
-          "list",
-          "detail",
-          "create",
-          "update",
-          "delete",
-          "create-with-comment",
-        ]),
-      )
-      .min(1),
+    seed: commandSchema,
+    reset: commandSchema,
+    capabilities: z.array(z.enum(CAPABILITY_KINDS)).min(1),
     readMode: z.string().min(1),
     mutationMode: z.string().min(1),
+    orm: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((m, ctx) => {
+    const { app, api, spa, db, seeder } = m.services;
+
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: path.split("."),
+        message,
+      });
+
+    // Shape: either one single `app`, or an `api` (optionally with a `spa`).
+    if (app && api)
+      issue("services", "a variant has either `app` or `api`, never both");
+    if (!app && !api)
+      issue("services", "a variant must declare `app` or `api`");
+    if (spa && !api)
+      issue("services.spa", "`spa` is only meaningful alongside `api`");
+    if (app && spa)
+      issue("services", "a single-service variant has no separate `spa`");
+
+    // Kind must agree with the slot it is declared in.
+    if (app && app.kind !== "app") issue("services.app.kind", "must be 'app'");
+    if (api && api.kind !== "api") issue("services.api.kind", "must be 'api'");
+    if (spa && spa.kind !== "spa") issue("services.spa.kind", "must be 'spa'");
+    if (db.kind !== "db") issue("services.db.kind", "must be 'db'");
+    if (seeder.kind !== "seeder")
+      issue("services.seeder.kind", "must be 'seeder'");
+
+    // Published services need both a health path and a host-port env, or
+    // neither. db/seeder must have neither.
+    for (const [name, svc] of Object.entries(m.services)) {
+      if (!svc) continue;
+      const published = name === "app" || name === "api" || name === "spa";
+      if (published && (!svc.healthPath || !svc.hostPortEnv)) {
+        issue(
+          `services.${name}`,
+          `${name} requires both healthPath and hostPortEnv`,
+        );
+      }
+      if (!published && (svc.healthPath || svc.hostPortEnv)) {
+        issue(
+          `services.${name}`,
+          `${name} must not declare healthPath or hostPortEnv`,
+        );
+      }
+    }
+
+    // Two published services must not reuse a host-port env.
+    const envs = [app, api, spa]
+      .filter((s): s is ServiceManifest => Boolean(s))
+      .map((s) => s.hostPortEnv)
+      .filter((e): e is string => Boolean(e));
+    if (new Set(envs).size !== envs.length) {
+      issue(
+        "services",
+        "published services must use distinct hostPortEnv names",
+      );
+    }
+  });
 
 export type VariantManifest = z.infer<typeof variantManifestSchema>;

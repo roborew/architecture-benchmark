@@ -1,0 +1,18 @@
+# Variant manifest — next-actions (next-fullstack). Plan §4, schema v2.
+# Server Actions mutate; React Server Components read Postgres directly.
+schemaVersion: 2
+id: next-actions
+cohort: next-fullstack
+appDirectory: ../apps/next-actions
+composeFile: ../apps/next-actions/compose.yaml
+projectPrefix: bench-next-actions
+services:
+  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: rsc-direct-db
+mutationMode: server-action
+orm: none

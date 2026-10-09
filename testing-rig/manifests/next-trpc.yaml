@@ -1,0 +1,18 @@
+# Variant manifest — next-trpc (next-fullstack). Plan §4, schema v2.
+# tRPC procedures over an in-app route handler; reads on the server too.
+schemaVersion: 2
+id: next-trpc
+cohort: next-fullstack
+appDirectory: ../apps/next-trpc
+composeFile: ../apps/next-trpc/compose.yaml
+projectPrefix: bench-next-trpc
+services:
+  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: rsc-trpc
+mutationMode: trpc
+orm: none

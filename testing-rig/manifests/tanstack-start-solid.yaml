@@ -1,0 +1,18 @@
+# Variant manifest — tanstack-start-solid (tanstack-start). Plan §4, schema v2.
+# Single SSR service: TanStack Start server functions read Postgres directly.
+schemaVersion: 2
+id: tanstack-start-solid
+cohort: tanstack-start
+appDirectory: ../apps/tanstack-start-solid
+composeFile: ../apps/tanstack-start-solid/compose.yaml
+projectPrefix: bench-tanstack-start-solid
+services:
+  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: server-fn-direct-db
+mutationMode: server-fn
+orm: none

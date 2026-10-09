@@ -1,0 +1,33 @@
+# The Docker build context is this directory. Keep build artifacts, generated
+# assets, tests, and local secrets out of the image; everything excluded here is
+# produced again inside the image (deps, _build, digested assets).
+
+# Build artifacts.
+/_build/
+/deps/
+/cover/
+/doc/
+/tmp/
+erl_crash.dump
+*.ez
+phoenix_rest-*.tar
+
+# Generated assets — rebuilt by `mix assets.deploy`.
+/priv/static/assets/
+/priv/static/cache_manifest.json
+
+# Node/npm leftovers for the asset toolchain.
+/assets/node_modules/
+npm-debug.log
+
+# Local secrets/config — never into the image.
+.env
+.env.*
+!.env.example
+
+# Tests are not part of the prod image.
+/test/
+
+# VCS metadata.
+.git
+.gitignore

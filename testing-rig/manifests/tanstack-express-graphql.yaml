@@ -1,0 +1,23 @@
+# Variant manifest — tanstack-express-graphql (spa-api). Plan §4, schema v2.
+schemaVersion: 2
+id: tanstack-express-graphql
+cohort: spa-api
+appDirectory: ../apps/tanstack-express-graphql
+composeFile: ../apps/tanstack-express-graphql/compose.yaml
+projectPrefix: bench-tanstack-express-graphql
+services:
+  api: { composeService: api, kind: api, healthPath: /healthz, hostPortEnv: API_PORT }
+  spa:
+    composeService: spa
+    kind: spa
+    healthPath: /
+    hostPortEnv: SPA_PORT
+    buildArgs: { VITE_API_URL: "http://localhost:{{API_PORT}}" }
+  db: { composeService: db, kind: db }
+  seeder: { composeService: seeder, kind: seeder }
+seed: { command: [compose, run, --rm, seeder, seed] }
+reset: { command: [compose, run, --rm, seeder, reset] }
+capabilities: [list, detail, create, update, delete, create-with-comment]
+readMode: spa-fetch-graphql
+mutationMode: graphql
+orm: none

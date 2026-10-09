@@ -68,12 +68,75 @@ preserved under `testing-rig/results/` (gitignored, local only).
   configs and both manifests; `pnpm typecheck` clean; fixture regeneration
   byte-identical to `spec/snapshots/small`.
 
+## M2 (controller) → R0–R4 — containerisation spine (completed, validated 9 Oct 2026)
+
+Implemented per `docs/testing-rig-final-implementation-plan.md`. All gates run
+on this host (macOS Docker Desktop, Docker 29.1.3).
+
+- **R0 — housekeeping.** `testing-rig/package.json` now declares `yaml`, `tsx`,
+  `vitest`, `@playwright/test`, `typescript` and scripts (`config:validate`,
+  `rig:run`, `test`, `typecheck`); added `tsconfig.json` + `vitest.config.ts`.
+  Contract audit recorded in `docs/testing-rig-contract-audit.md`.
+  **Gate:** `pnpm test` 28/28; `pnpm typecheck` clean;
+  `pnpm config:validate config/default.yaml` green.
+- **R3 — manifest v2 + config.** `variantManifestSchema` v2 (`cohort`,
+  `services{app|api|spa,db,seeder}` with `healthPath`/`hostPortEnv`/`buildArgs`,
+  `seed`/`reset`, `orm`); experiment config gained `load.generatorMaxCpuPercent`
+  (default 75) and duplicate-variant rejection. All 14 manifests written,
+  stale `template-next.yaml` deleted, `config/default.yaml` fixed to real IDs,
+  `config/smoke-matrix.yaml` added.
+- **R1 — seeder + controller + `next-actions`.** New `testing-rig/seeder/` image
+  (`node:22-alpine` + `pg`/`pg-copy-streams`; `seed`/`reset`/`verify` modes;
+  shared `canonical-export.json`); controller state machine
+  (`src/controller/`: docker/ports/tokens/plan/fixture/verify/lifecycle/artifacts/cli).
+  `apps/next-actions/`: `Dockerfile` (next-standalone), `compose.yaml`,
+  `.dockerignore`, `.env.example`, README; `next.config.ts` `output: standalone`
+  and root-layout `force-dynamic` so `next build` needs no DB.
+  **Gate:** full §3.5 gate green — `compose up` all health green; seeder
+  reproduces the golden digest `11145bf8…` through the containerised Postgres
+  round-trip (self-checked _and_ independently re-derived via `psql`); host HTTP
+  smoke (`/` lists 5 projects, `/projects/1` lists tasks newest-first);
+  `compose down -v` leaves nothing; forced-failure path still tears down.
+- **R2 — pilot `spa-api` (`tanstack-express-rest`).** API image (node-api
+  archetype, Node 24 type-stripping `node src/server.ts`), SPA image
+  (vite-spa-static on `caddy:2-alpine` with history fallback), `VITE_API_URL`
+  build arg baked from the allocated API port, CORS audited (express reflects
+  the origin). **Gate:** both halves build/healthy; CRUD smoke through the API
+  the SPA targets (create → id 1001 past fixture ids → update → delete → 404);
+  baked API URL present in the served bundle; clean teardown.
+- **R4 — remaining 12 variants dockerised** from the same archetypes.
+  **Gate:** `pnpm rig:run --config config/smoke-matrix.yaml` → **14/14 variants
+  ok (perf-eligible)** in one serial run; every variant seeds the golden digest
+  and passes independent schema/digest verification.
+
+### Fixes found by the gates (app/config)
+
+- Next variants needed root-layout `export const dynamic = "force-dynamic"` and
+  `output: "standalone"`; builds set a placeholder `POSTGRES_URL` (the client
+  connects lazily) so no DB is needed at image-build time.
+- `next-prisma` requires `pnpm prisma generate` in the build stage (generated
+  client is git-ignored).
+- `tanstack-flask-rest` pinned to Python **3.14** (the app relies on PEP 649
+  deferred annotations; 3.13 exposes a class-scope `list` shadowing bug).
+- `tanstack-fastapi-rest` runtime installs `libpq5` (`psycopg[pool]` has no
+  bundled libpq).
+- `tanstack-elixir-rest` Phoenix image runs `mix compile` **before**
+  `mix assets.deploy` (the esbuild `phoenix-colocated` alias only exists after
+  compile).
+
 ## Next steps
 
-1. Run `scripts/standalone-smoke.sh` on a machine with Docker disk space (M1
-   copy-out gate).
-2. Rig controller lifecycle (M2): Compose project/port management, reset/
-   seed/verify through the seeder adapter, run metadata, try/finally cleanup.
-3. Playwright correctness + serial browser timing suites (M3), against
-   `template-next` first.
-4. Only after M3 gates: scaffold `next-actions`, `next-trpc`, `next-rest` (M4).
+1. **R5 — black-box correctness suite.** Write it against `spec/contract.md`,
+   then add the missing contract testids to the apps (see
+   `docs/testing-rig-contract-audit.md`). Gate: passes on all 14; deliberately
+   stale-UI / failed-write cases are detected as failures.
+2. **R6 — render-speed suite** (Playwright, serial, cold contexts, CDP LCP).
+3. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
+   stack network; `pg_stat_statements`; `docker stats`; generator-CPU ceiling).
+4. **R8 — static inventory + reporting.** _Partly done:_ `src/reporting/` now
+   collects the §6.1 inventory per run and generates the decision matrix
+   (`pnpm report` → `results/<run-id>/report/{matrix.csv,matrix.md,index.html}`)
+   from raw data; verified against a 14/14 smoke run. Still to do: the correctness
+   /render/load columns (blank until R5–R7) and the long `default.yaml` matrix run.
+5. Optionally wire browser/k6 stages into `src/controller/lifecycle.ts`, which
+   already records stages and preserves artefacts on failure.

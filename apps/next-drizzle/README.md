@@ -34,3 +34,31 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Run in Docker
+
+`Dockerfile`, `compose.yaml` and `.dockerignore` package this variant as one
+self-contained benchmark stack (`db` + `seeder` + `app`) — the `next-standalone`
+archetype from `docs/testing-rig-final-implementation-plan.md` §3.3. Postgres is
+never published; the app reaches it in-network at
+`postgresql://bench:bench@db:5432/bench`.
+
+For a manual run:
+
+```bash
+cp .env.example .env                 # APP_PORT=3001 by default
+docker compose up --build -d
+curl -fsS http://localhost:3001/healthz
+
+# load the canonical fixture through the rig-owned seeder image
+# (build it once from the repo root: docker build -t bench-seeder:local testing-rig/seeder)
+docker compose run --rm seeder seed small
+
+docker compose down -v               # leaves nothing behind
+```
+
+The benchmark rig owns the real invocation: it allocates `APP_PORT` and the
+`APP_CPUS` / `APP_MEMORY_MB` / `DB_CPUS` / `DB_MEMORY_MB` caps per run, sets a
+run-unique Compose project name (`bench-next-drizzle-<runId>`), and drives the
+seeder's `seed` / `reset` / `verify` modes itself. The values in `.env.example`
+are only the defaults for a manual `docker compose up`.

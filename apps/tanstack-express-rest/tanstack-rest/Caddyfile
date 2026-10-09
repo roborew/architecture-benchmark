@@ -1,0 +1,7 @@
+# SPA host config: serve the built assets, falling back to index.html for
+# client-side routes (history mode) so deep links like /projects/1 work.
+:80 {
+	root * /usr/share/caddy
+	try_files {path} /index.html
+	file_server
+}

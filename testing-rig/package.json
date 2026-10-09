@@ -1,5 +1,26 @@
 {
-	"dependencies": {
-		"zod": "^4.6.5"
-	}
+  "name": "testing-rig",
+  "private": true,
+  "type": "module",
+  "description": "The benchmark controller: config validation, Compose lifecycle, seeding/verification, suites, and the decision matrix.",
+  "scripts": {
+    "config:validate": "tsx src/config/validate.ts",
+    "rig:run": "tsx src/controller/cli.ts",
+    "report": "tsx src/reporting/cli.ts",
+    "seeder:build": "docker build -t bench-seeder:local seeder",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.18.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.2",
+    "vitest": "^5.0.3"
+  }
 }

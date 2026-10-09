@@ -1,0 +1,67 @@
+# Canonical benchmark stack for a single-service variant (plan §3.1).
+# One variant = one stack: db + a one-shot rig-owned seeder + the app.
+#
+# The rig drives this with `docker compose -p bench-next-drizzle-<runId>` and
+# passes project/ports/caps as environment variables; the defaults here make a
+# manual `docker compose up --build` work too.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: bench
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bench
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    # No published host port (plan §3.1): the rig reaches Postgres only through
+    # in-network clients and `docker compose exec`.
+    deploy:
+      resources:
+        limits:
+          cpus: "${DB_CPUS:-2}"
+          memory: "${DB_MEMORY_MB:-2048}M"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench -d bench"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-shot, rig-owned loader (plan §3.2). Excluded from `up` by its profiles;
+  # the controller runs it explicitly via `compose run --rm seeder <mode>`.
+  seeder:
+    image: bench-seeder:local
+    profiles: ["seed", "reset", "verify"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: postgresql://bench:bench@db:5432/bench
+
+  app:
+    build:
+      context: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: postgresql://bench:bench@db:5432/bench
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${APP_PORT:-3001}:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "${APP_CPUS:-2}"
+          memory: "${APP_MEMORY_MB:-2048}M"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30

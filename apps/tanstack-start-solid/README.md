@@ -30,7 +30,6 @@ If you prefer not to use Tailwind CSS:
 3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
 4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
 
-
 ## Deploy with Nitro
 
 This project uses Nitro as a generic server adapter, so it can run on any Node-compatible host.
@@ -43,8 +42,6 @@ node dist/server/index.mjs
 The build output is a self-contained Node server. To deploy, push the `dist/` directory to your host (Render, Fly.io, your own VPS, etc.) and run the server command above.
 
 For host-specific presets (Vercel, Netlify, Cloudflare, AWS Lambda, etc.) and tuning, see https://v3.nitro.build/deploy.
-
-
 
 ## Routing
 
@@ -87,13 +84,13 @@ More information on layouts can be found in the [Layouts documentation](https://
 TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
 
 ```tsx
-import { createServerFn } from '@tanstack/solid-start'
+import { createServerFn } from "@tanstack/solid-start";
 
 const getServerTime = createServerFn({
-  method: 'GET',
+  method: "GET",
 }).handler(async () => {
-  return new Date().toISOString()
-})
+  return new Date().toISOString();
+});
 ```
 
 ## Data Fetching
@@ -103,37 +100,31 @@ There are multiple ways to fetch data in your application. You can use TanStack 
 For example:
 
 ```tsx
-import { createFileRoute } from '@tanstack/solid-router'
+import { createFileRoute } from "@tanstack/solid-router";
 
-export const Route = createFileRoute('/people')({
+export const Route = createFileRoute("/people")({
   loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
+    const response = await fetch("https://swapi.dev/api/people");
+    return response.json();
   },
   component: PeopleComponent,
-})
+});
 
 function PeopleComponent() {
-  const data = Route.useLoaderData()
+  const data = Route.useLoaderData();
   return (
     <ul>
-      <For each={data().results}>
-        {(person) => <li>{person.name}</li>}
-      </For>
+      <For each={data().results}>{(person) => <li>{person.name}</li>}</For>
     </ul>
-  )
+  );
 }
 ```
 
 Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/solid/guide/data-loading#loader-parameters).
 
-
-
-
 ## Linting & Formatting
 
 This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
-
 
 ```bash
 npm run lint
@@ -141,9 +132,39 @@ npm run format
 npm run check
 ```
 
-
 # Learn More
 
 You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
 
 For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+
+## Run in Docker
+
+`Dockerfile`, `compose.yaml`, `.dockerignore` and `.env.example` package this
+variant as one self-contained benchmark stack (`db` + `seeder` + `app`) — the
+`tanstack-start` archetype from `docs/testing-rig-final-implementation-plan.md`
+§3.3: `vite build` emits a self-contained Node server under `.output/`, run with
+`node .output/server/index.mjs`. The image is multi-stage, production mode, and
+runs as a non-root user; it is built with pnpm, matching `pnpm-lock.yaml`.
+Postgres is never published; the app reaches it in-network at
+`postgresql://bench:bench@db:5432/bench`.
+
+For a manual run:
+
+```bash
+cp .env.example .env                 # APP_PORT=3002 by default
+docker compose up --build -d
+curl -fsS http://localhost:3002/healthz
+
+# load the canonical fixture through the rig-owned seeder image
+# (build it once from the repo root: docker build -t bench-seeder:local testing-rig/seeder)
+docker compose run --rm seeder seed small
+
+docker compose down -v               # leaves nothing behind
+```
+
+The benchmark rig owns the real invocation: it allocates `APP_PORT` and the
+`APP_CPUS` / `APP_MEMORY_MB` / `DB_CPUS` / `DB_MEMORY_MB` caps per run, sets a
+run-unique Compose project name (`bench-tanstack-start-solid-<runId>`), and
+drives the seeder's `seed` / `reset` / `verify` modes itself. The values in
+`.env.example` are only the defaults for a manual `docker compose up`.
