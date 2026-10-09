@@ -14,7 +14,11 @@ import { loadManifestDirectory } from "../config/load.js";
 import { RunArtifacts } from "../controller/artifacts.js";
 import { buildMatrix, loadRun, toCsv, toHtml, toMarkdown } from "./matrix.js";
 
-const rigRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const rigRoot = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
 
 function latestRun(resultsRoot: string): string | undefined {
   const dirs = readdirSync(resultsRoot)
@@ -27,24 +31,35 @@ function latestRun(resultsRoot: string): string | undefined {
 async function main(): Promise<number> {
   const resultsRoot = path.join(rigRoot, "results");
   const arg = argv[2];
-  const runDir = arg ? (arg.includes(path.sep) ? arg : path.join(resultsRoot, arg)) : latestRun(resultsRoot);
+  const runDir = arg
+    ? arg.includes(path.sep)
+      ? arg
+      : path.join(resultsRoot, arg)
+    : latestRun(resultsRoot);
 
   if (!runDir) {
     console.error(`no runs found under ${resultsRoot}`);
     return 2;
   }
 
-  const { summary, inventory } = loadRun(runDir);
-  const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
-  const rows = buildMatrix(summary, inventory, manifests);
+  const { summary, inventory, render } = loadRun(runDir);
+  const manifests = await loadManifestDirectory(
+    path.join(rigRoot, "manifests"),
+  );
+  const rows = buildMatrix(summary, inventory, manifests, render);
 
-  const meta = { runId: summary.runId, sha256: summary.effectiveManifestSha256 };
+  const meta = {
+    runId: summary.runId,
+    sha256: summary.effectiveManifestSha256,
+  };
   const artifacts = new RunArtifacts(path.join(runDir, "report"));
   artifacts.write("matrix.csv", toCsv(rows));
   artifacts.write("matrix.md", toMarkdown(rows, meta));
   artifacts.write("index.html", toHtml(rows, meta));
 
-  console.log(`wrote decision matrix for run ${summary.runId}: ${rows.length} variant(s)`);
+  console.log(
+    `wrote decision matrix for run ${summary.runId}: ${rows.length} variant(s)`,
+  );
   console.log(`  ${path.join(runDir, "report", "matrix.csv")}`);
   console.log(`  ${path.join(runDir, "report", "matrix.md")}`);
   console.log(`  ${path.join(runDir, "report", "index.html")}`);

@@ -145,13 +145,42 @@ DELETE (Fastify rejected it).
 the matrix with the correctness column populated. Rig tests 31/31; typecheck
 clean.
 
+## R6 — render-speed collector (completed, validated 9 Oct 2026)
+
+`testing-rig/src/render/collect.ts` (Playwright + pinned Chromium), run as a
+non-fatal `render` controller stage (`pnpm rig:run … --with-render`). Fixed
+viewport, cold browser context per sample, warmup discarded, `measuredSamples`
+from config. Navigation metrics (TTFB, FCP, LCP, first-useful-data) on
+`/projects`, `/projects/1`, `/tasks/1`; interaction metrics
+(click-to-visible-committed) for create/update/delete/create-with-comment. Raw
+samples in `results/<run-id>/variants/<id>/render.json`; `src/reporting` reduces
+them to p50 columns (`render_ttfb_ms`, `render_fcp_ms`, `render_lcp_ms`,
+`render_first_data_ms`, `create_p50_ms`, `update_p50_ms`, `delete_p50_ms`).
+
+**Gate (variance measured and documented).** Smoke-matrix `--with-render` run,
+14/14 render-collected. Board first-useful-data p50 by cohort:
+
+| Cohort         | first-useful-data p50 | per-sample min–max |
+| -------------- | --------------------- | ------------------ |
+| next-fullstack | 106–112 ms            | within ±10% of p50 |
+| tanstack-start | 82–95 ms              | within ±15%        |
+| spa-api        | 105–114 ms            | within ±15%        |
+
+TTFB: Next ~12–14 ms (SSR) vs spa-api ~2–4 ms (static Caddy serving the shell,
+data fetched client-side). Interaction p50 (create/update): ~230–400 ms across
+all cohorts. One outlier is real and reported: SPA **delete** ~7.3 s vs ~250 ms
+elsewhere — the SPA's post-delete board refetch, not the API.
+
+Known limits (documented in `src/render/README.md`): FCP/LCP can be blank on the
+client-rendered SPAs and LCP occasionally 0; single host/Chromium, indicative
+only.
+
 ## Next steps
 
-1. **R6 — render-speed suite** (Playwright, serial, cold contexts, CDP LCP),
-   wired as a controller stage alongside `correctness`.
-2. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
-   stack network; `pg_stat_statements`; `docker stats`; generator-CPU ceiling).
-3. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
-   correctness now; render/load columns once R6/R7 land).
-4. Optional: wire the suite's created/updated/deleted ids into a SQL DB
-   postcondition check (plan §6.3).
+1. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
+   stack network; `pg_stat_statements`; `docker stats`; generator-CPU ceiling),
+   then the load columns.
+2. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
+   correctness + render now; load columns once R7 lands).
+3. Optional: wire the correctness suite's created/updated/deleted ids into a SQL
+   DB postcondition check (plan §6.3).

@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectInventory, countDirectDependencies } from "../src/reporting/inventory.js";
-import { buildMatrix, toCsv, toHtml, toMarkdown, type RunSummary } from "../src/reporting/matrix.js";
+import {
+  collectInventory,
+  countDirectDependencies,
+} from "../src/reporting/inventory.js";
+import {
+  buildMatrix,
+  percentile,
+  toCsv,
+  toHtml,
+  toMarkdown,
+  type RenderReport,
+  type RunSummary,
+} from "../src/reporting/matrix.js";
 import { loadManifestDirectory } from "../src/config/load.js";
 
-const rigRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rigRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const repoRoot = path.resolve(rigRoot, "..");
 
 describe("static inventory", () => {
@@ -27,7 +41,9 @@ describe("static inventory", () => {
   });
 
   it("counts direct dependencies from package.json", () => {
-    expect(countDirectDependencies(path.join(repoRoot, "apps", "next-actions"))).toBeGreaterThan(3);
+    expect(
+      countDirectDependencies(path.join(repoRoot, "apps", "next-actions")),
+    ).toBeGreaterThan(3);
   });
 });
 
@@ -42,7 +58,11 @@ describe("decision matrix", () => {
         status: "ok",
         performanceEligible: true,
         ports: { APP_PORT: 1 },
-        stages: { build: { ok: true, ms: 10 }, seed: { ok: true, ms: 20 }, verifyDigest: { ok: true, ms: 5 } },
+        stages: {
+          build: { ok: true, ms: 10 },
+          seed: { ok: true, ms: 20 },
+          verifyDigest: { ok: true, ms: 5 },
+        },
         error: null,
       },
       {
@@ -58,7 +78,9 @@ describe("decision matrix", () => {
   };
 
   it("renders CSV, Markdown and HTML from raw data", async () => {
-    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
     const rows = buildMatrix(summary, new Map(), manifests);
 
     expect(rows).toHaveLength(2);
@@ -74,13 +96,61 @@ describe("decision matrix", () => {
     expect(csv.split("\n")[0]).toContain("variant,cohort,orm");
     expect(csv).toContain("next-actions");
 
-    const md = toMarkdown(rows, { runId: summary.runId, sha256: summary.effectiveManifestSha256 });
+    const md = toMarkdown(rows, {
+      runId: summary.runId,
+      sha256: summary.effectiveManifestSha256,
+    });
     expect(md).toContain("Decision matrix");
     expect(md).toContain("| variant |");
 
-    const html = toHtml(rows, { runId: summary.runId, sha256: summary.effectiveManifestSha256 });
+    const html = toHtml(rows, {
+      runId: summary.runId,
+      sha256: summary.effectiveManifestSha256,
+    });
     expect(html).toContain("<table>");
     expect(html).toContain("gate-pass");
     expect(html).toContain("gate-fail");
+  });
+
+  it("populates render columns from the collector's raw samples", async () => {
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
+    const render = new Map<string, RenderReport>([
+      [
+        "next-actions",
+        {
+          variant: "next-actions",
+          pages: {
+            board: [
+              { ttfb: 10, fcp: 40, lcp: 60, firstData: 80 },
+              { ttfb: 20, fcp: 50, lcp: 70, firstData: 90 },
+              { ttfb: 30, fcp: 60, lcp: 80, firstData: 100 },
+            ],
+          },
+          interactions: {
+            create: [100, 200, 300],
+            update: [120, 220, 320],
+            delete: [90, 190, 290],
+          },
+        },
+      ],
+    ]);
+    const rows = buildMatrix(summary, new Map(), manifests, render);
+    const next = rows.find((r) => r.variant === "next-actions")!;
+    expect(next.renderTtfbMs).toBe(20);
+    expect(next.renderLcpMs).toBe(70);
+    expect(next.renderFirstDataMs).toBe(90);
+    expect(next.createP50Ms).toBe(200);
+    // A variant with no render artefact keeps blank (never zero) render cells.
+    const other = rows.find((r) => r.variant === "tanstack-express-rest")!;
+    expect(other.renderTtfbMs).toBeNull();
+  });
+
+  it("computes percentiles with interpolation", () => {
+    expect(percentile([], 50)).toBeNull();
+    expect(percentile([5], 50)).toBe(5);
+    expect(percentile([1, 2, 3, 4], 50)).toBe(2.5);
+    expect(percentile([1, 2, 3, 4], 100)).toBe(4);
   });
 });

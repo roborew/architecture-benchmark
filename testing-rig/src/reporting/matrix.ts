@@ -55,10 +55,16 @@ export interface MatrixRow {
   languages: number | null;
   services: number | null;
   images: number | null;
-  /** Indicative single-host columns (plan §6.4/§6.5) — populated by R6/R7. */
-  renderTtfbMs: null;
-  renderFirstDataMs: null;
-  loadOpsPerSecond: null;
+  /** Indicative single-host columns (plan §6.4/§6.5). Render is populated when
+   *  the run used `--with-render`; load awaits R7. */
+  renderTtfbMs: number | null;
+  renderFcpMs: number | null;
+  renderLcpMs: number | null;
+  renderFirstDataMs: number | null;
+  createP50Ms: number | null;
+  updateP50Ms: number | null;
+  deleteP50Ms: number | null;
+  loadOpsPerSecond: number | null;
   runSha256: string;
 }
 
@@ -86,7 +92,12 @@ const COLUMNS: Array<{ key: keyof MatrixRow; header: string; group: string }> =
     { key: "services", header: "services", group: "6.1" },
     { key: "images", header: "images", group: "6.1" },
     { key: "renderTtfbMs", header: "render_ttfb_ms", group: "6.4" },
+    { key: "renderFcpMs", header: "render_fcp_ms", group: "6.4" },
+    { key: "renderLcpMs", header: "render_lcp_ms", group: "6.4" },
     { key: "renderFirstDataMs", header: "render_first_data_ms", group: "6.4" },
+    { key: "createP50Ms", header: "create_p50_ms", group: "6.4" },
+    { key: "updateP50Ms", header: "update_p50_ms", group: "6.4" },
+    { key: "deleteP50Ms", header: "delete_p50_ms", group: "6.4" },
     { key: "loadOpsPerSecond", header: "load_ops_per_sec", group: "6.5" },
     { key: "runSha256", header: "run_sha256", group: "provenance" },
   ];
@@ -102,15 +113,58 @@ export function matrixColumns(): Array<{
 const stageMs = (row: VariantResultRow, name: string): number | null =>
   row.stages[name]?.ok ? (row.stages[name]!.ms ?? null) : null;
 
+/** A minimal view of `src/render/collect.ts`'s output. */
+export interface RenderReport {
+  variant: string;
+  pages?: Record<
+    string,
+    Array<{ ttfb: number; fcp: number; lcp: number; firstData: number }>
+  >;
+  interactions?: Record<string, number[]>;
+}
+
+/** Nearest-rank-free percentile (linear interpolation), rounded to 0.1ms. */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (p / 100) * (sorted.length - 1);
+  const lower = Math.floor(rank);
+  const upper = Math.ceil(rank);
+  const value =
+    lower === upper
+      ? sorted[lower]!
+      : sorted[lower]! + (sorted[upper]! - sorted[lower]!) * (rank - lower);
+  return Math.round(value * 10) / 10;
+}
+
+const p50 = (values: number[] | undefined): number | null =>
+  values && values.length > 0 ? percentile(values, 50) : null;
+
+function renderColumns(
+  report: RenderReport | undefined,
+  out: Partial<MatrixRow>,
+): void {
+  if (!report) return;
+  const board = report.pages?.board ?? [];
+  out.renderTtfbMs = p50(board.map((s) => s.ttfb));
+  out.renderFcpMs = p50(board.map((s) => s.fcp).filter((v) => v >= 0));
+  out.renderLcpMs = p50(board.map((s) => s.lcp).filter((v) => v >= 0));
+  out.renderFirstDataMs = p50(board.map((s) => s.firstData));
+  out.createP50Ms = p50(report.interactions?.create);
+  out.updateP50Ms = p50(report.interactions?.update);
+  out.deleteP50Ms = p50(report.interactions?.delete);
+}
+
 export function buildMatrix(
   summary: RunSummary,
   inventory: Map<string, StaticInventory>,
   manifests: Map<string, VariantManifest>,
+  render: Map<string, RenderReport> = new Map(),
 ): MatrixRow[] {
   return summary.results.map((result) => {
     const manifest = manifests.get(result.id);
     const inv = inventory.get(result.id);
-    return {
+    const row: MatrixRow = {
       variant: result.id,
       cohort: result.cohort,
       orm: manifest?.orm ?? "—",
@@ -133,10 +187,17 @@ export function buildMatrix(
       services: inv?.serviceCount ?? null,
       images: inv?.imageCount ?? null,
       renderTtfbMs: null,
+      renderFcpMs: null,
+      renderLcpMs: null,
       renderFirstDataMs: null,
+      createP50Ms: null,
+      updateP50Ms: null,
+      deleteP50Ms: null,
       loadOpsPerSecond: null,
       runSha256: summary.effectiveManifestSha256,
     };
+    renderColumns(render.get(result.id), row);
+    return row;
   });
 }
 
@@ -232,6 +293,7 @@ ${body}
 export function loadRun(runDir: string): {
   summary: RunSummary;
   inventory: Map<string, StaticInventory>;
+  render: Map<string, RenderReport>;
 } {
   const summary = JSON.parse(
     readFileSync(path.join(runDir, "summary.json"), "utf8"),
@@ -245,5 +307,21 @@ export function loadRun(runDir: string): {
   } catch {
     // inventory.json is optional; the report simply shows blank inventory cells.
   }
-  return { summary, inventory };
+  const render = new Map<string, RenderReport>();
+  for (const result of summary.results) {
+    try {
+      render.set(
+        result.id,
+        JSON.parse(
+          readFileSync(
+            path.join(runDir, "variants", result.id, "render.json"),
+            "utf8",
+          ),
+        ) as RenderReport,
+      );
+    } catch {
+      // No render artefact for this variant (run without --with-render).
+    }
+  }
+  return { summary, inventory, render };
 }

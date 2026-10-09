@@ -1,18 +1,18 @@
 {
-	"compilerOptions": {
-		"target": "esnext",
-		"lib": ["esnext"],
-		"module": "nodenext",
-		"moduleResolution": "nodenext",
-		"types": ["node"],
-		"resolveJsonModule": true,
-		"verbatimModuleSyntax": true,
-		"isolatedModules": true,
-		"noEmit": true,
-		"strict": true,
-		"noUncheckedIndexedAccess": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true
-	},
-	"include": ["src/**/*.ts", "tests/**/*.ts"]
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
 }

@@ -37,6 +37,7 @@ interface Options {
   build: false | { noCache: boolean };
   buildSeeder: boolean;
   correctness: boolean;
+  render: boolean;
   readinessTimeoutMs: number;
 }
 
@@ -47,6 +48,7 @@ function parseArgs(args: string[]): Options {
     build: { noCache: false },
     buildSeeder: true,
     correctness: false,
+    render: false,
     readinessTimeoutMs: 90_000,
   };
   for (let i = 0; i < args.length; i += 1) {
@@ -74,6 +76,9 @@ function parseArgs(args: string[]): Options {
         break;
       case "--with-correctness":
         options.correctness = true;
+        break;
+      case "--with-render":
+        options.render = true;
         break;
       case "--readiness-timeout":
         options.readinessTimeoutMs = Number(args[++i]);
@@ -225,6 +230,12 @@ async function main(): Promise<number> {
       artifacts,
       build: options.build,
       correctness: options.correctness,
+      render: options.render
+        ? {
+            warmup: config.browser.warmupSamples,
+            measured: config.browser.measuredSamples,
+          }
+        : undefined,
       readinessTimeoutMs: options.readinessTimeoutMs,
     });
     results.push(result);

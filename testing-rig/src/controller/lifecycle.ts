@@ -51,6 +51,8 @@ export interface LifecycleOptions {
   buildSeeder?: boolean;
   /** Run the black-box correctness suite (plan R5) before teardown. */
   correctness?: boolean;
+  /** Run the render-speed collector (plan R6). Non-fatal: measurement, not a gate. */
+  render?: { warmup: number; measured: number };
   readinessTimeoutMs?: number;
 }
 
@@ -192,6 +194,47 @@ async function runCorrectnessSuite(
   return { report };
 }
 
+/** Run the render-speed collector (plan §6.4) against the app-facing port. */
+async function runRenderSuite(
+  variant: ResolvedVariant,
+  options: LifecycleOptions,
+): Promise<{ report: string }> {
+  const front = variant.services.spa ?? variant.services.app;
+  if (!front || front.hostPort === undefined) {
+    throw new Error("no published app-facing service to test");
+  }
+  const report = path.join(
+    options.artifacts.dir,
+    `variants/${variant.id}/render.json`,
+  );
+  const result = await runCommand(
+    "pnpm",
+    ["exec", "tsx", "src/render/collect.ts"],
+    {
+      cwd: options.rigRoot,
+      env: {
+        BENCH_BASE_URL: `http://localhost:${front.hostPort}`,
+        BENCH_VARIANT: variant.id,
+        BENCH_RENDER_REPORT: report,
+        BENCH_WARMUP: String(options.render!.warmup),
+        BENCH_MEASURED: String(options.render!.measured),
+      },
+      allowFailure: true,
+      timeoutMs: 20 * 60 * 1000,
+    },
+  );
+  options.artifacts.write(
+    `variants/${variant.id}/render.log`,
+    `${result.stdout}\n${result.stderr}`,
+  );
+  if (result.code !== 0) {
+    throw new Error(
+      `render collector failed:\n${result.stdout.slice(-2000)}${result.stderr.slice(-1000)}`,
+    );
+  }
+  return { report };
+}
+
 async function buildStack(
   variant: ResolvedVariant,
   compose: Compose,
@@ -259,6 +302,21 @@ export async function runVariant(
     );
     if (options.correctness) {
       await stage("correctness", () => runCorrectnessSuite(variant, options));
+    }
+    if (options.render) {
+      // Render is a measurement, not a gate: a failure is recorded but does not
+      // invalidate the variant's correctness/perf eligibility.
+      const startedAt = Date.now();
+      try {
+        const detail = await runRenderSuite(variant, options);
+        stages.render = { ok: true, ms: Date.now() - startedAt, detail };
+      } catch (err) {
+        stages.render = {
+          ok: false,
+          ms: Date.now() - startedAt,
+          detail: err instanceof Error ? err.message : String(err),
+        };
+      }
     }
 
     const eligible = schema.ok && (digest.matches ?? false);
