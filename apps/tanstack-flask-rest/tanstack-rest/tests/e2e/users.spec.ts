@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { E2E_FIXTURE, peopleCountLabel } from "./expectations";
 
-// The users listing page, through a real browser against a real Express
+// The users listing page, through a real browser against a real Flask
 // server and a real seeded database: the two apps wired together.
 
 test.beforeEach(async ({ page }) => {
@@ -87,7 +87,7 @@ test("keeps the page template when the API is unreachable", async ({
 	page,
 }) => {
 	// Simulate the backend being down: every users request is aborted at the
-	// network layer, which is exactly what the browser sees when the Express
+	// network layer, which is exactly what the browser sees when the Flask
 	// server is not running. The loader's query fails, and the route must show
 	// the error inside the template — header, sidebar, page title — rather
 	// than tearing the route tree down to a blank screen.

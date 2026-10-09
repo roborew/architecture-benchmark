@@ -15,7 +15,7 @@
 // assignee means "unassigned", a numeric string is a row id), so the client
 // cannot disagree with itself about how a value is spelled.
 
-/** Where the Express API lives. Overridable per environment (e2e points it at its own server). */
+/** Where the Flask API lives. Overridable per environment (e2e points it at its own server). */
 export const API_URL: string =
 	import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
