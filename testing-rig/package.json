@@ -7,6 +7,8 @@
     "config:validate": "tsx src/config/validate.ts",
     "rig:run": "tsx src/controller/cli.ts",
     "report": "tsx src/reporting/cli.ts",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "e2e:install": "playwright install chromium",
     "seeder:build": "docker build -t bench-seeder:local seeder",
     "test": "vitest run",
     "test:watch": "vitest",

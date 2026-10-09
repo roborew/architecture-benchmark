@@ -6,15 +6,15 @@ test.describe("project detail", () => {
     await goto(page, E2E_FIXTURE.project.href);
   });
 
-  test("shows the project heading, description and breadcrumb", async ({ page }) => {
+  test("shows the project heading, description and breadcrumb", async ({
+    page,
+  }) => {
     const main = page.getByRole("main");
 
     await expect(
       main.getByRole("heading", { name: E2E_FIXTURE.project.name, level: 1 }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("link", { name: "Projects" }),
-    ).toBeVisible();
+    await expect(main.getByRole("link", { name: "Projects" })).toBeVisible();
   });
 
   test("renders the three summary counts", async ({ page }) => {
@@ -25,14 +25,22 @@ test.describe("project detail", () => {
     }
   });
 
-  test("shows the project tasks table with a status filter", async ({ page }) => {
+  test("shows the project tasks table with a status filter", async ({
+    page,
+  }) => {
     const main = page.getByRole("main");
 
     await expect(
       main.getByRole("heading", { name: "Project tasks" }),
     ).toBeVisible();
-    await expect(main.getByRole("searchbox", { name: "Search tasks" })).toBeVisible();
-    await expect(main.getByRole("combobox", { name: "Status" })).toBeVisible();
+    await expect(
+      main.getByRole("searchbox", { name: "Search tasks" }),
+    ).toBeVisible();
+    // The status control is a set of tabs (spec/contract.md): one per status
+    // plus `all`, each tagged with the raw stored spelling in `data-status`.
+    await expect(main.getByTestId("status-filter").first()).toBeVisible();
+    await expect(main.locator('[data-status="all"]')).toBeVisible();
+    await expect(main.locator('[data-status="done"]')).toBeVisible();
   });
 
   test("links a task to its detail page", async ({ page }) => {

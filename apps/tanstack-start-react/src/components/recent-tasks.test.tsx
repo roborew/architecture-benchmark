@@ -34,7 +34,7 @@ describe("RecentTasks", () => {
     expect(within(row).getByText(task.projectName)).toBeInTheDocument();
   });
 
-  it("humanises the status", () => {
+  it("renders the raw status text", () => {
     const tasks = [
       makeRecentTask({ id: 1, title: "Todo task", status: "in progress" }),
       makeRecentTask({ id: 2, title: "To do task", status: "todo" }),
@@ -44,18 +44,20 @@ describe("RecentTasks", () => {
     renderWithRouter(<RecentTasks tasks={tasks} />);
 
     expect(
-      within(screen.getByRole("row", { name: /Todo task/ })).getByText(
-        "In progress",
+      within(screen.getByRole("row", { name: /Todo task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("in progress");
     expect(
-      within(screen.getByRole("row", { name: /To do task/ })).getByText(
-        "To do",
+      within(screen.getByRole("row", { name: /To do task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("todo");
     expect(
-      within(screen.getByRole("row", { name: /Done task/ })).getByText("Done"),
-    ).toBeInTheDocument();
+      within(screen.getByRole("row", { name: /Done task/ })).getByTestId(
+        "task-status",
+      ),
+    ).toHaveTextContent("done");
   });
 
   it("shows assignee and updated columns", () => {

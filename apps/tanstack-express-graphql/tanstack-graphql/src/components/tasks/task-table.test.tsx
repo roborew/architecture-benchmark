@@ -79,7 +79,7 @@ describe("TaskTable", () => {
 		).toBeInTheDocument();
 	});
 
-	it("humanises each status", () => {
+	it("renders each status as its raw stored value, tagged for the contract", () => {
 		const tasks = [
 			makeTaskWithProject({ id: 1, title: "Todo task", status: "todo" }),
 			makeTaskWithProject({
@@ -92,19 +92,22 @@ describe("TaskTable", () => {
 
 		renderWithRouter(<TaskTable tasks={tasks} showProject showComments />);
 
+		// spec/contract.md: the element carries the raw stored value, not a label.
 		expect(
-			within(screen.getByRole("row", { name: /Todo task/ })).getByText("To do"),
-		).toBeInTheDocument();
-		expect(
-			within(screen.getByRole("row", { name: /In flight task/ })).getByText(
-				"In progress",
+			within(screen.getByRole("row", { name: /Todo task/ })).getByTestId(
+				"task-status",
 			),
-		).toBeInTheDocument();
+		).toHaveTextContent("todo");
 		expect(
-			within(screen.getByRole("row", { name: /Finished task/ })).getByText(
-				"Done",
+			within(screen.getByRole("row", { name: /In flight task/ })).getByTestId(
+				"task-status",
 			),
-		).toBeInTheDocument();
+		).toHaveTextContent("in progress");
+		expect(
+			within(screen.getByRole("row", { name: /Finished task/ })).getByTestId(
+				"task-status",
+			),
+		).toHaveTextContent("done");
 	});
 
 	it("shows an empty state when there are no tasks", () => {

@@ -10,6 +10,16 @@ import { Link } from "@tanstack/react-router";
 import { TaskTable } from "@/components/tasks/task-table";
 import type { Project, ProjectTaskRow } from "@/lib/types";
 
+// The contract's status filter: one tab per status plus `all`. `data-status`
+// carries the raw stored spelling (`in progress`, not `in-progress`), so the
+// tab keeps the filter in the URL in the spelling the route accepts.
+const STATUS_TABS: { value: string; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "todo", label: "To do" },
+	{ value: "in progress", label: "In progress" },
+	{ value: "done", label: "Done" },
+];
+
 function StatCard({
 	label,
 	value,
@@ -101,8 +111,9 @@ export function ProjectDetail({
 					<h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
 						Project tasks
 					</h2>
-					{/* The select is a plain GET form so filtering needs no client
-					    state and the applied filter lives in the URL. */}
+					{/* The search box is a plain GET form; the status filter is the
+					    contract's tab row below, so no client state is needed for
+					    either and the applied filter lives in the URL. */}
 					<form className="flex gap-2" method="get">
 						<label className="relative block">
 							<span className="sr-only">Search tasks</span>
@@ -119,27 +130,48 @@ export function ProjectDetail({
 								className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
 							/>
 						</label>
-						<select
-							aria-label="Status"
-							name="status"
-							// Remount on change so the browser follows the GET form. Without
-							// a key, React keeps the pre-change value and the submission
-							// carries the status the user just navigated away from.
-							key={status}
-							defaultValue={status}
-							className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
-						>
-							<option value="">All statuses</option>
-							<option value="todo">To do</option>
-							<option value="in-progress">In progress</option>
-							<option value="done">Done</option>
-						</select>
-						{/* Filters are single-select; on submit keep whichever one was set. */}
 						<button type="submit" className="sr-only">
 							Apply
 						</button>
 					</form>
 				</div>
+
+				<nav
+					aria-label="Status filter"
+					className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-5 py-3"
+				>
+					{STATUS_TABS.map((tab) => {
+						const isActive =
+							tab.value === "all" ? !status : status === tab.value;
+
+						// A plain `<a>`, not the router's `<Link>`: `<Link>` sets its own
+						// `data-status="active|inactive"`, which would clobber the raw
+						// value the contract reads from this attribute. A filter can take a
+						// full navigation, so the anchor's own href is all that is needed.
+						return (
+							<a
+								key={tab.value}
+								href={
+									tab.value === "all"
+										? `/projects/${project.id}`
+										: `/projects/${project.id}?status=${encodeURIComponent(
+												tab.value,
+											)}`
+								}
+								data-testid="status-filter"
+								data-status={tab.value}
+								aria-current={isActive ? "page" : undefined}
+								className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${
+									isActive
+										? "border-brand-600 bg-brand-600 text-white"
+										: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+								}`}
+							>
+								{tab.label}
+							</a>
+						);
+					})}
+				</nav>
 
 				{/* The project is implied by the page, so the table shows
 				    comments but no project column. */}

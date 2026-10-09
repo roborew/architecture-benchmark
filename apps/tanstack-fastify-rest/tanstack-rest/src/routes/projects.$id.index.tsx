@@ -28,12 +28,14 @@ import {
 /**
  * The status filter's query-string spelling.
  *
- * A raw space is awkward in a query string while the stored value is "in
- * progress" (spec/contract.md), so the two are translated here and the query
- * layer only ever sees the stored form.
+ * The contract's tabs carry the raw stored spelling (`?status=in+progress`;
+ * `+` and `%20` both decode to the space), so that is the spelling this
+ * accepts. The legacy hyphenated form (`in-progress`) is still mapped, for any
+ * bookmarked URL, and the query layer only ever sees the stored form.
  */
 const STATUS_FROM_QUERY: Record<string, string> = {
 	todo: "todo",
+	"in progress": "in progress",
 	"in-progress": "in progress",
 	done: "done",
 };
@@ -154,6 +156,10 @@ function ProjectBoardRoute() {
 	const projectId = Number(id);
 	const isValid = Number.isInteger(projectId);
 
+	// Resolve the applied filter once, so the request and the tabs agree on the
+	// stored spelling the component compares against.
+	const filters = boardFilters(search);
+
 	// The queries are declared unconditionally (hooks cannot be called
 	// conditionally); an invalid id leaves them disabled, so nothing is fetched
 	// for a URL the board cannot answer.
@@ -162,7 +168,7 @@ function ProjectBoardRoute() {
 		enabled: isValid,
 	});
 	const tasksQuery = useQuery({
-		...projectTasksQueryOptions(projectId, boardFilters(search)),
+		...projectTasksQueryOptions(projectId, filters),
 		enabled: isValid,
 	});
 
@@ -208,7 +214,7 @@ function ProjectBoardRoute() {
 		<ProjectDetail
 			project={project}
 			tasks={tasks}
-			status={search.status ?? ""}
+			status={filters.status ?? ""}
 			hasMore={hasMore}
 		/>
 	);

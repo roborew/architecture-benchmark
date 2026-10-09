@@ -79,10 +79,10 @@ describe("UserDetail", () => {
       screen.queryByRole("columnheader", { name: "Comments" }),
     ).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("row", { name: /Assigned task/ })).getByText(
-        "In progress",
+      within(screen.getByRole("row", { name: /Assigned task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("in progress");
   });
 
   it("links each assigned task to its detail page", () => {

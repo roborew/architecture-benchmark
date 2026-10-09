@@ -45,8 +45,10 @@ test.describe("task detail", () => {
   });
 
   test("shows a not-found state for an unknown id", async ({ page }) => {
-    await goto(page, "/tasks/9999");
+    await goto(page, "/tasks/999999");
 
+    // The unknown-id view carries the contract testid, not just the heading.
+    await expect(page.getByTestId("not-found")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Task not found" }),
     ).toBeVisible();

@@ -101,12 +101,19 @@ export function toQuery(
   return query ? `?${query}` : "";
 }
 
-/** A POST/PATCH/DELETE with a JSON body; the mutations all share this shape. */
+/** A POST/PATCH/DELETE; a JSON body only when one is supplied. */
 export function send<T>(
   path: string,
   method: string,
   body: unknown,
 ): Promise<T> {
+  // A bodyless request must not declare a JSON content type: the server would
+  // try to parse the absent body as JSON and reject it (Fastify answers
+  // FST_ERR_CTP_EMPTY_JSON_BODY). Delete is the only bodyless mutation.
+  if (body === undefined) {
+    return requestJson<T>(path, { method });
+  }
+
   return requestJson<T>(path, {
     method,
     headers: { "Content-Type": "application/json" },

@@ -6,18 +6,15 @@ const tones: Record<TaskStatus, string> = {
 	done: "bg-emerald-50 text-emerald-700",
 };
 
-const labels: Record<TaskStatus, string> = {
-	todo: "To do",
-	"in progress": "In progress",
-	done: "Done",
-};
-
+// The contract's `task-status` text is the raw stored value (`todo`,
+// `in progress`, `done`) — spec/contract.md — so the badge renders it verbatim
+// and the human-readable capitalisation is CSS only.
 export function StatusBadge({ status }: { status: TaskStatus }) {
 	return (
 		<span
-			className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold ${tones[status]}`}
+			className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold capitalize ${tones[status]}`}
 		>
-			{labels[status]}
+			{status}
 		</span>
 	);
 }

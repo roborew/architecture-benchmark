@@ -277,7 +277,12 @@ export function TaskForm({
 
       <div className="grid gap-5">
         <Panel>
-          <form onSubmit={handleSubmit} data-testid="create-task-form">
+          {/* spec/contract.md names the create form `create-task-form` and the
+              edit form `update-task-form`; it is the same component for both. */}
+          <form
+            onSubmit={handleSubmit}
+            data-testid={isEdit ? "update-task-form" : "create-task-form"}
+          >
             <FormMessage message={state.message} />
 
             <label htmlFor="task-title" className={labelClass}>

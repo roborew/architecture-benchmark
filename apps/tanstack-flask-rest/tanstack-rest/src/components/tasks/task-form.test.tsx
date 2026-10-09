@@ -66,6 +66,11 @@ function primaryFormElement() {
 	return screen.getByTestId("create-task-form");
 }
 
+/** The edit form, which spec/contract.md marks `update-task-form`. */
+function editForm() {
+	return within(screen.getByTestId("update-task-form"));
+}
+
 beforeEach(() => {
 	createTaskMock.mockClear();
 	updateTaskMock.mockClear();
@@ -214,6 +219,25 @@ describe("TaskForm (create with comment)", () => {
 		expect(screen.getByLabelText("First comment")).toBeInTheDocument();
 	});
 
+	it("carries the create-task fields, including status", () => {
+		renderWithRouter(<TaskForm projects={projects} people={people} />);
+
+		const form = screen.getByTestId("create-with-comment-form");
+
+		// spec/contract.md: the form carries the create-task fields plus the
+		// comment fields. The API's validator requires `status` with no default,
+		// so leaving it out makes the atomic create fail validation.
+		const status = within(form).getByRole("combobox", { name: "Status" });
+
+		expect(status).toHaveAttribute("name", "status");
+		expect(status).toHaveValue("todo");
+		expect(
+			within(status)
+				.getAllByRole("option")
+				.map((option) => option.getAttribute("value")),
+		).toEqual(["todo", "in progress", "done"]);
+	});
+
 	it("submits the comment body and author together with the task", async () => {
 		const user = userEvent.setup();
 		renderWithRouter(<TaskForm projects={projects} people={people} />);
@@ -237,12 +261,14 @@ describe("TaskForm (create with comment)", () => {
 
 		// The task fields travel in the same submission, or it would not be one
 		// transaction — the project and assignee selects default to the first
-		// project and to unassigned, exactly as the reference form does.
+		// project and to unassigned, and the status to `todo`, exactly as the
+		// reference form does.
 		expect(createTaskWithCommentMock).toHaveBeenCalledWith({
 			title: "Atomic task",
 			commentBody: "Opening note",
 			projectId: "1",
 			assigneeId: "",
+			status: "todo",
 			commentAuthorId: "1",
 		});
 	});
@@ -269,18 +295,27 @@ describe("TaskForm (edit)", () => {
 			<TaskForm projects={projects} people={people} task={task} />,
 		);
 
-		expect(primaryForm().getByLabelText("Title")).toHaveValue(task.title);
-		expect(primaryForm().getByLabelText("Description")).toHaveValue(
+		expect(editForm().getByLabelText("Title")).toHaveValue(task.title);
+		expect(editForm().getByLabelText("Description")).toHaveValue(
 			task.description,
 		);
-		expect(primaryForm().getByRole("combobox", { name: "Status" })).toHaveValue(
+		expect(editForm().getByRole("combobox", { name: "Status" })).toHaveValue(
 			"in progress",
 		);
 		// The project is shown but not editable on an update.
-		expect(primaryForm().getByText("Mobile application")).toBeInTheDocument();
+		expect(editForm().getByText("Mobile application")).toBeInTheDocument();
 		expect(
-			primaryForm().queryByRole("combobox", { name: "Project" }),
+			editForm().queryByRole("combobox", { name: "Project" }),
 		).not.toBeInTheDocument();
+	});
+
+	it("marks the edit form update-task-form, not create-task-form", () => {
+		renderWithRouter(
+			<TaskForm projects={projects} people={people} task={task} />,
+		);
+
+		expect(screen.getByTestId("update-task-form")).toBeInTheDocument();
+		expect(screen.queryByTestId("create-task-form")).not.toBeInTheDocument();
 	});
 
 	it("heads the page and the button for an edit", () => {
@@ -302,8 +337,8 @@ describe("TaskForm (edit)", () => {
 			<TaskForm projects={projects} people={people} task={task} />,
 		);
 
-		await user.clear(primaryForm().getByLabelText("Title"));
-		await user.type(primaryForm().getByLabelText("Title"), "Renamed task");
+		await user.clear(editForm().getByLabelText("Title"));
+		await user.type(editForm().getByLabelText("Title"), "Renamed task");
 		await user.click(screen.getByRole("button", { name: "Save changes" }));
 
 		expect(updateTaskMock).toHaveBeenCalledTimes(1);

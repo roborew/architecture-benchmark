@@ -36,8 +36,17 @@ const people = [
  * both, which is a real ambiguity on screen too — so the tests assert against
  * one form at a time.
  */
+function primaryFormElement() {
+  // The same component renders the create and the edit form, and the contract
+  // gives them different testids; pick whichever one is mounted.
+  return (
+    screen.queryByTestId("update-task-form") ??
+    screen.getByTestId("create-task-form")
+  );
+}
+
 function primaryForm() {
-  return within(screen.getByTestId("create-task-form"));
+  return within(primaryFormElement());
 }
 
 describe("TaskForm (create)", () => {
@@ -276,6 +285,15 @@ describe("TaskForm (edit)", () => {
     expect(
       screen.getByRole("button", { name: "Save changes" }),
     ).toBeInTheDocument();
+  });
+
+  it("carries the update-task-form testid, not the create one", () => {
+    renderWithTrpc(
+      <TaskForm projects={projects} people={people} task={task} />,
+    );
+
+    expect(screen.getByTestId("update-task-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("create-task-form")).not.toBeInTheDocument();
   });
 
   it("calls tasks.update with the task's id and no projectId", async () => {

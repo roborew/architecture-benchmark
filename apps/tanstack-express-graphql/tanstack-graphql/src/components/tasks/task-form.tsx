@@ -36,9 +36,10 @@ const STATUSES: { value: Task["status"]; label: string }[] = [
 /**
  * Shared select fields.
  *
- * `idPrefix` keeps the `id`/`htmlFor` pairs unique: both forms render a Project
- * and an Assigned user select, and a duplicate `id` would make the label bind to
- * whichever came first in the document — leaving the second control unnamed.
+ * `idPrefix` keeps the `id`/`htmlFor` pairs unique: both forms render a Project,
+ * an Assigned user and a Status select, and a duplicate `id` would make the label
+ * bind to whichever came first in the document — leaving the second control
+ * unnamed.
  */
 function ProjectSelect({
 	projects,
@@ -112,17 +113,19 @@ function AssigneeSelect({
 function StatusSelect({
 	defaultValue,
 	invalid,
+	idPrefix,
 }: {
 	defaultValue: Task["status"];
 	invalid?: boolean;
+	idPrefix: string;
 }) {
 	return (
 		<div>
-			<label htmlFor="task-status" className={labelClass}>
+			<label htmlFor={`${idPrefix}-status`} className={labelClass}>
 				Status
 			</label>
 			<select
-				id="task-status"
+				id={`${idPrefix}-status`}
 				name="status"
 				defaultValue={defaultValue}
 				aria-invalid={invalid ? true : undefined}
@@ -202,7 +205,10 @@ export function TaskForm({
 
 			<div className="grid gap-5">
 				<Panel>
-					<form action={formAction} data-testid="create-task-form">
+					<form
+						action={formAction}
+						data-testid={isEdit ? "update-task-form" : "create-task-form"}
+					>
 						<FormMessage message={state.message} />
 
 						<label htmlFor="task-title" className={labelClass}>
@@ -278,6 +284,7 @@ export function TaskForm({
 							<StatusSelect
 								defaultValue={task?.status ?? "todo"}
 								invalid={Boolean(state.errors?.status)}
+								idPrefix="task"
 							/>
 						</div>
 
@@ -383,7 +390,7 @@ function CreateWithCommentForm({
 					</p>
 				) : null}
 
-				<div className="grid gap-4 sm:grid-cols-3">
+				<div className="grid gap-4 sm:grid-cols-4">
 					<ProjectSelect
 						projects={projects}
 						defaultValue={projects[0]?.id ?? 0}
@@ -392,6 +399,14 @@ function CreateWithCommentForm({
 					/>
 
 					<AssigneeSelect people={people} defaultValue={null} idPrefix="cwc" />
+
+					{/* spec/contract.md: the atomic form carries the create-task fields
+					    (status included) plus the comment fields. */}
+					<StatusSelect
+						defaultValue="todo"
+						invalid={Boolean(state.errors?.status)}
+						idPrefix="cwc"
+					/>
 
 					<div>
 						<label htmlFor="cwc-author" className={labelClass}>

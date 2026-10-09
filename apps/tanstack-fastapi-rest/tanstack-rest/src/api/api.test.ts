@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_URL, ApiError } from "./api";
-import { getTasks } from "./tasks";
+import { createTask, deleteTask, getTasks } from "./tasks";
 import { getUsers } from "./users";
 
 // The shared half of the api layer, exercised against a stubbed global
@@ -100,5 +100,31 @@ describe("the error envelope", () => {
 
 		const [url] = fetchMock.mock.calls[0] as [string];
 		expect(url).toBe(`${API_URL}/api/users`);
+	});
+});
+
+describe("send", () => {
+	it("sends a bodyless request with no JSON content type", async () => {
+		fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+
+		await deleteTask(9);
+
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(init?.method).toBe("DELETE");
+		// A bodyless request must not declare application/json: the server would
+		// try to parse the absent body as JSON and reject it.
+		expect(init?.headers).toBeUndefined();
+		expect(init?.body).toBeUndefined();
+	});
+
+	it("declares the JSON content type when a body is present", async () => {
+		fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+
+		await createTask({ title: "Body" });
+
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(init?.method).toBe("POST");
+		expect(init?.headers).toEqual({ "Content-Type": "application/json" });
+		expect(typeof init?.body).toBe("string");
 	});
 });

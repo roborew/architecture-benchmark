@@ -57,12 +57,14 @@ export function TaskTable({
 					{tasks.map((task) => (
 						<tr
 							key={task.id}
+							data-testid="task-row"
 							className="border-b border-slate-100 transition hover:bg-slate-50"
 						>
 							<td className={td}>
 								<Link
 									to="/tasks/$id"
 									params={{ id: String(task.id) }}
+									data-testid="task-title"
 									className="font-bold text-slate-700 hover:text-brand-700"
 								>
 									{task.title}
@@ -72,7 +74,7 @@ export function TaskTable({
 								</span>
 							</td>
 							{showProject && <td className={td}>{task.projectName}</td>}
-							<td className={td}>
+							<td className={td} data-testid="task-status">
 								<StatusBadge status={task.status} />
 							</td>
 							<td className={td}>
@@ -82,7 +84,10 @@ export function TaskTable({
 								>
 									{initials(task.assigneeName)}
 								</span>
-								{task.assigneeName}
+								{/* The name alone carries `task-assignee`: the avatar initials
+								    are decorative, so the testid's text is exactly the display
+								    name (or `Unassigned`). */}
+								<span data-testid="task-assignee">{task.assigneeName}</span>
 							</td>
 							{showComments && <td className={td}>{task.commentCount}</td>}
 							<td className={td}>{task.updatedAt}</td>

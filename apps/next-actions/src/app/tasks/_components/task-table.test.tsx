@@ -77,7 +77,7 @@ describe("TaskTable", () => {
     ).toBeInTheDocument();
   });
 
-  it("humanises each status", () => {
+  it("renders the raw stored status text", () => {
     const tasks = [
       makeTaskWithProject({ id: 1, title: "Todo task", status: "todo" }),
       makeTaskWithProject({
@@ -91,18 +91,39 @@ describe("TaskTable", () => {
     render(<TaskTable tasks={tasks} showProject showComments />);
 
     expect(
-      within(screen.getByRole("row", { name: /Todo task/ })).getByText("To do"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("row", { name: /In flight task/ })).getByText(
-        "In progress",
+      within(screen.getByRole("row", { name: /Todo task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("todo");
     expect(
-      within(screen.getByRole("row", { name: /Finished task/ })).getByText(
-        "Done",
+      within(screen.getByRole("row", { name: /In flight task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("in progress");
+    expect(
+      within(screen.getByRole("row", { name: /Finished task/ })).getByTestId(
+        "task-status",
+      ),
+    ).toHaveTextContent("done");
+  });
+
+  it("tags each row and its title, status and assignee cells", () => {
+    const task = makeTaskWithProject({
+      id: 42,
+      title: "Tagged task",
+      assigneeName: "Robin Andrew",
+    });
+
+    render(<TaskTable tasks={[task]} showProject showComments />);
+
+    const row = screen.getByTestId("task-row");
+
+    expect(within(row).getByTestId("task-title")).toHaveTextContent(
+      "Tagged task",
+    );
+    expect(within(row).getByTestId("task-assignee")).toHaveTextContent(
+      "Robin Andrew",
+    );
   });
 
   it("shows an empty state when there are no tasks", () => {

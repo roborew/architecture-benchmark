@@ -2,10 +2,10 @@
 // over the raw run artefacts (`summary.json`, `inventory.json`, the manifests,
 // `effective-config.yaml`) — never the only copy of the results.
 //
-// Columns are grouped 6.1–6.5. Columns whose data source has not run yet
-// (browser correctness/render, k6 load) are present but empty and explicitly
-// labelled, so the matrix shape is stable as the suites land. There is no
-// composite "best" column (live.md: the decision matrix comes first).
+// Columns are grouped 6.1–6.5. The correctness column is populated by the R5
+// suite (when the run used `--with-correctness`); render/load columns await R6/R7
+// and are present but empty so the matrix shape is stable. There is no composite
+// "best" column (live.md: the decision matrix comes first).
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -62,35 +62,40 @@ export interface MatrixRow {
   runSha256: string;
 }
 
-const COLUMNS: Array<{ key: keyof MatrixRow; header: string; group: string }> = [
-  { key: "variant", header: "variant", group: "identity" },
-  { key: "cohort", header: "cohort", group: "identity" },
-  { key: "orm", header: "orm", group: "identity" },
-  { key: "readMode", header: "read", group: "identity" },
-  { key: "mutationMode", header: "mutation", group: "identity" },
-  { key: "gate", header: "correctness", group: "6.3" },
-  { key: "buildMs", header: "build_ms", group: "6.2" },
-  { key: "upMs", header: "up_ms", group: "6.2" },
-  { key: "seedMs", header: "seed_ms", group: "6.2" },
-  { key: "verifyMs", header: "verify_ms", group: "6.2" },
-  { key: "sourceFiles", header: "source_files", group: "6.1" },
-  { key: "sourceLoc", header: "source_loc", group: "6.1" },
-  { key: "sourceBytes", header: "source_bytes", group: "6.1" },
-  { key: "testFiles", header: "test_files", group: "6.1" },
-  { key: "testLoc", header: "test_loc", group: "6.1" },
-  { key: "infraFiles", header: "infra_files", group: "6.1" },
-  { key: "infraLoc", header: "infra_loc", group: "6.1" },
-  { key: "directDeps", header: "direct_deps", group: "6.1" },
-  { key: "languages", header: "languages", group: "6.1" },
-  { key: "services", header: "services", group: "6.1" },
-  { key: "images", header: "images", group: "6.1" },
-  { key: "renderTtfbMs", header: "render_ttfb_ms", group: "6.4" },
-  { key: "renderFirstDataMs", header: "render_first_data_ms", group: "6.4" },
-  { key: "loadOpsPerSecond", header: "load_ops_per_sec", group: "6.5" },
-  { key: "runSha256", header: "run_sha256", group: "provenance" },
-];
+const COLUMNS: Array<{ key: keyof MatrixRow; header: string; group: string }> =
+  [
+    { key: "variant", header: "variant", group: "identity" },
+    { key: "cohort", header: "cohort", group: "identity" },
+    { key: "orm", header: "orm", group: "identity" },
+    { key: "readMode", header: "read", group: "identity" },
+    { key: "mutationMode", header: "mutation", group: "identity" },
+    { key: "gate", header: "correctness", group: "6.3" },
+    { key: "buildMs", header: "build_ms", group: "6.2" },
+    { key: "upMs", header: "up_ms", group: "6.2" },
+    { key: "seedMs", header: "seed_ms", group: "6.2" },
+    { key: "verifyMs", header: "verify_ms", group: "6.2" },
+    { key: "sourceFiles", header: "source_files", group: "6.1" },
+    { key: "sourceLoc", header: "source_loc", group: "6.1" },
+    { key: "sourceBytes", header: "source_bytes", group: "6.1" },
+    { key: "testFiles", header: "test_files", group: "6.1" },
+    { key: "testLoc", header: "test_loc", group: "6.1" },
+    { key: "infraFiles", header: "infra_files", group: "6.1" },
+    { key: "infraLoc", header: "infra_loc", group: "6.1" },
+    { key: "directDeps", header: "direct_deps", group: "6.1" },
+    { key: "languages", header: "languages", group: "6.1" },
+    { key: "services", header: "services", group: "6.1" },
+    { key: "images", header: "images", group: "6.1" },
+    { key: "renderTtfbMs", header: "render_ttfb_ms", group: "6.4" },
+    { key: "renderFirstDataMs", header: "render_first_data_ms", group: "6.4" },
+    { key: "loadOpsPerSecond", header: "load_ops_per_sec", group: "6.5" },
+    { key: "runSha256", header: "run_sha256", group: "provenance" },
+  ];
 
-export function matrixColumns(): Array<{ key: keyof MatrixRow; header: string; group: string }> {
+export function matrixColumns(): Array<{
+  key: keyof MatrixRow;
+  header: string;
+  group: string;
+}> {
   return COLUMNS;
 }
 
@@ -135,7 +140,8 @@ export function buildMatrix(
   });
 }
 
-const cell = (value: unknown): string => (value === null || value === undefined ? "" : String(value));
+const cell = (value: unknown): string =>
+  value === null || value === undefined ? "" : String(value);
 
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -143,22 +149,27 @@ function csvEscape(value: string): string {
 
 export function toCsv(rows: MatrixRow[]): string {
   const header = COLUMNS.map((c) => c.header).join(",");
-  const body = rows.map((row) => COLUMNS.map((c) => csvEscape(cell(row[c.key]))).join(","));
+  const body = rows.map((row) =>
+    COLUMNS.map((c) => csvEscape(cell(row[c.key]))).join(","),
+  );
   return `${[header, ...body].join("\n")}\n`;
 }
 
-export function toMarkdown(rows: MatrixRow[], meta: { runId: string; sha256: string }): string {
+export function toMarkdown(
+  rows: MatrixRow[],
+  meta: { runId: string; sha256: string },
+): string {
   const header = `| ${COLUMNS.map((c) => c.header).join(" | ")} |`;
   const divider = `| ${COLUMNS.map(() => "---").join(" | ")} |`;
-  const body = rows.map((row) => `| ${COLUMNS.map((c) => cell(row[c.key])).join(" | ")} |`);
+  const body = rows.map(
+    (row) => `| ${COLUMNS.map((c) => cell(row[c.key])).join(" | ")} |`,
+  );
   return [
     `# Decision matrix — run \`${meta.runId}\``,
     "",
     `Effective-config sha256: \`${meta.sha256}\``,
     "",
-    "Performance columns are *indicative single-host* (plan §6.6). Correctness,",
-    "render and load columns are populated by plan R5–R7; blank means not yet",
-    "measured, not zero.",
+    "Performance columns are *indicative single-host* (plan §6.6). Correctness is populated when the run used `--with-correctness` (plan R5); blank render/load columns mean not yet measured (R6/R7), not zero.",
     "",
     header,
     divider,
@@ -167,16 +178,26 @@ export function toMarkdown(rows: MatrixRow[], meta: { runId: string; sha256: str
   ].join("\n");
 }
 
-export function toHtml(rows: MatrixRow[], meta: { runId: string; sha256: string }): string {
+export function toHtml(
+  rows: MatrixRow[],
+  meta: { runId: string; sha256: string },
+): string {
   const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const head = COLUMNS.map((c) => `<th title="group ${esc(c.group)}">${esc(c.header)}</th>`).join("");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  const head = COLUMNS.map(
+    (c) => `<th title="group ${esc(c.group)}">${esc(c.header)}</th>`,
+  ).join("");
   const body = rows
     .map(
       (row) =>
         `<tr>${COLUMNS.map((c) => {
           const value = row[c.key];
-          const cls = c.key === "gate" ? ` class="gate-${esc(cell(value))}"` : "";
+          const cls =
+            c.key === "gate" ? ` class="gate-${esc(cell(value))}"` : "";
           return `<td${cls}>${esc(cell(value))}</td>`;
         }).join("")}</tr>`,
     )
@@ -208,11 +229,18 @@ ${body}
 }
 
 /** Load the raw artefacts of a run directory. */
-export function loadRun(runDir: string): { summary: RunSummary; inventory: Map<string, StaticInventory> } {
-  const summary = JSON.parse(readFileSync(path.join(runDir, "summary.json"), "utf8")) as RunSummary;
+export function loadRun(runDir: string): {
+  summary: RunSummary;
+  inventory: Map<string, StaticInventory>;
+} {
+  const summary = JSON.parse(
+    readFileSync(path.join(runDir, "summary.json"), "utf8"),
+  ) as RunSummary;
   let inventory = new Map<string, StaticInventory>();
   try {
-    const raw = JSON.parse(readFileSync(path.join(runDir, "inventory.json"), "utf8")) as StaticInventory[];
+    const raw = JSON.parse(
+      readFileSync(path.join(runDir, "inventory.json"), "utf8"),
+    ) as StaticInventory[];
     inventory = new Map(raw.map((entry) => [entry.variantId, entry]));
   } catch {
     // inventory.json is optional; the report simply shows blank inventory cells.

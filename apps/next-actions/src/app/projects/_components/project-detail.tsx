@@ -2,6 +2,15 @@ import Link from "next/link";
 import type { Project, ProjectTaskRow } from "@/lib/types";
 import { TaskTable } from "@/app/tasks/_components/task-table";
 
+// spec/contract.md's status filter: one control per status plus `all`, each
+// carrying the raw stored value in `data-status`. `all` clears the filter.
+const STATUS_TABS = [
+  { value: "all", label: "All" },
+  { value: "todo", label: "To do" },
+  { value: "in progress", label: "In progress" },
+  { value: "done", label: "Done" },
+] as const;
+
 function StatCard({
   label,
   value,
@@ -92,44 +101,61 @@ export function ProjectDetail({
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Project tasks
           </h2>
-          {/* The select is a plain GET form so filtering needs no client
-              state and the applied filter lives in the URL. */}
-          <form className="flex gap-2" method="get">
-            <label className="relative block">
-              <span className="sr-only">Search tasks</span>
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-2 text-slate-500"
-              >
-                ⌕
-              </span>
-              <input
-                type="search"
-                name="q"
-                placeholder="Search tasks…"
-                className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
-              />
-            </label>
-            <select
-              aria-label="Status"
-              name="status"
-              // Remount on change so the browser follows the GET form. Without
-              // a key, React keeps the pre-change value and the submission
-              // carries the status the user just navigated away from.
-              key={status}
-              defaultValue={status}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
-            >
-              <option value="">All statuses</option>
-              <option value="todo">To do</option>
-              <option value="in-progress">In progress</option>
-              <option value="done">Done</option>
-            </select>
-            {/* Filters are single-select; on submit keep whichever one was set. */}
-            <button type="submit" className="sr-only">
-              Apply
-            </button>
-          </form>
+          <div className="flex flex-col gap-3 sm:items-end lg:flex-row lg:items-center">
+            {/* The search is a plain GET form so it needs no client state and
+                the applied term lives in the URL. */}
+            <form className="flex gap-2" method="get">
+              <label className="relative block">
+                <span className="sr-only">Search tasks</span>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-2 text-slate-500"
+                >
+                  ⌕
+                </span>
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Search tasks…"
+                  className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
+                />
+              </label>
+              <button type="submit" className="sr-only">
+                Apply
+              </button>
+            </form>
+
+            {/* spec/contract.md's status filter as tabs: a plain GET link per
+                status plus `all`. The href carries the raw stored spelling
+                (`in progress`), which the page accepts; `all` drops the param. */}
+            <nav aria-label="Status filter" className="flex flex-wrap gap-1.5">
+              {STATUS_TABS.map((tab) => {
+                const active = (status || "all") === tab.value;
+                return (
+                  <Link
+                    key={tab.value}
+                    href={
+                      tab.value === "all"
+                        ? `/projects/${project.id}`
+                        : `/projects/${project.id}?status=${encodeURIComponent(
+                            tab.value,
+                          )}`
+                    }
+                    data-testid="status-filter"
+                    data-status={tab.value}
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${
+                      active
+                        ? "border-brand-600 bg-brand-600 text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
         </div>
 
         {/* The project is implied by the page, so the table shows

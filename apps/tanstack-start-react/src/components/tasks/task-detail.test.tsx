@@ -229,6 +229,47 @@ describe("TaskDetail", () => {
     );
   });
 
+  it("carries every testid the detail contract requires", () => {
+    const task = makeTaskWithProject({
+      id: 77,
+      projectId: 5,
+      projectName: "Alpha",
+    });
+    const comment = makeComment({
+      id: 1,
+      body: "A body",
+      authorName: "Commenter",
+      createdAt: "Today, 09:42",
+    });
+
+    renderWithRouter(
+      <TaskDetail task={task} comments={[comment]} people={people} />,
+    );
+
+    for (const id of [
+      "task-detail",
+      "task-title",
+      "task-status",
+      "task-description",
+      "task-assignee",
+      "project-link",
+      "task-updated-at",
+      "comment-row",
+      "comment-body",
+      "comment-author",
+      "comment-created-at",
+      "delete-task-button",
+    ]) {
+      expect(screen.getByTestId(id), `missing ${id}`).toBeInTheDocument();
+    }
+
+    // The parent link points at the project board, not the projects list.
+    expect(screen.getByTestId("project-link")).toHaveAttribute(
+      "href",
+      `/projects/${task.projectId}`,
+    );
+  });
+
   it("shows an empty state when there are no comments", () => {
     renderWithRouter(
       <TaskDetail task={makeTaskWithProject()} comments={[]} people={people} />,

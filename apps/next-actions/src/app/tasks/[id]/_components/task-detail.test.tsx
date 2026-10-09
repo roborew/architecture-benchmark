@@ -44,9 +44,11 @@ describe("TaskDetail", () => {
     expect(
       screen.getByRole("heading", { name: task.title }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(`Project: ${task.projectName}`),
-    ).toBeInTheDocument();
+    // The project name is now a link to the parent board (data-testid
+    // `project-link`), so it is no longer a single "Project: …" text node.
+    expect(screen.getByTestId("project-link")).toHaveTextContent(
+      task.projectName,
+    );
   });
 
   it("shows the description", () => {

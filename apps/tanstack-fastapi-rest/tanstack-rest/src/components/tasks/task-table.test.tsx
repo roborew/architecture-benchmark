@@ -79,7 +79,7 @@ describe("TaskTable", () => {
 		).toBeInTheDocument();
 	});
 
-	it("humanises each status", () => {
+	it("renders the raw stored status", () => {
 		const tasks = [
 			makeTaskWithProject({ id: 1, title: "Todo task", status: "todo" }),
 			makeTaskWithProject({
@@ -92,19 +92,43 @@ describe("TaskTable", () => {
 
 		renderWithRouter(<TaskTable tasks={tasks} showProject showComments />);
 
+		// spec/contract.md: `task-status` carries the raw stored value, not a
+		// JS-mapped label; the capitalisation is CSS only.
 		expect(
-			within(screen.getByRole("row", { name: /Todo task/ })).getByText("To do"),
-		).toBeInTheDocument();
-		expect(
-			within(screen.getByRole("row", { name: /In flight task/ })).getByText(
-				"In progress",
+			within(screen.getByRole("row", { name: /Todo task/ })).getByTestId(
+				"task-status",
 			),
-		).toBeInTheDocument();
+		).toHaveTextContent(/^todo$/);
 		expect(
-			within(screen.getByRole("row", { name: /Finished task/ })).getByText(
-				"Done",
+			within(screen.getByRole("row", { name: /In flight task/ })).getByTestId(
+				"task-status",
 			),
-		).toBeInTheDocument();
+		).toHaveTextContent(/^in progress$/);
+		expect(
+			within(screen.getByRole("row", { name: /Finished task/ })).getByTestId(
+				"task-status",
+			),
+		).toHaveTextContent(/^done$/);
+	});
+
+	it("tags each row with the contract's testids", () => {
+		const task = makeTaskWithProject({
+			id: 42,
+			title: "Tagged task",
+			assigneeName: "Tagged Person",
+		});
+
+		renderWithRouter(<TaskTable tasks={[task]} showProject showComments />);
+
+		const row = screen.getByTestId("task-row");
+
+		expect(within(row).getByTestId("task-title")).toHaveTextContent(task.title);
+		expect(within(row).getByTestId("task-status")).toHaveTextContent(
+			task.status,
+		);
+		expect(within(row).getByTestId("task-assignee")).toHaveTextContent(
+			task.assigneeName,
+		);
 	});
 
 	it("shows an empty state when there are no tasks", () => {

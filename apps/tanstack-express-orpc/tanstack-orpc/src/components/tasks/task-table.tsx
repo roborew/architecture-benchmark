@@ -57,12 +57,14 @@ export function TaskTable({
 					{tasks.map((task) => (
 						<tr
 							key={task.id}
+							data-testid="task-row"
 							className="border-b border-slate-100 transition hover:bg-slate-50"
 						>
 							<td className={td}>
 								<Link
 									to="/tasks/$id"
 									params={{ id: String(task.id) }}
+									data-testid="task-title"
 									className="font-bold text-slate-700 hover:text-brand-700"
 								>
 									{task.title}
@@ -82,7 +84,7 @@ export function TaskTable({
 								>
 									{initials(task.assigneeName)}
 								</span>
-								{task.assigneeName}
+								<span data-testid="task-assignee">{task.assigneeName}</span>
 							</td>
 							{showComments && <td className={td}>{task.commentCount}</td>}
 							<td className={td}>{task.updatedAt}</td>

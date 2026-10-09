@@ -78,13 +78,18 @@ const people = [
  * both, which is a real ambiguity on screen too — so the tests assert against
  * one form at a time.
  */
-function primaryForm() {
-  return within(screen.getByTestId("create-task-form"));
-}
-
 /** The primary form's element, for cases needing a container rather than queries. */
 function primaryFormElement() {
-  return screen.getByTestId("create-task-form");
+  // The same component renders the create and the edit form, and the contract
+  // gives them different testids; pick whichever one is mounted.
+  return (
+    screen.queryByTestId("update-task-form") ??
+    screen.getByTestId("create-task-form")
+  );
+}
+
+function primaryForm() {
+  return within(primaryFormElement());
 }
 
 beforeEach(() => {
@@ -233,6 +238,22 @@ describe("TaskForm (create with comment)", () => {
     expect(screen.getByLabelText("First comment")).toBeInTheDocument();
   });
 
+  it("offers every create-task field, including status", () => {
+    // spec/contract.md: this form carries "the create-task fields plus
+    // commentBody and commentAuthor". `TaskSchema` requires `status` with no
+    // default, so omitting it made every atomic submit fail validation and
+    // create nothing.
+    render(<TaskForm projects={projects} people={people} />);
+
+    const form = within(screen.getByTestId("create-with-comment-form"));
+
+    expect(form.getByRole("combobox", { name: "Project" })).toBeInTheDocument();
+    expect(
+      form.getByRole("combobox", { name: "Assigned user" }),
+    ).toBeInTheDocument();
+    expect(form.getByRole("combobox", { name: "Status" })).toHaveValue("todo");
+  });
+
   it("submits the comment body and author together with the task", async () => {
     const user = userEvent.setup();
     render(<TaskForm projects={projects} people={people} />);
@@ -243,6 +264,10 @@ describe("TaskForm (create with comment)", () => {
     await user.type(
       within(form).getByLabelText("First comment"),
       "Opening note",
+    );
+    await user.selectOptions(
+      within(form).getByRole("combobox", { name: "Status" }),
+      "done",
     );
     await user.selectOptions(
       within(form).getByRole("combobox", { name: "Comment author" }),
@@ -260,6 +285,7 @@ describe("TaskForm (create with comment)", () => {
     // The task fields travel in the same submission, or it would not be one
     // transaction.
     expect(formData.get("title")).toBe("Atomic task");
+    expect(formData.get("status")).toBe("done");
   });
 
   it("does not submit the plain create action from this form", () => {
@@ -305,6 +331,13 @@ describe("TaskForm (edit)", () => {
     expect(
       screen.getByRole("button", { name: "Save changes" }),
     ).toBeInTheDocument();
+  });
+
+  it("carries the update-task-form testid, not the create one", () => {
+    render(<TaskForm projects={projects} people={people} task={task} />);
+
+    expect(screen.getByTestId("update-task-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("create-task-form")).not.toBeInTheDocument();
   });
 
   it("submits the edited values", async () => {

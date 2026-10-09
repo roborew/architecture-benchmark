@@ -21,6 +21,17 @@ const tasks = [
 	makeProjectTaskRow({ id: 12, title: "Second task", status: "done" }),
 ];
 
+/** The status-filter tab carrying a given raw `data-status`. */
+function statusTab(status: string) {
+	const tab = screen
+		.getAllByTestId("status-filter")
+		.find((element) => element.getAttribute("data-status") === status);
+
+	if (!tab) throw new Error(`No status-filter tab for ${status}`);
+
+	return tab;
+}
+
 describe("ProjectDetail", () => {
 	it("shows the project name and description", () => {
 		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
@@ -61,14 +72,30 @@ describe("ProjectDetail", () => {
 		expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
 	});
 
-	it("humanises each task status", () => {
+	it("renders each task status as its raw stored value", () => {
 		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
 		const first = screen.getByRole("row", { name: /First task/ });
 		const second = screen.getByRole("row", { name: /Second task/ });
 
-		expect(within(first).getByText("In progress")).toBeInTheDocument();
-		expect(within(second).getByText("Done")).toBeInTheDocument();
+		// spec/contract.md: the raw value, not a JS-mapped label.
+		expect(within(first).getByTestId("task-status")).toHaveTextContent(
+			"in progress",
+		);
+		expect(within(second).getByTestId("task-status")).toHaveTextContent("done");
+	});
+
+	it("tags each row, title and assignee with its contract testid", () => {
+		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
+
+		const first = screen.getByRole("row", { name: /First task/ });
+
+		expect(within(first).getByTestId("task-title")).toHaveTextContent(
+			"First task",
+		);
+		expect(within(first).getByTestId("task-assignee")).toHaveTextContent(
+			tasks[0].assigneeName,
+		);
 	});
 
 	it("links each task to its detail page", () => {
@@ -81,15 +108,32 @@ describe("ProjectDetail", () => {
 		).toHaveAttribute("href", "/tasks/11");
 	});
 
-	it("offers a task search field and status filter", () => {
+	it("gives each status tab the raw data-status, not TanStack's active marker", () => {
 		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
+		// Plain <a> links, so `data-status` stays the contract value; a TanStack
+		// <Link> would overwrite it with "active"/"inactive".
 		expect(
-			screen.getByRole("searchbox", { name: "Search tasks" }),
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole("combobox", { name: "Status" }),
-		).toBeInTheDocument();
+			screen
+				.getAllByTestId("status-filter")
+				.map((tab) => tab.getAttribute("data-status")),
+		).toEqual(["all", "todo", "in progress", "done"]);
+	});
+
+	it("links each status tab to the board with the raw stored status", () => {
+		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
+
+		expect(statusTab("done")).toHaveAttribute(
+			"href",
+			`/projects/${project.id}?status=done`,
+		);
+		// The raw stored spelling, URL-encoded — the route accepts it.
+		expect(statusTab("in progress")).toHaveAttribute(
+			"href",
+			`/projects/${project.id}?status=in%20progress`,
+		);
+		// `all` clears the filter, so it is the bare board URL.
+		expect(statusTab("all")).toHaveAttribute("href", `/projects/${project.id}`);
 	});
 
 	it("marks the active status so the filter shows what is applied", () => {
@@ -97,17 +141,24 @@ describe("ProjectDetail", () => {
 			<ProjectDetail project={project} tasks={tasks} status="todo" />,
 		);
 
-		expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
-			"todo",
-		);
+		expect(statusTab("todo")).toHaveAttribute("aria-current", "page");
+		expect(statusTab("all")).not.toHaveAttribute("aria-current");
 	});
 
-	it("shows the status filter as empty when no status is selected", () => {
+	it("accepts the raw in progress spelling as the in progress tab", () => {
+		renderWithRouter(
+			<ProjectDetail project={project} tasks={tasks} status="in progress" />,
+		);
+
+		expect(statusTab("in progress")).toHaveAttribute("aria-current", "page");
+	});
+
+	it("marks all as active when no status is selected", () => {
 		renderWithRouter(
 			<ProjectDetail project={project} tasks={tasks} status="" />,
 		);
 
-		expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("");
+		expect(statusTab("all")).toHaveAttribute("aria-current", "page");
 	});
 
 	it("shows an empty state when the project has no tasks", () => {

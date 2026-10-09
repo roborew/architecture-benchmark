@@ -57,14 +57,16 @@ describe("ProjectDetail", () => {
     expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
   });
 
-  it("humanises each task status", () => {
+  it("renders each task with its raw status", () => {
     renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
     const first = screen.getByRole("row", { name: /First task/ });
     const second = screen.getByRole("row", { name: /Second task/ });
 
-    expect(within(first).getByText("In progress")).toBeInTheDocument();
-    expect(within(second).getByText("Done")).toBeInTheDocument();
+    expect(within(first).getByTestId("task-status")).toHaveTextContent(
+      "in progress",
+    );
+    expect(within(second).getByTestId("task-status")).toHaveTextContent("done");
   });
 
   it("links each task to its detail page", () => {
@@ -77,29 +79,73 @@ describe("ProjectDetail", () => {
     ).toHaveAttribute("href", "/tasks/11");
   });
 
-  it("offers a task search field and status filter", () => {
+  it("offers a task search field and the status filter tabs", () => {
     renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
     expect(
       screen.getByRole("searchbox", { name: "Search tasks" }),
     ).toBeInTheDocument();
+
+    // spec/contract.md: one tab per status plus `all`, each tagged with the
+    // raw stored spelling in `data-status`.
     expect(
-      screen.getByRole("combobox", { name: "Status" }),
-    ).toBeInTheDocument();
+      screen
+        .getAllByTestId("status-filter")
+        .map((tab) => tab.getAttribute("data-status")),
+    ).toEqual(["all", "todo", "in progress", "done"]);
   });
 
-  it("marks the active status so the filter shows what is applied", () => {
-    renderWithRouter(<ProjectDetail project={project} tasks={tasks} status="todo" />);
+  it("links each status tab to the board filtered by that status", () => {
+    renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
-    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
-      "todo",
+    const tabs = screen.getAllByTestId("status-filter");
+    const byStatus = (value: string) =>
+      tabs.find((tab) => tab.getAttribute("data-status") === value);
+
+    // A plain anchor, so the contract's raw `data-status` is not clobbered by
+    // TanStack Router's own `data-status="active|inactive"`.
+    for (const tab of tabs) {
+      expect(tab.tagName).toBe("A");
+      expect(tab.getAttribute("data-status")).not.toMatch(
+        /^(active|inactive)$/,
+      );
+    }
+
+    // `all` clears the filter; the rest carry the raw spelling, URL-encoded.
+    expect(byStatus("all")).toHaveAttribute("href", `/projects/${project.id}`);
+    expect(byStatus("done")).toHaveAttribute(
+      "href",
+      `/projects/${project.id}?status=done`,
+    );
+    expect(byStatus("in progress")).toHaveAttribute(
+      "href",
+      `/projects/${project.id}?status=in%20progress`,
     );
   });
 
-  it("shows the status filter as empty when no status is selected", () => {
-    renderWithRouter(<ProjectDetail project={project} tasks={tasks} status="" />);
+  it("marks the raw status spelling the URL carries", () => {
+    renderWithRouter(
+      <ProjectDetail project={project} tasks={tasks} status="in progress" />,
+    );
 
-    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("");
+    const active = screen
+      .getAllByTestId("status-filter")
+      .filter((tab) => tab.getAttribute("aria-current") === "page");
+
+    expect(active).toHaveLength(1);
+    expect(active[0]).toHaveAttribute("data-status", "in progress");
+  });
+
+  it("marks `all` when no status is applied", () => {
+    renderWithRouter(
+      <ProjectDetail project={project} tasks={tasks} status="" />,
+    );
+
+    expect(
+      screen
+        .getAllByTestId("status-filter")
+        .find((tab) => tab.getAttribute("aria-current") === "page"),
+    ).toHaveAttribute("data-status", "all");
   });
 
   it("shows an empty state when the project has no tasks", () => {
@@ -113,7 +159,9 @@ describe("ProjectDetail", () => {
   it("offers no older link when the page came back short of a full page", () => {
     // A short page means the query ran out of rows, so there is nothing older
     // to link to and offering one would dead-end the reader.
-    renderWithRouter(<ProjectDetail project={project} tasks={tasks} hasMore={false} />);
+    renderWithRouter(
+      <ProjectDetail project={project} tasks={tasks} hasMore={false} />,
+    );
 
     expect(screen.queryByTestId("next-page")).not.toBeInTheDocument();
   });

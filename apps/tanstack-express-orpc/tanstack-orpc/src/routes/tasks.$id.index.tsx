@@ -56,7 +56,10 @@ export const Route = createFileRoute("/tasks/$id/")({
 /** The task detail's inline not-found state, mirroring the reference's. */
 function TaskNotFound() {
 	return (
-		<div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
+		<div
+			data-testid="not-found"
+			className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9"
+		>
 			<h1 className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
 				Task not found
 			</h1>

@@ -124,19 +124,34 @@ on this host (macOS Docker Desktop, Docker 29.1.3).
   `mix assets.deploy` (the esbuild `phoenix-colocated` alias only exists after
   compile).
 
+## R5 — black-box correctness suite (completed, validated 9 Oct 2026)
+
+Shared black-box Playwright suite `testing-rig/e2e/correctness.spec.ts` (+ its
+`playwright.config.ts`), driven against `BENCH_BASE_URL` (the single-service
+app, or the SPA half of a `spa-api` stack). Wired into the controller as a
+`correctness` stage (`pnpm rig:run … --with-correctness`), after seed/verify and
+before teardown; a failure makes the variant ineligible.
+
+App changes (`docs/r5-contract-changes.md`): contract `data-testid`s added across
+all 14 surfaces; raw-status rendering (+ CSS capitalize); status-filter tabs
+replacing the project-board select; create-with-comment gained its required
+`status` field; TanStack-Router tabs switched from `<Link>` to plain `<a>`
+(`<Link>` overwrites `data-status`); task-detail index routes gained
+`not-found`; the shared SPA no longer declares a JSON content-type on a bodyless
+DELETE (Fastify rejected it).
+
+**Gate:** `pnpm rig:run --config config/smoke-matrix.yaml --with-correctness` →
+**14/14 variants ok**, correctness green on every variant; `pnpm report` renders
+the matrix with the correctness column populated. Rig tests 31/31; typecheck
+clean.
+
 ## Next steps
 
-1. **R5 — black-box correctness suite.** Write it against `spec/contract.md`,
-   then add the missing contract testids to the apps (see
-   `docs/testing-rig-contract-audit.md`). Gate: passes on all 14; deliberately
-   stale-UI / failed-write cases are detected as failures.
-2. **R6 — render-speed suite** (Playwright, serial, cold contexts, CDP LCP).
-3. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
+1. **R6 — render-speed suite** (Playwright, serial, cold contexts, CDP LCP),
+   wired as a controller stage alongside `correctness`.
+2. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
    stack network; `pg_stat_statements`; `docker stats`; generator-CPU ceiling).
-4. **R8 — static inventory + reporting.** _Partly done:_ `src/reporting/` now
-   collects the §6.1 inventory per run and generates the decision matrix
-   (`pnpm report` → `results/<run-id>/report/{matrix.csv,matrix.md,index.html}`)
-   from raw data; verified against a 14/14 smoke run. Still to do: the correctness
-   /render/load columns (blank until R5–R7) and the long `default.yaml` matrix run.
-5. Optionally wire browser/k6 stages into `src/controller/lifecycle.ts`, which
-   already records stages and preserves artefacts on failure.
+3. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
+   correctness now; render/load columns once R6/R7 land).
+4. Optional: wire the suite's created/updated/deleted ids into a SQL DB
+   postcondition check (plan §6.3).

@@ -35,6 +35,10 @@ import {
 const STATUS_FROM_QUERY: Record<string, string> = {
 	todo: "todo",
 	"in-progress": "in progress",
+	// The tabs' GET links write the raw stored spelling into the query string, so
+	// `?status=in progress` must resolve to the same filter as the legacy
+	// `in-progress`.
+	"in progress": "in progress",
 	done: "done",
 };
 
@@ -208,7 +212,10 @@ function ProjectBoardRoute() {
 		<ProjectDetail
 			project={project}
 			tasks={tasks}
-			status={search.status ?? ""}
+			// The canonical stored value (not the raw query spelling), so the tabs
+			// light the same one for `?status=in progress` and the legacy
+			// `in-progress` and the older link carries the stored form.
+			status={boardFilters(search).status ?? ""}
 			hasMore={hasMore}
 		/>
 	);

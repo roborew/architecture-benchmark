@@ -10,6 +10,21 @@ import { Link } from "@tanstack/react-router";
 import { TaskTable } from "@/components/tasks/task-table";
 import type { Project, ProjectTaskRow } from "@/lib/types";
 
+/**
+ * The board's status tabs.
+ *
+ * One per stored value plus an `all` that clears the filter. `data-status`
+ * carries the raw stored spelling (`in progress`), which is also what the tab
+ * writes into `?status=` — the route accepts it (and the legacy `in-progress`)
+ * and the server owns the value.
+ */
+const STATUS_TABS: { value: string; label: string }[] = [
+	{ value: "all", label: "All" },
+	{ value: "todo", label: "To do" },
+	{ value: "in progress", label: "In progress" },
+	{ value: "done", label: "Done" },
+];
+
 function StatCard({
 	label,
 	value,
@@ -101,44 +116,66 @@ export function ProjectDetail({
 					<h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
 						Project tasks
 					</h2>
-					{/* The select is a plain GET form so filtering needs no client
-					    state and the applied filter lives in the URL. */}
-					<form className="flex gap-2" method="get">
-						<label className="relative block">
-							<span className="sr-only">Search tasks</span>
-							<span
-								aria-hidden="true"
-								className="pointer-events-none absolute left-3 top-2 text-slate-500"
-							>
-								⌕
-							</span>
-							<input
-								type="search"
-								name="q"
-								placeholder="Search tasks…"
-								className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
-							/>
-						</label>
-						<select
-							aria-label="Status"
-							name="status"
-							// Remount on change so the browser follows the GET form. Without
-							// a key, React keeps the pre-change value and the submission
-							// carries the status the user just navigated away from.
-							key={status}
-							defaultValue={status}
-							className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
-						>
-							<option value="">All statuses</option>
-							<option value="todo">To do</option>
-							<option value="in-progress">In progress</option>
-							<option value="done">Done</option>
-						</select>
-						{/* Filters are single-select; on submit keep whichever one was set. */}
-						<button type="submit" className="sr-only">
-							Apply
-						</button>
-					</form>
+					<div className="flex flex-wrap items-center gap-2">
+						{/* Status filter tabs (spec/contract.md): plain GET <a> links, not
+						    TanStack Router <Link>s — <Link> overwrites `data-status` with its
+						    own active/inactive marker, which is the value the suite reads.
+						    Each carries the raw stored value in `?status=` (URL-encoded) and
+						    `all` clears it, so filtering needs no client state. */}
+						<nav aria-label="Filter by status" className="flex flex-wrap gap-1">
+							{STATUS_TABS.map((tab) => {
+								const active =
+									tab.value === "all"
+										? status === "" || status === "all"
+										: status === tab.value ||
+											(tab.value === "in progress" && status === "in-progress");
+
+								return (
+									<a
+										key={tab.value}
+										href={
+											tab.value === "all"
+												? `/projects/${project.id}`
+												: `/projects/${project.id}?status=${encodeURIComponent(tab.value)}`
+										}
+										data-testid="status-filter"
+										data-status={tab.value}
+										aria-current={active ? "page" : undefined}
+										className={`rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+											active
+												? "border-brand-600 bg-brand-600 text-white"
+												: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+										}`}
+									>
+										{tab.label}
+									</a>
+								);
+							})}
+						</nav>
+						{/* The search stays a plain GET form so filtering needs no client
+						    state and the applied filter lives in the URL. */}
+						<form className="flex gap-2" method="get">
+							<label className="relative block">
+								<span className="sr-only">Search tasks</span>
+								<span
+									aria-hidden="true"
+									className="pointer-events-none absolute left-3 top-2 text-slate-500"
+								>
+									⌕
+								</span>
+								<input
+									type="search"
+									name="q"
+									placeholder="Search tasks…"
+									className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
+								/>
+							</label>
+							{/* Filtering is single-select; submit keeps whichever is set. */}
+							<button type="submit" className="sr-only">
+								Apply
+							</button>
+						</form>
+					</div>
 				</div>
 
 				{/* The project is implied by the page, so the table shows

@@ -87,6 +87,59 @@ describe("TaskDetail", () => {
 		expect(screen.getByText(task.description)).toBeInTheDocument();
 	});
 
+	it("exposes the contract testids for the detail view", () => {
+		const task = makeTaskWithProject({
+			id: 42,
+			projectId: 7,
+			projectName: "Alpha",
+			title: "Detail task",
+			description: "Distinct description",
+			status: "done",
+			assigneeName: "Detail Person",
+			updatedAt: "Some day",
+		});
+		const comment = makeComment({
+			body: "A body",
+			authorName: "Commenter",
+			createdAt: "Today",
+		});
+
+		renderWithRouter(
+			<TaskDetail task={task} comments={[comment]} people={people} />,
+		);
+
+		expect(screen.getByTestId("task-detail")).toBeInTheDocument();
+		expect(screen.getByTestId("task-title")).toHaveTextContent(task.title);
+		// Raw stored value, not a label.
+		expect(screen.getByTestId("task-status")).toHaveTextContent("done");
+		expect(screen.getByTestId("task-description")).toHaveTextContent(
+			task.description,
+		);
+		expect(screen.getByTestId("task-assignee")).toHaveTextContent(
+			task.assigneeName,
+		);
+		expect(screen.getByTestId("project-link")).toHaveAttribute(
+			"href",
+			`/projects/${task.projectId}`,
+		);
+		expect(screen.getByTestId("task-updated-at")).toHaveTextContent(
+			task.updatedAt,
+		);
+		expect(screen.getByTestId("delete-task-button")).toBeInTheDocument();
+
+		const row = screen.getByTestId("comment-row");
+
+		expect(within(row).getByTestId("comment-body")).toHaveTextContent(
+			comment.body,
+		);
+		expect(within(row).getByTestId("comment-author")).toHaveTextContent(
+			comment.authorName,
+		);
+		expect(within(row).getByTestId("comment-created-at")).toHaveTextContent(
+			comment.createdAt,
+		);
+	});
+
 	it("renders the details sidebar", () => {
 		const task = makeTaskWithProject({
 			assigneeName: "Detail Person",

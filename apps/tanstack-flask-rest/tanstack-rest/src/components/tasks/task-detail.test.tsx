@@ -74,9 +74,47 @@ describe("TaskDetail", () => {
 		expect(
 			screen.getByRole("heading", { name: task.title }),
 		).toBeInTheDocument();
-		expect(
-			screen.getByText(`Project: ${task.projectName}`),
-		).toBeInTheDocument();
+		// The project name is now a link to the parent board (data-testid
+		// `project-link`), so it is no longer a single "Project: …" text node.
+		expect(screen.getByTestId("project-link")).toHaveTextContent(
+			task.projectName,
+		);
+	});
+
+	it("tags the detail with the contract's testids", () => {
+		const task = makeTaskWithProject({
+			id: 77,
+			title: "Tagged detail",
+			status: "in progress",
+			description: "Tagged description",
+			assigneeName: "Tagged Person",
+			updatedAt: "Tagged moment",
+			projectName: "Tagged project",
+		});
+
+		renderWithRouter(<TaskDetail task={task} comments={[]} people={people} />);
+
+		expect(screen.getByTestId("task-detail")).toBeInTheDocument();
+		expect(screen.getByTestId("task-title")).toHaveTextContent(task.title);
+		// The raw stored value, not a JS-mapped label.
+		expect(screen.getByTestId("task-status")).toHaveTextContent("in progress");
+		expect(screen.getByTestId("task-description")).toHaveTextContent(
+			task.description,
+		);
+		expect(screen.getByTestId("task-assignee")).toHaveTextContent(
+			task.assigneeName,
+		);
+		expect(screen.getByTestId("task-updated-at")).toHaveTextContent(
+			task.updatedAt,
+		);
+		expect(screen.getByTestId("project-link")).toHaveTextContent(
+			task.projectName,
+		);
+		expect(screen.getByTestId("project-link")).toHaveAttribute(
+			"href",
+			`/projects/${task.projectId}`,
+		);
+		expect(screen.getByTestId("delete-task-button")).toBeInTheDocument();
 	});
 
 	it("shows the description", () => {
@@ -138,11 +176,17 @@ describe("TaskDetail", () => {
 			/>,
 		);
 
-		const article = screen.getByRole("article");
+		const article = screen.getByTestId("comment-row");
 
-		expect(within(article).getByText(comment.authorName)).toBeInTheDocument();
-		expect(within(article).getByText(comment.createdAt)).toBeInTheDocument();
-		expect(within(article).getByText(comment.body)).toBeInTheDocument();
+		expect(within(article).getByTestId("comment-author")).toHaveTextContent(
+			comment.authorName,
+		);
+		expect(within(article).getByTestId("comment-created-at")).toHaveTextContent(
+			comment.createdAt,
+		);
+		expect(within(article).getByTestId("comment-body")).toHaveTextContent(
+			comment.body,
+		);
 	});
 
 	it("renders the add-comment form with its fields", () => {

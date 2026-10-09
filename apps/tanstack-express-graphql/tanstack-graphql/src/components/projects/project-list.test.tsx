@@ -28,10 +28,11 @@ describe("ProjectList", () => {
 		renderWithRouter(<ProjectList projects={[project]} />);
 
 		const row = screen.getByRole("row", { name: new RegExp(project.name) });
+		const link = within(row).getByRole("link", { name: project.name });
 
-		expect(
-			within(row).getByRole("link", { name: project.name }),
-		).toHaveAttribute("href", `/projects/${project.id}`);
+		expect(link).toHaveAttribute("href", `/projects/${project.id}`);
+		// The projects index contract testid.
+		expect(link).toHaveAttribute("data-testid", "project-link");
 	});
 
 	it("shows the description under the project name", () => {

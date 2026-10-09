@@ -1,3 +1,6 @@
 /node_modules
 /seeder/node_modules
 /results
+/test-results
+/playwright-report
+/playwright-report.json

@@ -50,7 +50,9 @@ describe("TaskTable", () => {
   });
 
   it("omits the project column when not requested", () => {
-    renderWithRouter(<TaskTable tasks={[makeTaskWithProject()]} showComments />);
+    renderWithRouter(
+      <TaskTable tasks={[makeTaskWithProject()]} showComments />,
+    );
 
     expect(
       screen.queryByRole("columnheader", { name: "Project" }),
@@ -77,7 +79,7 @@ describe("TaskTable", () => {
     ).toBeInTheDocument();
   });
 
-  it("humanises each status", () => {
+  it("renders the raw status text, not a js label", () => {
     const tasks = [
       makeTaskWithProject({ id: 1, title: "Todo task", status: "todo" }),
       makeTaskWithProject({
@@ -90,19 +92,42 @@ describe("TaskTable", () => {
 
     renderWithRouter(<TaskTable tasks={tasks} showProject showComments />);
 
+    // spec/contract.md: the element carrying `task-status` holds the stored
+    // value verbatim; capitalisation is CSS, so the text stays raw.
     expect(
-      within(screen.getByRole("row", { name: /Todo task/ })).getByText("To do"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("row", { name: /In flight task/ })).getByText(
-        "In progress",
+      within(screen.getByRole("row", { name: /Todo task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("todo");
     expect(
-      within(screen.getByRole("row", { name: /Finished task/ })).getByText(
-        "Done",
+      within(screen.getByRole("row", { name: /In flight task/ })).getByTestId(
+        "task-status",
       ),
-    ).toBeInTheDocument();
+    ).toHaveTextContent("in progress");
+    expect(
+      within(screen.getByRole("row", { name: /Finished task/ })).getByTestId(
+        "task-status",
+      ),
+    ).toHaveTextContent("done");
+  });
+
+  it("marks each row, title and assignee with the contract testids", () => {
+    const task = makeTaskWithProject({
+      id: 42,
+      title: "Tagged task",
+      assigneeName: "Tagged Person",
+    });
+
+    renderWithRouter(<TaskTable tasks={[task]} showProject showComments />);
+
+    const row = screen.getByTestId("task-row");
+
+    expect(within(row).getByTestId("task-title")).toHaveTextContent(task.title);
+    // The avatar initials sit outside `task-assignee`, so the cell reads as
+    // the display name alone.
+    expect(within(row).getByTestId("task-assignee")).toHaveTextContent(
+      task.assigneeName,
+    );
   });
 
   it("shows an empty state when there are no tasks", () => {

@@ -57,14 +57,18 @@ describe("ProjectDetail", () => {
     expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
   });
 
-  it("humanises each task status", () => {
+  it("renders the raw stored status text", () => {
+    // spec/contract.md requires the raw stored value, not a display label; the
+    // capitalised look comes from CSS.
     render(<ProjectDetail project={project} tasks={tasks} />);
 
     const first = screen.getByRole("row", { name: /First task/ });
     const second = screen.getByRole("row", { name: /Second task/ });
 
-    expect(within(first).getByText("In progress")).toBeInTheDocument();
-    expect(within(second).getByText("Done")).toBeInTheDocument();
+    expect(within(first).getByTestId("task-status")).toHaveTextContent(
+      "in progress",
+    );
+    expect(within(second).getByTestId("task-status")).toHaveTextContent("done");
   });
 
   it("links each task to its detail page", () => {
@@ -77,29 +81,57 @@ describe("ProjectDetail", () => {
     ).toHaveAttribute("href", "/tasks/11");
   });
 
-  it("offers a task search field and status filter", () => {
+  it("offers a task search field and the status filter tabs", () => {
     render(<ProjectDetail project={project} tasks={tasks} />);
 
     expect(
       screen.getByRole("searchbox", { name: "Search tasks" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Status" }),
-    ).toBeInTheDocument();
+    expect(screen.getAllByTestId("status-filter")).toHaveLength(4);
   });
 
-  it("marks the active status so the filter shows what is applied", () => {
+  it("marks the active status tab so the filter shows what is applied", () => {
     render(<ProjectDetail project={project} tasks={tasks} status="todo" />);
 
-    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
-      "todo",
-    );
+    const todoTab = screen
+      .getAllByTestId("status-filter")
+      .find((tab) => tab.getAttribute("data-status") === "todo");
+
+    expect(todoTab).toHaveAttribute("aria-current", "page");
   });
 
-  it("shows the status filter as empty when no status is selected", () => {
+  it("carries the raw stored status in each tab's data-status and href", () => {
+    render(<ProjectDetail project={project} tasks={tasks} />);
+
+    const tabs = screen.getAllByTestId("status-filter");
+
+    expect(tabs.map((tab) => tab.getAttribute("data-status"))).toEqual([
+      "all",
+      "todo",
+      "in progress",
+      "done",
+    ]);
+
+    const inProgress = tabs.find(
+      (tab) => tab.getAttribute("data-status") === "in progress",
+    );
+    expect(inProgress).toHaveAttribute(
+      "href",
+      `/projects/${project.id}?status=in%20progress`,
+    );
+
+    const all = tabs.find((tab) => tab.getAttribute("data-status") === "all");
+    expect(all).toHaveAttribute("href", `/projects/${project.id}`);
+  });
+
+  it("marks the all tab active when no status is selected", () => {
     render(<ProjectDetail project={project} tasks={tasks} status="" />);
 
-    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("");
+    const allTab = screen
+      .getAllByTestId("status-filter")
+      .find((tab) => tab.getAttribute("data-status") === "all");
+
+    expect(allTab).toHaveAttribute("aria-current", "page");
   });
 
   it("shows an empty state when the project has no tasks", () => {

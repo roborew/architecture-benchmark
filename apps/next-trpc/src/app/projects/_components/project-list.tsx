@@ -36,6 +36,7 @@ export function ProjectList({ projects }: { projects: Project[] }) {
               <td className={td}>
                 <Link
                   href={`/projects/${project.id}`}
+                  data-testid="project-link"
                   className="font-bold text-slate-700 hover:text-brand-700"
                 >
                   {project.name}

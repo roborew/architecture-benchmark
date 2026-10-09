@@ -36,6 +36,7 @@ interface Options {
   only?: string[];
   build: false | { noCache: boolean };
   buildSeeder: boolean;
+  correctness: boolean;
   readinessTimeoutMs: number;
 }
 
@@ -45,6 +46,7 @@ function parseArgs(args: string[]): Options {
     manifests: path.join(rigRoot, "manifests"),
     build: { noCache: false },
     buildSeeder: true,
+    correctness: false,
     readinessTimeoutMs: 90_000,
   };
   for (let i = 0; i < args.length; i += 1) {
@@ -69,6 +71,9 @@ function parseArgs(args: string[]): Options {
         break;
       case "--skip-seeder-build":
         options.buildSeeder = false;
+        break;
+      case "--with-correctness":
+        options.correctness = true;
         break;
       case "--readiness-timeout":
         options.readinessTimeoutMs = Number(args[++i]);
@@ -219,6 +224,7 @@ async function main(): Promise<number> {
       fixture: config.fixture,
       artifacts,
       build: options.build,
+      correctness: options.correctness,
       readinessTimeoutMs: options.readinessTimeoutMs,
     });
     results.push(result);

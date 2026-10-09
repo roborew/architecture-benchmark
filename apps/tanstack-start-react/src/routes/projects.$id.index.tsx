@@ -12,12 +12,14 @@ import { fetchProject, fetchProjectTasks } from "@/server/queries";
 /**
  * The status filter's query-string spelling.
  *
- * A raw space is awkward in a query string while the stored value is "in
- * progress" (spec/contract.md), so the two are translated here and the query
- * layer only ever sees the stored form.
+ * spec/contract.md stores the value as `in progress` (with a space) and the
+ * board's tabs link to that raw spelling, URL-encoded by the router. The query
+ * layer only ever sees the stored form. The legacy `in-progress` spelling is
+ * still accepted so an older link does not silently clear the filter.
  */
 const STATUS_FROM_QUERY: Record<string, string> = {
   todo: "todo",
+  "in progress": "in progress",
   "in-progress": "in progress",
   done: "done",
 };
@@ -87,11 +89,13 @@ export const Route = createFileRoute("/projects/$id/")({
       },
     });
 
-    // The select keeps the query-string spelling so re-submitting is stable.
+    // The tabs render from the canonical stored value, so a raw
+    // `?status=in progress` and the legacy `in-progress` both light the same
+    // tab. An unknown value applies no filter and leaves `all` active.
     return {
       project,
       tasks: fetched.slice(0, PAGE),
-      status: statusParam,
+      status: appliedStatus ?? "",
       hasMore: fetched.length > PAGE,
     };
   },

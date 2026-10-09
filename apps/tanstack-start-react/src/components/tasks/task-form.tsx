@@ -112,20 +112,29 @@ function AssigneeSelect({
   );
 }
 
+/**
+ * The status select, shared by the create, edit and create-with-comment forms.
+ *
+ * `idPrefix` keeps the `id`/`htmlFor` pair unique: the create and
+ * create-with-comment forms both render on `/tasks/new`, and a duplicate `id`
+ * would make the label bind to whichever came first in the document.
+ */
 function StatusSelect({
   defaultValue,
   invalid,
+  idPrefix,
 }: {
   defaultValue: Task["status"];
   invalid?: boolean;
+  idPrefix: string;
 }) {
   return (
     <div>
-      <label htmlFor="task-status" className={labelClass}>
+      <label htmlFor={`${idPrefix}-status`} className={labelClass}>
         Status
       </label>
       <select
-        id="task-status"
+        id={`${idPrefix}-status`}
         name="status"
         defaultValue={defaultValue}
         aria-invalid={invalid ? true : undefined}
@@ -209,7 +218,13 @@ export function TaskForm({
 
       <div className="grid gap-5">
         <Panel>
-          <form action={formAction} data-testid="create-task-form">
+          {/* The same component serves both paths, so the testid distinguishes
+              them: spec/contract.md's create-task-form at /tasks/new and
+              update-task-form at /tasks/<id>/edit. */}
+          <form
+            action={formAction}
+            data-testid={isEdit ? "update-task-form" : "create-task-form"}
+          >
             <FormMessage message={state.message} />
 
             <label htmlFor="task-title" className={labelClass}>
@@ -285,6 +300,7 @@ export function TaskForm({
               <StatusSelect
                 defaultValue={task?.status ?? "todo"}
                 invalid={Boolean(state.errors?.status)}
+                idPrefix="task"
               />
             </div>
 
@@ -392,7 +408,7 @@ function CreateWithCommentForm({
           </p>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ProjectSelect
             projects={projects}
             defaultValue={projects[0]?.id ?? 0}
@@ -401,6 +417,16 @@ function CreateWithCommentForm({
           />
 
           <AssigneeSelect people={people} defaultValue={null} idPrefix="cwc" />
+
+          {/* spec/contract.md: this form carries "the create-task fields plus
+              commentBody and commentAuthor", and `status` is one of them. The
+              task schema requires `status`, so without this control the atomic
+              insert fails validation and nothing is created. */}
+          <StatusSelect
+            defaultValue="todo"
+            invalid={Boolean(state.errors?.status)}
+            idPrefix="cwc"
+          />
 
           <div>
             <label htmlFor="cwc-author" className={labelClass}>

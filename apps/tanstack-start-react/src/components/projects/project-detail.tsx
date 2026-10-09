@@ -3,6 +3,16 @@ import { Link } from "@tanstack/react-router";
 import type { Project, ProjectTaskRow } from "@/lib/types";
 import { TaskTable } from "@/components/tasks/task-table";
 
+/**
+ * The board's status filter tabs, per spec/contract.md.
+ *
+ * `data-status` carries the raw stored spelling (`in progress`, with a space);
+ * the tab text is that same value capitalised by CSS, so there is no JS label
+ * map. Each tab is a plain GET link, so the applied filter lives in the URL and
+ * needs no client state. `all` omits `status`, which clears the filter.
+ */
+const STATUS_TABS = ["all", "todo", "in progress", "done"] as const;
+
 function StatCard({
   label,
   value,
@@ -37,6 +47,9 @@ export function ProjectDetail({
   /** Whether the query filled its page, i.e. whether older rows probably exist. */
   hasMore?: boolean;
 }) {
+  // The tab that reflects the URL: the raw applied status, or `all` when clear.
+  const applied = status || "all";
+
   return (
     <div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
       <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -94,44 +107,58 @@ export function ProjectDetail({
           <h2 className="text-[15px] font-bold tracking-[-.02em] text-slate-800">
             Project tasks
           </h2>
-          {/* The select is a plain GET form so filtering needs no client
-              state and the applied filter lives in the URL. */}
-          <form className="flex gap-2" method="get">
-            <label className="relative block">
-              <span className="sr-only">Search tasks</span>
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-2 text-slate-500"
-              >
-                ⌕
-              </span>
-              <input
-                type="search"
-                name="q"
-                placeholder="Search tasks…"
-                className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
-              />
-            </label>
-            <select
-              aria-label="Status"
-              name="status"
-              // Remount on change so the browser follows the GET form. Without
-              // a key, React keeps the pre-change value and the submission
-              // carries the status the user just navigated away from.
-              key={status}
-              defaultValue={status}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-700 outline-none focus:border-brand-500"
-            >
-              <option value="">All statuses</option>
-              <option value="todo">To do</option>
-              <option value="in-progress">In progress</option>
-              <option value="done">Done</option>
-            </select>
-            {/* Filters are single-select; on submit keep whichever one was set. */}
-            <button type="submit" className="sr-only">
-              Apply
-            </button>
-          </form>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {/* The search field stays a plain GET form; the status filter below
+                is a set of links, so no client state is needed for either. */}
+            <form className="flex gap-2" method="get">
+              <label className="relative block">
+                <span className="sr-only">Search tasks</span>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-2 text-slate-500"
+                >
+                  ⌕
+                </span>
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Search tasks…"
+                  className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-[11px] outline-none focus:border-brand-500 sm:w-48"
+                />
+              </label>
+              <button type="submit" className="sr-only">
+                Apply
+              </button>
+            </form>
+            {/* Status filter tabs (spec/contract.md): one per status plus
+                `all`, each a link so the applied filter is in the URL. */}
+            <nav aria-label="Filter by status" className="flex flex-wrap gap-1">
+              {STATUS_TABS.map((tab) => (
+                // A plain anchor, not TanStack's <Link>: the router stamps its
+                // own `data-status="active|inactive"` on a Link, which would
+                // clobber the raw contract value the suite reads. A filter needs
+                // no client state, so a full navigation is fine here.
+                <a
+                  key={tab}
+                  href={
+                    tab === "all"
+                      ? `/projects/${project.id}`
+                      : `/projects/${project.id}?status=${encodeURIComponent(tab)}`
+                  }
+                  data-testid="status-filter"
+                  data-status={tab}
+                  aria-current={applied === tab ? "page" : undefined}
+                  className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold capitalize transition ${
+                    applied === tab
+                      ? "bg-brand-600 text-white"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {tab}
+                </a>
+              ))}
+            </nav>
+          </div>
         </div>
 
         {/* The project is implied by the page, so the table shows
@@ -147,7 +174,7 @@ export function ProjectDetail({
             {/* Keyset pagination (spec/queries.md): the cursor carries the
                 `(created_at, id)` of the last row shown, so the next page
                 starts exactly after it. The status is carried too, or the
-                filter would silently reset while the select still shows it. */}
+                filter would silently reset while the applied tab still shows it. */}
             {hasMore && tasks.length > 0 ? (
               <div className="flex justify-end border-t border-slate-100 px-5 py-4">
                 <Link

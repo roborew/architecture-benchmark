@@ -145,6 +145,7 @@ function DeleteTaskButton({
 				type="submit"
 				disabled={pending}
 				aria-label="Delete task"
+				data-testid="delete-task-button"
 				className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 transition hover:border-red-300 disabled:opacity-50"
 			>
 				{pending ? "Deleting…" : "Delete task"}
@@ -173,7 +174,10 @@ export function TaskDetail({
 	people: User[];
 }) {
 	return (
-		<div className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9">
+		<div
+			data-testid="task-detail"
+			className="mx-auto w-full max-w-310 px-4 py-7 sm:px-8 sm:py-9"
+		>
 			<div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
 				<div>
 					<p className="mb-2 text-[11px] font-medium text-slate-500">
@@ -182,11 +186,22 @@ export function TaskDetail({
 						</Link>{" "}
 						/ {task.projectName}
 					</p>
-					<h1 className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]">
+					<h1
+						data-testid="task-title"
+						className="text-[29px] font-extrabold tracking-[-.045em] text-slate-800 sm:text-[34px]"
+					>
 						{task.title}
 					</h1>
 					<p className="mt-1.5 text-[13px] leading-6 text-slate-500">
-						Project: {task.projectName}
+						Project:{" "}
+						<Link
+							to="/projects/$id"
+							params={{ id: String(task.projectId) }}
+							data-testid="project-link"
+							className="font-semibold text-brand-700 hover:underline"
+						>
+							{task.projectName}
+						</Link>
 					</p>
 				</div>
 				<div className="flex items-start gap-2">
@@ -208,7 +223,10 @@ export function TaskDetail({
 							<h2 className="mb-2 text-[15px] font-bold tracking-[-.02em] text-slate-800">
 								Description
 							</h2>
-							<p className="text-[13px] leading-7 text-slate-600">
+							<p
+								data-testid="task-description"
+								className="text-[13px] leading-7 text-slate-600"
+							>
 								{task.description}
 							</p>
 						</div>
@@ -233,6 +251,7 @@ export function TaskDetail({
 								{comments.map((comment) => (
 									<article
 										key={comment.id}
+										data-testid="comment-row"
 										className="border-b border-slate-100 py-4 last:border-0"
 									>
 										<div className="flex items-center gap-2">
@@ -242,14 +261,23 @@ export function TaskDetail({
 											>
 												{initials(comment.authorName)}
 											</span>
-											<b className="text-[12px] text-slate-700">
+											<b
+												data-testid="comment-author"
+												className="text-[12px] text-slate-700"
+											>
 												{comment.authorName}
 											</b>
-											<small className="text-[11px] text-slate-500">
+											<small
+												data-testid="comment-created-at"
+												className="text-[11px] text-slate-500"
+											>
 												{comment.createdAt}
 											</small>
 										</div>
-										<p className="ml-9 mt-2 text-[12px] leading-6 text-slate-600">
+										<p
+											data-testid="comment-body"
+											className="ml-9 mt-2 text-[12px] leading-6 text-slate-600"
+										>
 											{comment.body}
 										</p>
 									</article>
@@ -273,12 +301,19 @@ export function TaskDetail({
 						</div>
 						<dl className="p-5 text-[12px]">
 							<DetailsRow label="Status">
-								<StatusBadge status={task.status} />
+								<span data-testid="task-status">
+									<StatusBadge status={task.status} />
+								</span>
 							</DetailsRow>
 							<DetailsRow label="Project">{task.projectName}</DetailsRow>
-							<DetailsRow label="Assigned to">{task.assigneeName}</DetailsRow>
+							<DetailsRow label="Assigned to">
+								<span data-testid="task-assignee">{task.assigneeName}</span>
+							</DetailsRow>
 							<DetailsRow label="Updated">
-								<span className="font-normal text-slate-600">
+								<span
+									data-testid="task-updated-at"
+									className="font-normal text-slate-600"
+								>
 									{task.updatedAt}
 								</span>
 							</DetailsRow>

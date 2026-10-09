@@ -39,12 +39,13 @@ export default async function ProjectDetailPage({
     );
   }
 
-  // The form and the Tasks filters use `in-progress` in a query string because
-  // a raw space is awkward there; the stored value is `in progress`
-  // (spec/contract.md). Translate here so the query layer only ever sees the
-  // stored form.
+  // The board's tabs carry the raw stored spelling (`in progress`); the older
+  // `/tasks` filters use `in-progress` because a raw space is awkward there.
+  // Accept both and translate here so the query layer only ever sees the stored
+  // form (spec/contract.md).
   const STATUS_FROM_QUERY: Record<string, string> = {
     todo: "todo",
+    "in progress": "in progress",
     "in-progress": "in progress",
     done: "done",
   };
@@ -66,12 +67,13 @@ export default async function ProjectDetailPage({
   const tasks = fetched.slice(0, PAGE);
   const hasMore = fetched.length > PAGE;
 
-  // The select keeps the query-string spelling so re-submitting is stable.
+  // The tabs compare against the raw stored value, so hand them the applied
+  // status rather than the query-string spelling.
   return (
     <ProjectDetail
       project={project}
       tasks={tasks}
-      status={status ?? ""}
+      status={appliedStatus ?? ""}
       hasMore={hasMore}
     />
   );

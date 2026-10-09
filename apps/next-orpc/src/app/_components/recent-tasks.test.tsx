@@ -34,7 +34,9 @@ describe("RecentTasks", () => {
     expect(within(row).getByText(task.projectName)).toBeInTheDocument();
   });
 
-  it("humanises the status", () => {
+  it("renders the raw stored status text", () => {
+    // spec/contract.md requires the raw stored value; the capitalised look is
+    // CSS, not a JS label map.
     const tasks = [
       makeRecentTask({ id: 1, title: "Todo task", status: "in progress" }),
       makeRecentTask({ id: 2, title: "To do task", status: "todo" }),
@@ -45,16 +47,14 @@ describe("RecentTasks", () => {
 
     expect(
       within(screen.getByRole("row", { name: /Todo task/ })).getByText(
-        "In progress",
+        "in progress",
       ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("row", { name: /To do task/ })).getByText(
-        "To do",
-      ),
+      within(screen.getByRole("row", { name: /To do task/ })).getByText("todo"),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("row", { name: /Done task/ })).getByText("Done"),
+      within(screen.getByRole("row", { name: /Done task/ })).getByText("done"),
     ).toBeInTheDocument();
   });
 

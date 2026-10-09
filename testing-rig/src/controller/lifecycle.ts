@@ -49,6 +49,8 @@ export interface LifecycleOptions {
   build?: false | { noCache?: boolean };
   /** Build `bench-seeder:local` before the stack images (once per run). */
   buildSeeder?: boolean;
+  /** Run the black-box correctness suite (plan R5) before teardown. */
+  correctness?: boolean;
   readinessTimeoutMs?: number;
 }
 
@@ -152,6 +154,44 @@ async function runSeeder(
   return report;
 }
 
+/** Run the shared black-box correctness suite against the app-facing port. */
+async function runCorrectnessSuite(
+  variant: ResolvedVariant,
+  options: LifecycleOptions,
+): Promise<{ report: string }> {
+  const front = variant.services.spa ?? variant.services.app;
+  if (!front || front.hostPort === undefined) {
+    throw new Error("no published app-facing service to test");
+  }
+  const report = path.join(
+    options.artifacts.dir,
+    `variants/${variant.id}/playwright-report.json`,
+  );
+  const result = await runCommand(
+    "pnpm",
+    ["exec", "playwright", "test", "--config", "e2e/playwright.config.ts"],
+    {
+      cwd: options.rigRoot,
+      env: {
+        BENCH_BASE_URL: `http://localhost:${front.hostPort}`,
+        BENCH_REPORT: report,
+      },
+      allowFailure: true,
+      timeoutMs: 10 * 60 * 1000,
+    },
+  );
+  options.artifacts.write(
+    `variants/${variant.id}/correctness.log`,
+    `${result.stdout}\n${result.stderr}`,
+  );
+  if (result.code !== 0) {
+    throw new Error(
+      `correctness suite failed:\n${result.stdout.slice(-4000)}${result.stderr.slice(-1000)}`,
+    );
+  }
+  return { report };
+}
+
 async function buildStack(
   variant: ResolvedVariant,
   compose: Compose,
@@ -217,6 +257,9 @@ export async function runVariant(
     const digest = await stage("verifyDigest", () =>
       verifyDigest(compose, (seed as SeederReport).combinedSha256),
     );
+    if (options.correctness) {
+      await stage("correctness", () => runCorrectnessSuite(variant, options));
+    }
 
     const eligible = schema.ok && (digest.matches ?? false);
     result = {

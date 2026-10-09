@@ -58,7 +58,13 @@ const people = [
  * one form at a time.
  */
 function primaryForm() {
-	return within(screen.getByTestId("create-task-form"));
+	// The same `<form>` serves create and edit, so it carries the contract testid
+	// for whichever mode it is in: `create-task-form` on `/tasks/new`,
+	// `update-task-form` on `/tasks/<id>/edit`.
+	return within(
+		screen.queryByTestId("update-task-form") ??
+			screen.getByTestId("create-task-form"),
+	);
 }
 
 /** The primary form's element, for cases needing a container rather than queries. */
@@ -205,16 +211,23 @@ describe("TaskForm (create)", () => {
 });
 
 describe("TaskForm (create with comment)", () => {
-	it("offers a separate form carrying the comment fields", () => {
+	it("offers a separate form carrying the create-task and comment fields", () => {
 		renderWithRouter(<TaskForm projects={projects} people={people} />);
 
 		// spec/contract.md requires both forms on the create page, and they are
-		// distinct because only this one is atomic with its comment.
-		expect(screen.getByTestId("create-with-comment-form")).toBeInTheDocument();
-		expect(screen.getByLabelText("First comment")).toBeInTheDocument();
+		// distinct because only this one is atomic with its comment. It carries the
+		// create-task fields too — status included, or the atomic write fails
+		// validation and creates nothing.
+		const form = screen.getByTestId("create-with-comment-form");
+
+		expect(form).toBeInTheDocument();
+		expect(within(form).getByLabelText("First comment")).toBeInTheDocument();
+		expect(within(form).getByRole("combobox", { name: "Status" })).toHaveValue(
+			"todo",
+		);
 	});
 
-	it("submits the comment body and author together with the task", async () => {
+	it("submits the create-task fields, status included, with the comment", async () => {
 		const user = userEvent.setup();
 		renderWithRouter(<TaskForm projects={projects} people={people} />);
 
@@ -224,6 +237,10 @@ describe("TaskForm (create with comment)", () => {
 		await user.type(
 			within(form).getByLabelText("First comment"),
 			"Opening note",
+		);
+		await user.selectOptions(
+			within(form).getByRole("combobox", { name: "Status" }),
+			"in progress",
 		);
 		await user.selectOptions(
 			within(form).getByRole("combobox", { name: "Comment author" }),
@@ -236,11 +253,12 @@ describe("TaskForm (create with comment)", () => {
 		expect(createTaskWithCommentMock).toHaveBeenCalledTimes(1);
 
 		// The task fields travel in the same submission, or it would not be one
-		// transaction — the project and assignee selects default to the first
-		// project and to unassigned, exactly as the reference form does.
+		// transaction — status is one of the create-task fields, and the project and
+		// assignee selects default to the first project and to unassigned.
 		expect(createTaskWithCommentMock).toHaveBeenCalledWith({
 			title: "Atomic task",
 			commentBody: "Opening note",
+			status: "in progress",
 			projectId: "1",
 			assigneeId: "",
 			commentAuthorId: "1",
@@ -281,6 +299,15 @@ describe("TaskForm (edit)", () => {
 		expect(
 			primaryForm().queryByRole("combobox", { name: "Project" }),
 		).not.toBeInTheDocument();
+	});
+
+	it("tags the edit form as the update form for the contract", () => {
+		renderWithRouter(
+			<TaskForm projects={projects} people={people} task={task} />,
+		);
+
+		expect(screen.getByTestId("update-task-form")).toBeInTheDocument();
+		expect(screen.queryByTestId("create-task-form")).not.toBeInTheDocument();
 	});
 
 	it("heads the page and the button for an edit", () => {

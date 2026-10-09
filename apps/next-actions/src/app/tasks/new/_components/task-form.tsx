@@ -116,17 +116,19 @@ function AssigneeSelect({
 function StatusSelect({
   defaultValue,
   invalid,
+  idPrefix,
 }: {
   defaultValue: Task["status"];
   invalid?: boolean;
+  idPrefix: string;
 }) {
   return (
     <div>
-      <label htmlFor="task-status" className={labelClass}>
+      <label htmlFor={`${idPrefix}-status`} className={labelClass}>
         Status
       </label>
       <select
-        id="task-status"
+        id={`${idPrefix}-status`}
         name="status"
         defaultValue={defaultValue}
         aria-invalid={invalid ? true : undefined}
@@ -205,7 +207,12 @@ export function TaskForm({
 
       <div className="grid gap-5">
         <Panel>
-          <form action={formAction} data-testid="create-task-form">
+          {/* spec/contract.md names the create form `create-task-form` and the
+              edit form `update-task-form`; it is the same component for both. */}
+          <form
+            action={formAction}
+            data-testid={isEdit ? "update-task-form" : "create-task-form"}
+          >
             <FormMessage message={state.message} />
 
             <label htmlFor="task-title" className={labelClass}>
@@ -281,6 +288,7 @@ export function TaskForm({
               <StatusSelect
                 defaultValue={task?.status ?? "todo"}
                 invalid={Boolean(state.errors?.status)}
+                idPrefix="task"
               />
             </div>
 
@@ -408,6 +416,24 @@ function CreateWithCommentForm({
             </select>
           </div>
         </div>
+
+        {/* spec/contract.md gives this form "the create-task fields plus
+            commentBody and commentAuthor". `status` is one of the create-task
+            fields and `TaskSchema` requires it with no default, so omitting it
+            made every atomic submit fail validation and create nothing. */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <StatusSelect
+            defaultValue="todo"
+            invalid={Boolean(state.errors?.status)}
+            idPrefix="cwc"
+          />
+        </div>
+
+        {state.errors?.status ? (
+          <p className="mt-2 text-[11px] font-semibold text-red-600">
+            {state.errors.status[0]}
+          </p>
+        ) : null}
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <Link href="/tasks" className={cancelClass}>

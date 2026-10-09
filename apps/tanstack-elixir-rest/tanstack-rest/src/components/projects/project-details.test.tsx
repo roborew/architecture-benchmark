@@ -61,14 +61,19 @@ describe("ProjectDetail", () => {
 		expect(screen.getAllByRole("row")).toHaveLength(tasks.length + 1);
 	});
 
-	it("humanises each task status", () => {
+	it("renders the raw stored status", () => {
 		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
 		const first = screen.getByRole("row", { name: /First task/ });
 		const second = screen.getByRole("row", { name: /Second task/ });
 
-		expect(within(first).getByText("In progress")).toBeInTheDocument();
-		expect(within(second).getByText("Done")).toBeInTheDocument();
+		// spec/contract.md: the raw stored value, not a JS-mapped label.
+		expect(within(first).getByTestId("task-status")).toHaveTextContent(
+			/^in progress$/,
+		);
+		expect(within(second).getByTestId("task-status")).toHaveTextContent(
+			/^done$/,
+		);
 	});
 
 	it("links each task to its detail page", () => {
@@ -81,33 +86,86 @@ describe("ProjectDetail", () => {
 		).toHaveAttribute("href", "/tasks/11");
 	});
 
-	it("offers a task search field and status filter", () => {
+	it("offers a task search field and the status filter tabs", () => {
 		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
 
 		expect(
 			screen.getByRole("searchbox", { name: "Search tasks" }),
 		).toBeInTheDocument();
-		expect(
-			screen.getByRole("combobox", { name: "Status" }),
-		).toBeInTheDocument();
+
+		const tabs = screen.getAllByTestId("status-filter");
+
+		// One per status plus `all`, each carrying the raw stored spelling.
+		expect(tabs.map((tab) => tab.getAttribute("data-status"))).toEqual([
+			"all",
+			"todo",
+			"in progress",
+			"done",
+		]);
 	});
 
-	it("marks the active status so the filter shows what is applied", () => {
+	it("links each status tab to the filtered board", () => {
+		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
+
+		const hrefFor = (status: string) =>
+			screen
+				.getAllByTestId("status-filter")
+				.find((tab) => tab.getAttribute("data-status") === status)
+				?.getAttribute("href");
+
+		// `all` clears the filter; the others carry the stored status with the
+		// space in `in progress` URL-encoded.
+		expect(hrefFor("all")).toBe(`/projects/${project.id}`);
+		expect(hrefFor("todo")).toBe(`/projects/${project.id}?status=todo`);
+		expect(hrefFor("in progress")).toBe(
+			`/projects/${project.id}?status=in%20progress`,
+		);
+		expect(hrefFor("done")).toBe(`/projects/${project.id}?status=done`);
+	});
+
+	it("renders the status tabs as plain links carrying the raw data-status", () => {
+		renderWithRouter(<ProjectDetail project={project} tasks={tasks} />);
+
+		const tabs = screen.getAllByTestId("status-filter");
+
+		// Not the router's `<Link>`, which would overwrite `data-status` with its
+		// own active/inactive value.
+		tabs.forEach((tab) => {
+			expect(tab.tagName).toBe("A");
+		});
+
+		const doneTab = tabs.find(
+			(tab) => tab.getAttribute("data-status") === "done",
+		);
+
+		expect(doneTab).toBeDefined();
+		expect(doneTab?.tagName).toBe("A");
+	});
+
+	it("marks the active status tab so the filter shows what is applied", () => {
 		renderWithRouter(
 			<ProjectDetail project={project} tasks={tasks} status="todo" />,
 		);
 
-		expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(
-			"todo",
-		);
+		const active = screen
+			.getAllByTestId("status-filter")
+			.filter((tab) => tab.getAttribute("aria-current") === "page");
+
+		expect(active).toHaveLength(1);
+		expect(active[0]).toHaveAttribute("data-status", "todo");
 	});
 
-	it("shows the status filter as empty when no status is selected", () => {
+	it("marks the all tab when no status is selected", () => {
 		renderWithRouter(
 			<ProjectDetail project={project} tasks={tasks} status="" />,
 		);
 
-		expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue("");
+		const active = screen
+			.getAllByTestId("status-filter")
+			.filter((tab) => tab.getAttribute("aria-current") === "page");
+
+		expect(active).toHaveLength(1);
+		expect(active[0]).toHaveAttribute("data-status", "all");
 	});
 
 	it("shows an empty state when the project has no tasks", () => {

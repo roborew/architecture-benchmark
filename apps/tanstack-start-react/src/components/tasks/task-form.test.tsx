@@ -80,6 +80,13 @@ const people = [
 ];
 
 /**
+ * The primary form's testid, per spec/contract.md: the create path and the edit
+ * path share one component but are tagged differently. Only one form with either
+ * id is mounted at a time, so a regex resolves to it in both suites below.
+ */
+const PRIMARY_FORM_ID = /^(create|update)-task-form$/;
+
+/**
  * The primary create/edit form.
  *
  * Scoped because the create-with-comment form below it repeats the same field
@@ -88,12 +95,12 @@ const people = [
  * one form at a time.
  */
 function primaryForm() {
-  return within(screen.getByTestId("create-task-form"));
+  return within(screen.getByTestId(PRIMARY_FORM_ID));
 }
 
 /** The primary form's element, for cases needing a container rather than queries. */
 function primaryFormElement() {
-  return screen.getByTestId("create-task-form");
+  return screen.getByTestId(PRIMARY_FORM_ID);
 }
 
 beforeEach(() => {
@@ -108,6 +115,13 @@ beforeEach(() => {
 });
 
 describe("TaskForm (create)", () => {
+  it("tags its primary form as the create form", () => {
+    renderWithRouter(<TaskForm projects={projects} people={people} />);
+
+    expect(screen.getByTestId("create-task-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("update-task-form")).not.toBeInTheDocument();
+  });
+
   it("renders labelled fields for title, description and status", () => {
     renderWithRouter(<TaskForm projects={projects} people={people} />);
 
@@ -239,8 +253,15 @@ describe("TaskForm (create with comment)", () => {
 
     // spec/contract.md requires both forms on the project board, and they are
     // distinct because only this one is atomic with its comment.
-    expect(screen.getByTestId("create-with-comment-form")).toBeInTheDocument();
-    expect(screen.getByLabelText("First comment")).toBeInTheDocument();
+    const form = screen.getByTestId("create-with-comment-form");
+
+    expect(form).toBeInTheDocument();
+    expect(within(form).getByLabelText("First comment")).toBeInTheDocument();
+    // The create-task fields include `status`; the task schema requires it, so
+    // the atomic form must carry it or the insert fails validation.
+    expect(within(form).getByRole("combobox", { name: "Status" })).toHaveValue(
+      "todo",
+    );
   });
 
   it("submits the comment body and author together with the task", async () => {
@@ -268,8 +289,30 @@ describe("TaskForm (create with comment)", () => {
     expect(formData.get("commentBody")).toBe("Opening note");
     expect(formData.get("commentAuthorId")).toBe("1");
     // The task fields travel in the same submission, or it would not be one
-    // transaction.
+    // transaction. `status` defaults to todo and must be present, or the task
+    // schema rejects the whole atomic insert.
     expect(formData.get("title")).toBe("Atomic task");
+    expect(formData.get("status")).toBe("todo");
+  });
+
+  it("submits the chosen status from the create-with-comment form", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<TaskForm projects={projects} people={people} />);
+
+    const form = screen.getByTestId("create-with-comment-form");
+
+    await user.type(within(form).getByLabelText("Title"), "Statusful task");
+    await user.type(within(form).getByLabelText("First comment"), "A note");
+    await user.selectOptions(
+      within(form).getByRole("combobox", { name: "Status" }),
+      "in progress",
+    );
+    await user.click(
+      within(form).getByRole("button", { name: "Create with comment" }),
+    );
+
+    const formData = submittedFormData(createTaskWithCommentFn);
+    expect(formData.get("status")).toBe("in progress");
   });
 
   it("does not submit the plain create action from this form", () => {
@@ -313,6 +356,8 @@ describe("TaskForm (edit)", () => {
       <TaskForm projects={projects} people={people} task={task} />,
     );
 
+    // The edit path is tagged as the update form, not the create form.
+    expect(screen.getByTestId("update-task-form")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Edit task" }),
     ).toBeInTheDocument();
