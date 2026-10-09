@@ -84,6 +84,14 @@ export async function planVariant(
     published,
     seedCommand: [...manifest.seed.command],
     resetCommand: [...manifest.reset.command],
+    ...(manifest.load
+      ? {
+          load: {
+            service: manifest.load.service,
+            paths: [...manifest.load.paths],
+          },
+        }
+      : {}),
     capabilities: [...manifest.capabilities],
     readMode: manifest.readMode,
     mutationMode: manifest.mutationMode,

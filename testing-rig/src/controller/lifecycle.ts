@@ -4,6 +4,7 @@
 // failure artefacts are written on the way out.
 
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { runCommand, type Compose } from "./docker.js";
 import { SEEDER_IMAGE, composeEnv } from "./plan.js";
@@ -53,6 +54,12 @@ export interface LifecycleOptions {
   correctness?: boolean;
   /** Run the render-speed collector (plan R6). Non-fatal: measurement, not a gate. */
   render?: { warmup: number; measured: number };
+  /** Run the read-only load generator (plan R7). Non-fatal: measurement. */
+  load?: {
+    vus: number;
+    durationSeconds: number;
+    generatorMaxCpuPercent: number;
+  };
   readinessTimeoutMs?: number;
 }
 
@@ -235,6 +242,196 @@ async function runRenderSuite(
   return { report };
 }
 
+/** Best-effort pg_stat_statements total-calls snapshot (plan §6.5). */
+async function postgresStatements(compose: Compose): Promise<number | null> {
+  const result = await compose.exec(
+    "db",
+    [
+      "psql",
+      "-U",
+      "bench",
+      "-d",
+      "bench",
+      "-tA",
+      "-c",
+      "CREATE EXTENSION IF NOT EXISTS pg_stat_statements; SELECT COALESCE(sum(calls), 0)::bigint FROM pg_stat_statements",
+    ],
+    { allowFailure: true },
+  );
+  if (result.code !== 0) return null;
+  const line = result.stdout.trim().split("\n").filter(Boolean).at(-1);
+  const value = Number(line);
+  return Number.isFinite(value) ? value : null;
+}
+
+interface LoadReport {
+  target: string;
+  baseUrl: string;
+  vus: number;
+  durationSeconds: number;
+  requests: number | null;
+  opsPerSecond: number | null;
+  p95Ms: number | null;
+  failedRate: number | null;
+  generatorMaxCpuPercentObserved: number | null;
+  generatorMaxCpuPercentLimit: number;
+  generatorSaturated: boolean;
+  pgStatements: {
+    before: number | null;
+    after: number | null;
+    delta: number | null;
+  };
+}
+
+/**
+ * Read-only load via `grafana/k6` on the stack network (plan §6.5/§8.2),
+ * targeting the published host port through `host.docker.internal`. Monitors the
+ * generator's CPU against `generatorMaxCpuPercent` — a saturated generator is
+ * recorded, not silently trusted (plan §6.5).
+ */
+async function runLoadSuite(
+  variant: ResolvedVariant,
+  compose: Compose,
+  options: LifecycleOptions,
+): Promise<LoadReport> {
+  const target = variant.load!;
+  const service =
+    target.service === "app"
+      ? variant.services.app
+      : target.service === "api"
+        ? variant.services.api
+        : variant.services.spa;
+  if (!service || service.hostPort === undefined) {
+    throw new Error(`no published '${target.service}' service to load`);
+  }
+
+  const outDir = path.join(options.artifacts.dir, "variants", variant.id);
+  const containerName = `bench-k6-${variant.id}`;
+  const network = `${variant.projectName}_default`;
+  const baseUrl = `http://host.docker.internal:${service.hostPort}`;
+  const { vus, durationSeconds, generatorMaxCpuPercent } = options.load!;
+
+  const before = await postgresStatements(compose);
+  await runCommand("docker", ["rm", "-f", containerName], {
+    allowFailure: true,
+  });
+
+  const started = await runCommand(
+    "docker",
+    [
+      "run",
+      "-d",
+      "--name",
+      containerName,
+      "--network",
+      network,
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "-v",
+      `${path.join(options.rigRoot, "load")}:/load:ro`,
+      "-v",
+      `${outDir}:/out`,
+      "-e",
+      `BASE_URL=${baseUrl}`,
+      "-e",
+      `PATHS=${target.paths.join(",")}`,
+      "-e",
+      `VUS=${vus}`,
+      "-e",
+      `DURATION=${durationSeconds}s`,
+      "grafana/k6:latest",
+      "run",
+      "--summary-export",
+      "/out/k6-summary.json",
+      "/load/read.js",
+    ],
+    { allowFailure: true },
+  );
+  if (started.code !== 0) {
+    throw new Error(
+      `k6 container failed to start: ${started.stderr || started.stdout}`,
+    );
+  }
+
+  // Sample the generator's CPU while it runs (plan §6.5).
+  let maxCpuPercent = 0;
+  for (;;) {
+    const stats = await runCommand(
+      "docker",
+      ["stats", "--no-stream", "--format", "{{.CPUPerc}}", containerName],
+      { allowFailure: true },
+    );
+    if (stats.code !== 0) break;
+    const percent = Number.parseFloat(stats.stdout.replace("%", "").trim());
+    if (Number.isFinite(percent))
+      maxCpuPercent = Math.max(maxCpuPercent, percent);
+    const running = await runCommand(
+      "docker",
+      ["inspect", "-f", "{{.State.Running}}", containerName],
+      {
+        allowFailure: true,
+      },
+    );
+    if (running.stdout.trim() !== "true") break;
+    await delay(1000);
+  }
+
+  const waited = await runCommand("docker", ["wait", containerName], {
+    allowFailure: true,
+  });
+  const exitCode = Number(waited.stdout.trim());
+  const logs = await runCommand("docker", ["logs", containerName], {
+    allowFailure: true,
+  });
+  options.artifacts.write(
+    `variants/${variant.id}/k6.log`,
+    `${logs.stdout}${logs.stderr}`,
+  );
+  await runCommand("docker", ["rm", "-f", containerName], {
+    allowFailure: true,
+  });
+  if (exitCode !== 0) throw new Error(`k6 exited ${exitCode}; see k6.log`);
+
+  const after = await postgresStatements(compose);
+
+  let summary: {
+    metrics?: Record<string, Record<string, number>>;
+  } = {};
+  try {
+    summary = JSON.parse(
+      readFileSync(path.join(outDir, "k6-summary.json"), "utf8"),
+    );
+  } catch {
+    // Summary export missing; metrics stay null below.
+  }
+  const metric = (name: string, key: string): number | null => {
+    const value = summary.metrics?.[name]?.[key];
+    return typeof value === "number" ? value : null;
+  };
+
+  const report: LoadReport = {
+    target: target.service,
+    baseUrl,
+    vus,
+    durationSeconds,
+    requests: metric("http_reqs", "count"),
+    opsPerSecond: metric("http_reqs", "rate"),
+    p95Ms: metric("http_req_duration", "p(95)"),
+    failedRate:
+      metric("http_req_failed", "rate") ?? metric("http_req_failed", "value"),
+    generatorMaxCpuPercentObserved: maxCpuPercent,
+    generatorMaxCpuPercentLimit: generatorMaxCpuPercent,
+    generatorSaturated: maxCpuPercent > generatorMaxCpuPercent,
+    pgStatements: {
+      before,
+      after,
+      delta: before !== null && after !== null ? after - before : null,
+    },
+  };
+  options.artifacts.writeJson(`variants/${variant.id}/load.json`, report);
+  return report;
+}
+
 async function buildStack(
   variant: ResolvedVariant,
   compose: Compose,
@@ -312,6 +509,19 @@ export async function runVariant(
         stages.render = { ok: true, ms: Date.now() - startedAt, detail };
       } catch (err) {
         stages.render = {
+          ok: false,
+          ms: Date.now() - startedAt,
+          detail: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+    if (options.load && variant.load) {
+      const startedAt = Date.now();
+      try {
+        const detail = await runLoadSuite(variant, compose, options);
+        stages.load = { ok: true, ms: Date.now() - startedAt, detail };
+      } catch (err) {
+        stages.load = {
           ok: false,
           ms: Date.now() - startedAt,
           detail: err instanceof Error ? err.message : String(err),

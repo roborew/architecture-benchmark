@@ -42,11 +42,11 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const { summary, inventory, render } = loadRun(runDir);
+  const { summary, inventory, render, load } = loadRun(runDir);
   const manifests = await loadManifestDirectory(
     path.join(rigRoot, "manifests"),
   );
-  const rows = buildMatrix(summary, inventory, manifests, render);
+  const rows = buildMatrix(summary, inventory, manifests, render, load);
 
   const meta = {
     runId: summary.runId,

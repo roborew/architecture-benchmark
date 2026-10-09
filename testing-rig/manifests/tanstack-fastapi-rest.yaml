@@ -8,7 +8,13 @@ appDirectory: ../apps/tanstack-fastapi-rest
 composeFile: ../apps/tanstack-fastapi-rest/compose.yaml
 projectPrefix: bench-tanstack-fastapi-rest
 services:
-  api: { composeService: api, kind: api, healthPath: /healthz, hostPortEnv: API_PORT }
+  api:
+    {
+      composeService: api,
+      kind: api,
+      healthPath: /healthz,
+      hostPortEnv: API_PORT,
+    }
   spa:
     composeService: spa
     kind: spa
@@ -19,6 +25,11 @@ services:
   seeder: { composeService: seeder, kind: seeder }
 seed: { command: [compose, run, --rm, seeder, seed] }
 reset: { command: [compose, run, --rm, seeder, reset] }
+load:
+  {
+    service: api,
+    paths: ["/api/projects", "/api/tasks?limit=25", "/api/tasks/1"],
+  }
 capabilities: [list, detail, create, update, delete, create-with-comment]
 readMode: spa-fetch-rest
 mutationMode: rest

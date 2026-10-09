@@ -123,6 +123,12 @@ export interface RenderReport {
   interactions?: Record<string, number[]>;
 }
 
+/** A minimal view of the controller's `variants/<id>/load.json`. */
+export interface LoadReport {
+  opsPerSecond?: number | null;
+  generatorSaturated?: boolean;
+}
+
 /** Nearest-rank-free percentile (linear interpolation), rounded to 0.1ms. */
 export function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
@@ -160,6 +166,7 @@ export function buildMatrix(
   inventory: Map<string, StaticInventory>,
   manifests: Map<string, VariantManifest>,
   render: Map<string, RenderReport> = new Map(),
+  load: Map<string, LoadReport> = new Map(),
 ): MatrixRow[] {
   return summary.results.map((result) => {
     const manifest = manifests.get(result.id);
@@ -197,6 +204,12 @@ export function buildMatrix(
       runSha256: summary.effectiveManifestSha256,
     };
     renderColumns(render.get(result.id), row);
+    // A generator-saturated run is not a valid app measurement (plan §6.5).
+    const loadReport = load.get(result.id);
+    row.loadOpsPerSecond =
+      loadReport && !loadReport.generatorSaturated
+        ? (loadReport.opsPerSecond ?? null)
+        : null;
     return row;
   });
 }
@@ -294,6 +307,7 @@ export function loadRun(runDir: string): {
   summary: RunSummary;
   inventory: Map<string, StaticInventory>;
   render: Map<string, RenderReport>;
+  load: Map<string, LoadReport>;
 } {
   const summary = JSON.parse(
     readFileSync(path.join(runDir, "summary.json"), "utf8"),
@@ -308,6 +322,7 @@ export function loadRun(runDir: string): {
     // inventory.json is optional; the report simply shows blank inventory cells.
   }
   const render = new Map<string, RenderReport>();
+  const load = new Map<string, LoadReport>();
   for (const result of summary.results) {
     try {
       render.set(
@@ -322,6 +337,19 @@ export function loadRun(runDir: string): {
     } catch {
       // No render artefact for this variant (run without --with-render).
     }
+    try {
+      load.set(
+        result.id,
+        JSON.parse(
+          readFileSync(
+            path.join(runDir, "variants", result.id, "load.json"),
+            "utf8",
+          ),
+        ) as LoadReport,
+      );
+    } catch {
+      // No load artefact for this variant (run without --with-load).
+    }
   }
-  return { summary, inventory, render };
+  return { summary, inventory, render, load };
 }

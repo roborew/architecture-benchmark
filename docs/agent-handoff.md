@@ -175,12 +175,32 @@ Known limits (documented in `src/render/README.md`): FCP/LCP can be blank on the
 client-rendered SPAs and LCP occasionally 0; single host/Chromium, indicative
 only.
 
+## R7 — read-only load + telemetry (completed, validated 9 Oct 2026)
+
+`testing-rig/load/read.js` (k6), run as a non-fatal `load` controller stage
+(`pnpm rig:run … --with-load`). The controller runs the pinned `grafana/k6` image
+on the stack network, targeting the manifest's `load: { service, paths }` through
+`host.docker.internal`; samples generator CPU against `generatorMaxCpuPercent`
+(a saturated generator's number is withheld); snapshots `pg_stat_statements`
+before/after. Raw `variants/<id>/{k6.log,load.json,k6-summary.json}`; matrix
+column `load_ops_per_sec`.
+
+This is the plan's interim, **read-only** measurement: no mutation-capacity
+claim. GraphQL has no load target (read transport is POST-only).
+
+**Gate.** Smoke-matrix `--with-correctness --with-render --with-load` →
+**14/14 variants ok**. Read throughput (ops/s, VUs=4, 15s, single host):
+next-fullstack ~159–190, tanstack-start ~208–212 (SSR pages); spa-api API reads
+~862–5383 (fastapi lowest, phoenix highest). Click-to-visible-committed create
+~232–268 ms across all cohorts. No run was generator-saturated.
+
 ## Next steps
 
-1. **R7 — load suite + protocol adapters + telemetry** (`grafana/k6` on the
-   stack network; `pg_stat_statements`; `docker stats`; generator-CPU ceiling),
-   then the load columns.
-2. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
-   correctness + render now; load columns once R7 lands).
+1. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
+   correctness + render + load now all wired).
+2. **Write-load adapters** per transport (REST/GraphQL/tRPC/oRPC/Server
+   Actions/server functions), each validated against a captured browser request,
+   before any mutation-capacity claim (plan §5/§7).
 3. Optional: wire the correctness suite's created/updated/deleted ids into a SQL
-   DB postcondition check (plan §6.3).
+   DB postcondition check (plan §6.3); capacity ladders (rate steps) in the load
+   stage.

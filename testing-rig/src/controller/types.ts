@@ -22,7 +22,7 @@ export interface ResolvedVariant {
   cohort: Cohort;
   appDirectory: string;
   composeFile: string;
- /** `<projectPrefix>-<runId>` — unique per run so parallel stacks never collide. */
+  /** `<projectPrefix>-<runId>` — unique per run so parallel stacks never collide. */
   projectName: string;
   services: {
     app?: ResolvedService;
@@ -35,6 +35,8 @@ export interface ResolvedVariant {
   published: ResolvedService[];
   seedCommand: string[];
   resetCommand: string[];
+  /** Read-only load target (plan §6.5), if the manifest declares one. */
+  load?: { service: "app" | "api" | "spa"; paths: string[] };
   capabilities: CapabilityKind[];
   readMode: string;
   mutationMode: string;

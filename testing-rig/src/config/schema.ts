@@ -251,6 +251,18 @@ const commandSchema = z
 
 export type CommandManifest = z.infer<typeof commandSchema>;
 
+/**
+ * Read-only load targets (plan §6.5). The interim measurement the plan allows
+ * until per-transport write adapters are validated: GET a set of read paths on
+ * one published service.
+ */
+const manifestLoadSchema = z
+  .object({
+    service: z.enum(["app", "api", "spa"]),
+    paths: z.array(z.string().startsWith("/")).min(1),
+  })
+  .strict();
+
 export const variantManifestSchema = z
   .object({
     schemaVersion: z.literal(2),
@@ -270,6 +282,8 @@ export const variantManifestSchema = z
       .strict(),
     seed: commandSchema,
     reset: commandSchema,
+    /** Read-only load targets (plan §6.5 interim: read-only capacity, labelled). */
+    load: manifestLoadSchema.optional(),
     capabilities: z.array(z.enum(CAPABILITY_KINDS)).min(1),
     readMode: z.string().min(1),
     mutationMode: z.string().min(1),
@@ -333,6 +347,18 @@ export const variantManifestSchema = z
         "services",
         "published services must use distinct hostPortEnv names",
       );
+    }
+
+    // A load target must name a service the variant actually publishes.
+    if (m.load) {
+      const target =
+        m.load.service === "app" ? app : m.load.service === "api" ? api : spa;
+      if (!target) {
+        issue(
+          "load.service",
+          `variant does not publish a '${m.load.service}' service`,
+        );
+      }
     }
   });
 

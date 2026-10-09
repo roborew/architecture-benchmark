@@ -7,11 +7,18 @@ appDirectory: ../apps/tanstack-start-react
 composeFile: ../apps/tanstack-start-react/compose.yaml
 projectPrefix: bench-tanstack-start-react
 services:
-  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  app:
+    {
+      composeService: app,
+      kind: app,
+      healthPath: /healthz,
+      hostPortEnv: APP_PORT,
+    }
   db: { composeService: db, kind: db }
   seeder: { composeService: seeder, kind: seeder }
 seed: { command: [compose, run, --rm, seeder, seed] }
 reset: { command: [compose, run, --rm, seeder, reset] }
+load: { service: app, paths: ["/projects", "/projects/1", "/tasks/1"] }
 capabilities: [list, detail, create, update, delete, create-with-comment]
 readMode: server-fn-direct-db
 mutationMode: server-fn

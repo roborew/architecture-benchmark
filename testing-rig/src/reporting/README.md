@@ -20,10 +20,10 @@ One row per variant; columns grouped by plan section:
 - **6.2 build & deploy** — build/up/seed/verify wall-clock ×ms.
 - **6.1 static** — source/test/infra files, LOC and bytes; direct deps;
   languages; services; images.
-- **6.4 render**, **6.5 load** — the render columns (TTFB/FCP/LCP/first-useful-
-  data and create/update/delete p50) are populated when the run used
-  `--with-render` (R6). Load awaits R7. Blank means _not yet measured_, never
-  zero.
+- **6.4 render**, **6.5 load** — render columns populate with `--with-render`
+  (R6); `load_ops_per_sec` populates with `--with-load` (R7, read-only). A
+  generator-saturated load run is withheld, not shown. Blank means _not yet
+  measured_, never zero.
 - **provenance** — the effective-config sha256 (every value carries it).
 
 There is deliberately **no composite "best" column** (`live.md`: the decision
@@ -32,5 +32,5 @@ raw columns, never instead of them.
 
 ## Not yet implemented
 
-The load columns (R7) are empty because the k6 suite is not built yet. The column
-set is fixed so the matrix shape does not churn as it lands.
+Write-load adapters per transport (plan §5/§7) — the load column is read-only
+capacity. The column set is fixed so the matrix shape does not churn as they land.

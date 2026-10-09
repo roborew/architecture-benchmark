@@ -38,6 +38,7 @@ interface Options {
   buildSeeder: boolean;
   correctness: boolean;
   render: boolean;
+  load: boolean;
   readinessTimeoutMs: number;
 }
 
@@ -49,6 +50,7 @@ function parseArgs(args: string[]): Options {
     buildSeeder: true,
     correctness: false,
     render: false,
+    load: false,
     readinessTimeoutMs: 90_000,
   };
   for (let i = 0; i < args.length; i += 1) {
@@ -79,6 +81,9 @@ function parseArgs(args: string[]): Options {
         break;
       case "--with-render":
         options.render = true;
+        break;
+      case "--with-load":
+        options.load = true;
         break;
       case "--readiness-timeout":
         options.readinessTimeoutMs = Number(args[++i]);
@@ -234,6 +239,13 @@ async function main(): Promise<number> {
         ? {
             warmup: config.browser.warmupSamples,
             measured: config.browser.measuredSamples,
+          }
+        : undefined,
+      load: options.load
+        ? {
+            vus: config.resources.appCpus * 2,
+            durationSeconds: 15,
+            generatorMaxCpuPercent: config.load.generatorMaxCpuPercent,
           }
         : undefined,
       readinessTimeoutMs: options.readinessTimeoutMs,

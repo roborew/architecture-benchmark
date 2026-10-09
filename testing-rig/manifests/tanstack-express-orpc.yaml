@@ -6,7 +6,13 @@ appDirectory: ../apps/tanstack-express-orpc
 composeFile: ../apps/tanstack-express-orpc/compose.yaml
 projectPrefix: bench-tanstack-express-orpc
 services:
-  api: { composeService: api, kind: api, healthPath: /healthz, hostPortEnv: API_PORT }
+  api:
+    {
+      composeService: api,
+      kind: api,
+      healthPath: /healthz,
+      hostPortEnv: API_PORT,
+    }
   spa:
     composeService: spa
     kind: spa
@@ -17,6 +23,11 @@ services:
   seeder: { composeService: seeder, kind: seeder }
 seed: { command: [compose, run, --rm, seeder, seed] }
 reset: { command: [compose, run, --rm, seeder, reset] }
+load:
+  {
+    service: api,
+    paths: ["/api/projects", "/api/tasks?limit=25", "/api/tasks/1"],
+  }
 capabilities: [list, detail, create, update, delete, create-with-comment]
 readMode: spa-fetch-orpc
 mutationMode: orpc

@@ -7,11 +7,18 @@ appDirectory: ../apps/next-prisma
 composeFile: ../apps/next-prisma/compose.yaml
 projectPrefix: bench-next-prisma
 services:
-  app: { composeService: app, kind: app, healthPath: /healthz, hostPortEnv: APP_PORT }
+  app:
+    {
+      composeService: app,
+      kind: app,
+      healthPath: /healthz,
+      hostPortEnv: APP_PORT,
+    }
   db: { composeService: db, kind: db }
   seeder: { composeService: seeder, kind: seeder }
 seed: { command: [compose, run, --rm, seeder, seed] }
 reset: { command: [compose, run, --rm, seeder, reset] }
+load: { service: app, paths: ["/projects", "/projects/1", "/tasks/1"] }
 capabilities: [list, detail, create, update, delete, create-with-comment]
 readMode: rsc-direct-db
 mutationMode: server-action
