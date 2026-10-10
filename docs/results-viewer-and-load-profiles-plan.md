@@ -1,6 +1,6 @@
 # Results viewer + load profiles — implementation plan
 
-**Status:** V1–V3 + C implemented 10 Oct 2026 (rehearsals / full matrices pending) · **Last updated:** 10 October 2026
+**Status:** implemented 10 Oct 2026 (D1–D4 + K1–K3, R1–R4, V-A, V-B; D5 deferred — optional) · **Last updated:** 10 October 2026
 **Scope:** (V) a single HTML results viewer with a run selector, (V3) directory
 file-count/size statistics surfaced in comparisons, (C) two new quick load-profile
 configs (`medium-load`, `heavy-load`).

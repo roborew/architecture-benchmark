@@ -1,6 +1,6 @@
 # Cross-load comparison dashboard + k6 utilization — implementation plan
 
-**Status:** ready to hand off · **Last updated:** 10 October 2026
+**Status:** implemented 10 Oct 2026 (K1–K3, R1–R4, V-A, V-B) · **Last updated:** 10 October 2026
 **Scope:** (K) close the k6 feature gaps that make "tip-over" measurable,
 (V-A) graphs in the per-run view, (V-B) a compare dashboard that consolidates
 runs across load levels (small → medium → heavy) and shows which architecture

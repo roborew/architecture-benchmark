@@ -226,13 +226,60 @@ rendering) with no console errors.
 the full 14-variant medium/heavy matrices, plus the pre-existing failing
 `default.yaml`/`manifest` assertions from the in-progress `default.yaml` edit.
 
+## Measurement stages + k6 utilization + compare dashboard (implemented 10 Oct 2026)
+
+Implemented per `docs/measurement-stages-and-deps-inventory-fix-plan.md`
+(D1–D4) and `docs/cross-load-comparison-and-k6-plan.md` (K1–K3, R1–R4, V-A, V-B).
+D5 (first-render screenshots) was **not** built — it is marked optional/confirm-first.
+
+- **D4 — config-driven stages.** `stages: { correctness, render, load }` added to
+  `rigConfigSchema` (default all-off, strict). All four shipped matrix configs set
+  all three true; `config/examples/volume-1000-writes.yaml` stays lean. The CLI
+  `--with-*` flags remain one-off upward overrides.
+- **D1 — effective selection.** `preflight.json` now records `stages`, `only` and
+  (when overridden) `resourcesRequested`.
+- **D2 — not-requested banners.** The viewer renders a banner with the exact
+  re-run command when a section's stage was not requested; a requested-but-failed
+  stage keeps its error; pre-D1 runs keep "—".
+- **D3 — nested dep discovery.** `inventory.ts` walks the app directory (bounded
+  depth, exclusions honoured) and sums direct deps across every manifest
+  (`dependencyManifests` breakdown in the deps tooltip). The audited `spa-api`
+  totals now report correctly (e.g. `tanstack-express-rest` 14 = 4 + 10).
+- **K1/K2/K3.** `read.js` tags per path; all k6 scripts use `handleSummary`
+  (`load/summary.js`) and record thresholds as labels (k6 exit 99 = signal, not
+  error); new `load/capacity.js` executes the `capacity` ladders at
+  `constant-arrival-rate`. Artefacts: `load.json#paths`/`#thresholds`,
+  `capacity/<rate>.json` + `capacity.json`.
+- **R1/R2.** `--resources` / `BENCH_RESOURCES` (new `src/controller/resources.ts`)
+  overrides the envelope _before_ `effectiveRunManifest` hashing; under an
+  override the read VUs are pinned to the config's original `appCpus` (same
+  offered load, different hardware).
+- **V-A/V-B/R4.** The viewer gained inline-SVG charts, a per-path table,
+  threshold badges, a capacity line chart, and a full **Compare view** (load
+  levels = `configName × envelope`, inputs side-by-side, metric grid, scaling
+  chart, tip-over facts, honesty strip). Compare logic (`deriveLoadLevels`,
+  `parseCompareHash`/`formatCompareHash`) is server-side and unit-tested.
+
+**Checks actually run and passed (this host, no Docker):** `pnpm test` — **70/70**
+(new `tests/inventory.test.ts` incl. the audited dep totals; extended
+`tests/viewer.test.ts` for D1/D2 plumbing, K1/K2/K3 reductions, compare grouping
+and hash round-trip; `tests/controller.test.ts` resource-spec parsing);
+`pnpm typecheck` clean; `pnpm config:validate` green on `default`, `smoke-matrix`,
+`medium-load`, `heavy-load`; `pnpm report:all` regenerates the page; the client
+script was exercised in a DOM stub over both a real and a synthetic
+fully-measured run (run + compare views render with no runtime error).
+
+**Host runs still pending (Docker/long):** the §gate rehearsals and the full
+medium/heavy matrices (now including the capacity ladder) and the envelope matrix
+on the Ubuntu droplet.
+
 ## Next steps
 
 1. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +
-   correctness + render + load now all wired).
+   correctness + render + load + capacity now all wired).
 2. **Write-load adapters** per transport (REST/GraphQL/tRPC/oRPC/Server
    Actions/server functions), each validated against a captured browser request,
-   before any mutation-capacity claim (plan §5/§7).
-3. Optional: wire the correctness suite's created/updated/deleted ids into a SQL
-   DB postcondition check (plan §6.3); capacity ladders (rate steps) in the load
-   stage.
+   before any mutation-capacity claim (plan §5/§7). The mutation-volume leg and
+   the read-weighted capacity ladder are labelled as such until then.
+3. Optional follow-ups from the plans: D5 first-render screenshots; envelope
+   matrix scheduling on the Ubuntu host.

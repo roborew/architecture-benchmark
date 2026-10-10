@@ -1,6 +1,6 @@
 # Measurement stages + dependency inventory — fix plan
 
-**Status:** ready to hand off · **Last updated:** 10 October 2026
+**Status:** implemented 10 Oct 2026 (D1–D4; D5 deferred — optional, confirm-first) · **Last updated:** 10 October 2026
 **Trigger:** run `2026-10-10t15-15-18-542z` (`config/medium-load.yaml`) shows full
 lifecycle results in the viewer, but the Correctness, Render, and Load sections
 are empty, and `directDependencies` is 0 for every `spa-api` variant.
