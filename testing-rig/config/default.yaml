@@ -82,6 +82,13 @@ load:
   # as generator-saturated, not counted as an app measurement (plan §6.5).
   generatorMaxCpuPercent: 75
 
+# Stage selection lives in the config so the canonical command stays the simple
+# `pnpm rig:run --config config/default.yaml` (plan D4).
+stages:
+  correctness: true
+  render: true
+  load: true
+
 report:
   keepRawSamples: true
   outputFormats: [json, csv, html]

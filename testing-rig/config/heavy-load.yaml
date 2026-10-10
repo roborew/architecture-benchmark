@@ -2,8 +2,8 @@
 # NOTES BEFORE RUNNING (see plan §6.1):
 #  - the mutation leg uses volume-heavy-writes counts at concurrency appCpus*2
 #    (8), hard-capped at 10 minutes by the rig;
-#  - the capacity ladder below is declared for shape-compatibility and the
-#    future rate-stepper (R8) — it is not executed today;
+#  - the capacity ladder below is executed as a constant-arrival-rate ladder
+#    (plan K3), one run per rate, reset once before the ladder;
 #  - trials is forward-compatible (one pass today);
 #  - seed/reset at this fixture size takes minutes per variant — rehearse with
 #    --only next-actions first, and check Docker Desktop's memory budget
@@ -83,6 +83,13 @@ resources:
 
 load:
   generatorMaxCpuPercent: 75
+
+# Stage selection lives in the config so the canonical command stays the simple
+# `pnpm rig:run --config config/heavy-load.yaml` (plan D4).
+stages:
+  correctness: true
+  render: true
+  load: true
 
 report:
   keepRawSamples: true

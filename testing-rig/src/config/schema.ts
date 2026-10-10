@@ -167,6 +167,25 @@ export const reportSchema = z
   })
   .strict();
 
+/**
+ * Measurement-stage selection (plan D4). Stage selection lives in the config so
+ * the canonical command stays the simple `pnpm rig:run --config <cfg>`: the YAML
+ * decides whether the correctness, render and load stages run. The CLI
+ * `--with-*` flags remain as one-off *upward* overrides. Every existing config
+ * stays valid (all-off) thanks to the `.default()`; unknown keys are rejected.
+ *
+ * Semantics are unchanged from the flags: correctness is fatal (a failure makes
+ * the variant ineligible), render/load are non-fatal measurements.
+ */
+export const stagesSchema = z
+  .object({
+    correctness: z.boolean().default(false),
+    render: z.boolean().default(false),
+    load: z.boolean().default(false),
+  })
+  .strict()
+  .default({ correctness: false, render: false, load: false });
+
 export const rigConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -181,6 +200,7 @@ export const rigConfigSchema = z
     network: networkSchema,
     resources: resourcesSchema,
     load: loadSchema.default({ generatorMaxCpuPercent: 75 }),
+    stages: stagesSchema,
     report: reportSchema,
   })
   .strict()
@@ -212,6 +232,7 @@ export const rigConfigSchema = z
   });
 
 export type RigConfig = z.infer<typeof rigConfigSchema>;
+export type Stages = z.infer<typeof stagesSchema>;
 export type Scenario = z.infer<typeof scenarioSchema>;
 export type VolumeScenario = z.infer<typeof volumeScenarioSchema>;
 export type CapacityScenario = z.infer<typeof capacityScenarioSchema>;

@@ -74,7 +74,7 @@ describe("experiment config schema", () => {
       path.join(rigRoot, "config", "smoke-matrix.yaml"),
     );
     expect(smoke.trials).toBe(1);
-    expect(smoke.scenarios).toHaveLength(1);
+    expect(smoke.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
   });
 
   it("loads the shipped medium and heavy load profiles", async () => {
@@ -98,6 +98,63 @@ describe("experiment config schema", () => {
   it("defaults generatorMaxCpuPercent when `load:` is absent", () => {
     const result = rigConfigSchema.parse(baseConfig as any);
     expect(result.load.generatorMaxCpuPercent).toBe(75);
+  });
+
+  it("defaults every stage selection to false when `stages:` is absent", () => {
+    const result = rigConfigSchema.parse(baseConfig as any);
+    expect(result.stages).toEqual({
+      correctness: false,
+      render: false,
+      load: false,
+    });
+  });
+
+  it("accepts a full `stages:` block", () => {
+    const result = parse(
+      (c) => (c.stages = { correctness: true, render: true, load: true }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stages).toEqual({
+        correctness: true,
+        render: true,
+        load: true,
+      });
+    }
+  });
+
+  it("rejects an unknown key inside `stages:` (strict)", () => {
+    expect(
+      parse((c) => (c.stages = { correctness: true, mutations: true })).success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-boolean stage value", () => {
+    expect(parse((c) => (c.stages = { render: "yes" })).success).toBe(false);
+  });
+
+  it("selects all three stages in the shipped matrix configs, none in the example", async () => {
+    for (const file of [
+      "default.yaml",
+      "smoke-matrix.yaml",
+      "medium-load.yaml",
+      "heavy-load.yaml",
+    ]) {
+      const config = await loadConfig(path.join(rigRoot, "config", file));
+      expect(config.stages, file).toEqual({
+        correctness: true,
+        render: true,
+        load: true,
+      });
+    }
+    const example = await loadConfig(
+      path.join(rigRoot, "config", "examples", "volume-1000-writes.yaml"),
+    );
+    expect(example.stages).toEqual({
+      correctness: false,
+      render: false,
+      load: false,
+    });
   });
 
   it("rejects unknown keys (strict)", () => {
