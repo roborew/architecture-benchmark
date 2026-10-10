@@ -70,16 +70,39 @@ Stage selection is **config-driven** (`stages:` in the YAML), so
 `pnpm rig:run --config <cfg>` runs everything the config asks for. The CLI
 `--with-*` flags remain as one-off _upward_ overrides.
 
-| Stage         | What it runs                                                                 | On failure                     | Rough cost/variant |
-| ------------- | ---------------------------------------------------------------------------- | ------------------------------ | ------------------ |
-| `correctness` | shared black-box Playwright CRUD suite (`e2e/correctness.spec.ts`)           | **fatal** — variant ineligible | ~1–2 min           |
-| `render`      | pinned-Chromium render collector (`src/render/collect.ts`)                   | non-fatal — recorded           | ~2–5 min           |
-| `load`        | k6 read leg **+** captured-request mutation replay **+** the capacity ladder | non-fatal — recorded/withheld  | ~2–6 min           |
+| Stage         | What it runs                                                                                                       | On failure                     | Rough cost/variant |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------ | ------------------ |
+| `correctness` | shared black-box Playwright CRUD suite (`e2e/correctness.spec.ts`)                                                 | **fatal** — variant ineligible | ~1–2 min           |
+| `render`      | pinned-Chromium render collector (`src/render/collect.ts`)                                                         | non-fatal — recorded           | ~2–5 min           |
+| `load`        | k6 read leg **+** captured-request mutation replay **+** the capacity ladder, each with container CPU/RAM sampling | non-fatal — recorded/withheld  | ~2–6 min           |
 
 Every shipped config sets all three stages to `true`;
 `config/examples/volume-1000-writes.yaml` stays lean (all off). The effective
 selection is recorded in `preflight.json#stages`, so the viewer can tell "not
 requested" from "attempted and failed".
+
+### Container CPU/RAM tracking
+
+Every `load` leg also samples the variant's **own** containers — app/api/spa,
+db, and the `bench-k6-*` generator — once per second, from the Docker Engine API
+(`GET /containers/{id}/stats`, raw cumulative counters; a `docker stats` CLI
+fallback when the socket is unreachable, recorded as `source: "cli"`). The
+numbers are **percent of the service's `resources:` envelope**, not of the host —
+the fact that answers "did this variant max out its 2-CPU envelope, or eat all
+its RAM". Per leg they are folded into the existing reports:
+
+- `variants/<id>/load.json`, `mutations.json` and `capacity/<rate>.json` gain a
+  `resources: { source, services: { app: { maxCpuPctOfEnv, avgCpuPctOfEnv,
+maxMemMb, maxMemPctOfEnv }, db: {…}, … }, oomKills }` block.
+- The raw 1 Hz series (`resources/read-samples.json`,
+  `resources/mutations-samples.json`, `resources/capacity/<rate>-samples.json`)
+  is written only when the config sets `report.keepRawSamples: true`.
+
+The decision matrix carries `app_max_cpu_pct_env` / `app_max_mem_pct_env` (the
+peak across the run's load legs) and the compare view names the binding resource
+at each tip-over. A container pinned at ~100 % of its envelope is a _result_, not
+a validity failure — only **generator** saturation still withholds a number. A
+blank cell means _not measured_, never zero.
 
 ### Resource envelopes (hardware-limitation testing)
 

@@ -160,6 +160,18 @@ function makeResultsRoot(): string {
         { metric: "http_req_failed", expression: "rate<0.01", ok: true },
         { metric: "http_req_duration", expression: "p(95)<800", ok: false },
       ],
+      resources: {
+        source: "api",
+        services: {
+          app: {
+            maxCpuPctOfEnv: 99,
+            avgCpuPctOfEnv: 70,
+            maxMemMb: 300,
+            maxMemPctOfEnv: 41,
+          },
+        },
+        oomKills: 0,
+      },
       pgStatements: { before: 1, after: 2, delta: 1 },
     }),
   );
@@ -208,6 +220,13 @@ function makeResultsRoot(): string {
           thresholds: [
             { metric: "http_req_failed", expression: "rate<0.01", ok: true },
           ],
+          resources: {
+            source: "api",
+            services: {
+              app: { maxCpuPctOfEnv: 99, maxMemPctOfEnv: 41 },
+            },
+            oomKills: 0,
+          },
         },
         {
           targetRate: 10,
@@ -233,6 +252,47 @@ function makeResultsRoot(): string {
     root,
     path.join(complete, "variants", "next-actions", "capture.json"),
     JSON.stringify({ body: "capture-secret-body" }),
+  );
+  // The raw 1 Hz resource series — reduced to a timeline, never embedded raw.
+  write(
+    root,
+    path.join(
+      complete,
+      "variants",
+      "next-actions",
+      "resources",
+      "read-samples.json",
+    ),
+    JSON.stringify({
+      source: "api",
+      intervalMs: 1000,
+      samples: [
+        {
+          t: 0,
+          service: "app",
+          cores: 0.5,
+          cpuPctOfEnv: 25,
+          memWorkingSetMb: 100,
+          memPctOfEnv: 5,
+        },
+        {
+          t: 1000,
+          service: "app",
+          cores: 1,
+          cpuPctOfEnv: 50,
+          memWorkingSetMb: 200,
+          memPctOfEnv: 10,
+        },
+        {
+          t: 1000,
+          service: "db",
+          cores: 0.1,
+          cpuPctOfEnv: 5,
+          memWorkingSetMb: 50,
+          memPctOfEnv: 5,
+        },
+      ],
+    }),
   );
 
   // (b) A run with no render/load/mutation artefacts (no --with-* flags).
@@ -447,6 +507,8 @@ describe("renderViewerHtml", () => {
       expect(html).not.toContain('"create":[100,200,300]'); // raw interaction array
       expect(html).not.toContain('"ttfb":10,"fcp":40'); // raw page array
       expect(html).not.toContain("raw-sample");
+      expect(html).not.toContain("cpuPctOfEnv"); // raw resource series
+      expect(html).not.toContain("memWorkingSetMb");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -553,6 +615,32 @@ describe("K1/K2/K3 reductions", () => {
       expect(capacity.steps.map((s) => s.targetRate)).toEqual([10, 20]);
       expect(capacity.steps[1]!.achievedPerSecond).toBe(19.8);
       expect(capacity.steps[1]!.thresholds).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reduces resource aggregates and a downsampled series, tolerating old runs", async () => {
+    const root = makeResultsRoot();
+    try {
+      const run = await loadRun(root, "2026-10-09t17-44-06-935z");
+      const next = run.variants.find((v) => v.id === "next-actions")!;
+      expect(next.loadService).toBe("app");
+      expect(next.load!.resources!.services.app!.maxCpuPctOfEnv).toBe(99);
+      expect(next.load!.resources!.oomKills).toBe(0);
+      const step = next.capacity!.steps.find((s) => s.targetRate === 20)!;
+      expect(step.resources!.services.app!.maxMemPctOfEnv).toBe(41);
+      // The 1 Hz series is reduced to {t,cpu,mem} for the front service only.
+      expect(next.resourceSeries.map((s) => s.label)).toEqual(["read"]);
+      expect(next.resourceSeries[0]!.points).toEqual([
+        { t: 0, cpu: 25, mem: 5 },
+        { t: 1000, cpu: 50, mem: 10 },
+      ]);
+      // An older run without resource artefacts keeps blank (never zero).
+      const old = await loadRun(root, "2026-10-09t15-00-00-000z");
+      const oldNext = old.variants.find((v) => v.id === "next-actions")!;
+      expect(oldNext.load).toBeNull();
+      expect(oldNext.resourceSeries).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

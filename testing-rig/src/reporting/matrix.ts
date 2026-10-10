@@ -65,6 +65,10 @@ export interface MatrixRow {
   updateP50Ms: number | null;
   deleteP50Ms: number | null;
   loadOpsPerSecond: number | null;
+  /** Peak CPU / RAM of the loaded service, as percent **of its resource
+   *  envelope** (not of host) — the cross-envelope fact the matrix wants. */
+  appMaxCpuPctOfEnv: number | null;
+  appMaxMemPctOfEnv: number | null;
   runSha256: string;
 }
 
@@ -99,6 +103,8 @@ const COLUMNS: Array<{ key: keyof MatrixRow; header: string; group: string }> =
     { key: "updateP50Ms", header: "update_p50_ms", group: "6.4" },
     { key: "deleteP50Ms", header: "delete_p50_ms", group: "6.4" },
     { key: "loadOpsPerSecond", header: "load_ops_per_sec", group: "6.5" },
+    { key: "appMaxCpuPctOfEnv", header: "app_max_cpu_pct_env", group: "6.5" },
+    { key: "appMaxMemPctOfEnv", header: "app_max_mem_pct_env", group: "6.5" },
     { key: "runSha256", header: "run_sha256", group: "provenance" },
   ];
 
@@ -127,6 +133,33 @@ export interface RenderReport {
 export interface LoadReport {
   opsPerSecond?: number | null;
   generatorSaturated?: boolean;
+  /** The loaded service slot (app | api | spa). */
+  target?: string;
+  resources?: ResourceSummaryView | null;
+}
+
+/** A minimal view of a leg's folded container-resource aggregate (plan §3.3). */
+export interface ResourceUsageView {
+  maxCpuPctOfEnv?: number | null;
+  avgCpuPctOfEnv?: number | null;
+  maxMemMb?: number | null;
+  maxMemPctOfEnv?: number | null;
+}
+
+export interface ResourceSummaryView {
+  source?: string;
+  services?: Record<string, ResourceUsageView>;
+  oomKills?: number | null;
+}
+
+/** A minimal view of the controller's `variants/<id>/capacity.json`. */
+export interface CapacityReportView {
+  applicable?: boolean;
+  steps?: Array<{
+    targetRate: number;
+    generatorSaturated?: boolean;
+    resources?: ResourceSummaryView | null;
+  }>;
 }
 
 /** Nearest-rank-free percentile (linear interpolation), rounded to 0.1ms. */
@@ -167,6 +200,7 @@ export function buildMatrix(
   manifests: Map<string, VariantManifest>,
   render: Map<string, RenderReport> = new Map(),
   load: Map<string, LoadReport> = new Map(),
+  capacity: Map<string, CapacityReportView> = new Map(),
 ): MatrixRow[] {
   return summary.results.map((result) => {
     const manifest = manifests.get(result.id);
@@ -201,6 +235,8 @@ export function buildMatrix(
       updateP50Ms: null,
       deleteP50Ms: null,
       loadOpsPerSecond: null,
+      appMaxCpuPctOfEnv: null,
+      appMaxMemPctOfEnv: null,
       runSha256: summary.effectiveManifestSha256,
     };
     renderColumns(render.get(result.id), row);
@@ -210,8 +246,50 @@ export function buildMatrix(
       loadReport && !loadReport.generatorSaturated
         ? (loadReport.opsPerSecond ?? null)
         : null;
+    // Peak envelope pressure of the loaded service across the run's load legs
+    // (read + capacity ladder + mutations). Percent of the service's own
+    // `resources:` cap — the number that answers "did it max out its envelope".
+    const front = manifest?.load?.service ?? "app";
+    const peak = peakEnvelope(
+      front,
+      loadReport?.resources,
+      capacity.get(result.id),
+    );
+    row.appMaxCpuPctOfEnv = peak.cpu;
+    row.appMaxMemPctOfEnv = peak.mem;
     return row;
   });
+}
+
+/**
+ * Peak CPU/RAM pressure for the loaded service across a run's load legs — the
+ * read leg plus every capacity step — as percent of that service's envelope.
+ * Blank (null) when no leg recorded resources, never zero.
+ */
+function peakEnvelope(
+  front: string,
+  load: ResourceSummaryView | null | undefined,
+  capacity: CapacityReportView | undefined,
+): { cpu: number | null; mem: number | null } {
+  let cpu: number | null = null;
+  let mem: number | null = null;
+  const consider = (summary: ResourceSummaryView | null | undefined): void => {
+    const usage = summary?.services?.[front];
+    if (!usage) return;
+    if (typeof usage.maxCpuPctOfEnv === "number")
+      cpu =
+        cpu === null
+          ? usage.maxCpuPctOfEnv
+          : Math.max(cpu, usage.maxCpuPctOfEnv);
+    if (typeof usage.maxMemPctOfEnv === "number")
+      mem =
+        mem === null
+          ? usage.maxMemPctOfEnv
+          : Math.max(mem, usage.maxMemPctOfEnv);
+  };
+  consider(load);
+  for (const step of capacity?.steps ?? []) consider(step.resources);
+  return { cpu, mem };
 }
 
 const cell = (value: unknown): string =>
@@ -308,6 +386,7 @@ export function loadRun(runDir: string): {
   inventory: Map<string, StaticInventory>;
   render: Map<string, RenderReport>;
   load: Map<string, LoadReport>;
+  capacity: Map<string, CapacityReportView>;
 } {
   const summary = JSON.parse(
     readFileSync(path.join(runDir, "summary.json"), "utf8"),
@@ -323,33 +402,26 @@ export function loadRun(runDir: string): {
   }
   const render = new Map<string, RenderReport>();
   const load = new Map<string, LoadReport>();
+  const capacity = new Map<string, CapacityReportView>();
+  const readVariant = <T>(id: string, file: string): T | null => {
+    try {
+      return JSON.parse(
+        readFileSync(path.join(runDir, "variants", id, file), "utf8"),
+      ) as T;
+    } catch {
+      return null;
+    }
+  };
   for (const result of summary.results) {
-    try {
-      render.set(
-        result.id,
-        JSON.parse(
-          readFileSync(
-            path.join(runDir, "variants", result.id, "render.json"),
-            "utf8",
-          ),
-        ) as RenderReport,
-      );
-    } catch {
-      // No render artefact for this variant (run without --with-render).
-    }
-    try {
-      load.set(
-        result.id,
-        JSON.parse(
-          readFileSync(
-            path.join(runDir, "variants", result.id, "load.json"),
-            "utf8",
-          ),
-        ) as LoadReport,
-      );
-    } catch {
-      // No load artefact for this variant (run without --with-load).
-    }
+    const renderReport = readVariant<RenderReport>(result.id, "render.json");
+    if (renderReport) render.set(result.id, renderReport);
+    const loadReport = readVariant<LoadReport>(result.id, "load.json");
+    if (loadReport) load.set(result.id, loadReport);
+    const capacityReport = readVariant<CapacityReportView>(
+      result.id,
+      "capacity.json",
+    );
+    if (capacityReport) capacity.set(result.id, capacityReport);
   }
-  return { summary, inventory, render, load };
+  return { summary, inventory, render, load, capacity };
 }

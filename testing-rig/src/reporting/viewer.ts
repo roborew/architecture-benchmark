@@ -68,12 +68,35 @@ export interface VariantLoadView {
   thresholds: ThresholdResult[];
   /** Per-path read latency (K1), keyed by path. */
   paths: Record<string, { p50Ms: number | null; p95Ms: number | null }>;
+  /** The app/db containers' own CPU/RAM during the leg (container-resource plan). */
+  resources: VariantResourceView | null;
 }
 
 export interface ThresholdResult {
   metric: string;
   expression: string;
   ok: boolean;
+}
+
+/** Per-service folded container-resource usage (container-resource plan §3.3). */
+export interface VariantResourceUsageView {
+  maxCpuPctOfEnv: number | null;
+  avgCpuPctOfEnv: number | null;
+  maxMemMb: number | null;
+  maxMemPctOfEnv: number | null;
+}
+
+export interface VariantResourceView {
+  /** `api` (Engine API, raw counters) or `cli` (ambiguous normalization). */
+  source: string;
+  services: Record<string, VariantResourceUsageView>;
+  oomKills: number | null;
+}
+
+/** A downsampled CPU%/RAM% timeline for one load leg (never the raw series). */
+export interface ResourceSeriesView {
+  label: string;
+  points: Array<{ t: number; cpu: number | null; mem: number | null }>;
 }
 
 /** One capacity-ladder step (K3). */
@@ -87,6 +110,8 @@ export interface CapacityStepView {
   vusMax: number | null;
   generatorSaturated: boolean;
   thresholds: ThresholdResult[];
+  /** The app/db containers' own CPU/RAM during this step (plan §3.3). */
+  resources: VariantResourceView | null;
 }
 
 /** The read-weighted mixed capacity ladder for one variant (K3). */
@@ -115,6 +140,8 @@ export interface VariantMutationView {
   failures: number | null;
   /** Recorded threshold labels (K2) — never a gate. */
   thresholds: ThresholdResult[];
+  /** The app/db containers' own CPU/RAM during the leg (plan §3.3). */
+  resources: VariantResourceView | null;
 }
 
 export interface VariantView {
@@ -133,6 +160,10 @@ export interface VariantView {
   mutations: VariantMutationView | null;
   capacity: VariantCapacityView | null;
   correctness: "pass" | "fail" | null;
+  /** The loaded service slot (app | api | spa) — the front for resource views. */
+  loadService: string;
+  /** Downsampled CPU%/RAM% timelines, one per leg that recorded raw samples. */
+  resourceSeries: ResourceSeriesView[];
 }
 
 export interface RunView {
@@ -210,6 +241,41 @@ interface LoadFile {
   paths?: Record<string, { p50Ms?: number | null; p95Ms?: number | null }>;
   /** Recorded threshold labels (K2) — never a gate. */
   thresholds?: ThresholdResult[];
+  /** Folded container-resource aggregate (container-resource plan §3.3). */
+  resources?: ResourceSummaryFile | null;
+}
+
+/** The folded per-leg resource aggregate, as written by the controller. */
+interface ResourceUsageFile {
+  maxCpuPctOfEnv?: number | null;
+  avgCpuPctOfEnv?: number | null;
+  maxMemMb?: number | null;
+  maxMemPctOfEnv?: number | null;
+}
+interface ResourceSummaryFile {
+  source?: string;
+  services?: Record<string, ResourceUsageFile>;
+  oomKills?: number | null;
+}
+
+/** The raw 1 Hz series in `resources/*-samples.json` (only reduced, never kept). */
+interface ResourceSampleFile {
+  t?: number;
+  service?: string;
+  cores?: number | null;
+  cpuPctOfEnv?: number | null;
+  memWorkingSetMb?: number | null;
+  memPctOfEnv?: number | null;
+}
+interface ResourceSeriesFile {
+  source?: string;
+  intervalMs?: number;
+  samples?: ResourceSampleFile[];
+}
+
+/** The controller's `variants/<id>/mutations.json` — read only for resources. */
+interface MutationReportFile {
+  resources?: ResourceSummaryFile | null;
 }
 
 interface CapacityStepFile {
@@ -222,6 +288,7 @@ interface CapacityStepFile {
   vusMax?: number | null;
   generatorSaturated?: boolean;
   thresholds?: ThresholdResult[];
+  resources?: ResourceSummaryFile | null;
 }
 
 interface CapacityFile {
@@ -386,7 +453,59 @@ function reduceLoad(report: LoadFile | null): VariantLoadView | null {
     pgStatementsDelta: report.pgStatements?.delta ?? null,
     paths,
     thresholds: normaliseThresholds(report.thresholds),
+    resources: reduceResources(report.resources),
   };
+}
+
+/** Fold a leg's resource aggregate into the viewer shape; blank stays blank. */
+function reduceResources(
+  summary: ResourceSummaryFile | null | undefined,
+): VariantResourceView | null {
+  if (!summary || !summary.services || typeof summary.services !== "object")
+    return null;
+  const services: Record<string, VariantResourceUsageView> = {};
+  for (const [name, usage] of Object.entries(summary.services)) {
+    services[name] = {
+      maxCpuPctOfEnv: positive(usage?.maxCpuPctOfEnv),
+      avgCpuPctOfEnv: positive(usage?.avgCpuPctOfEnv),
+      maxMemMb: positive(usage?.maxMemMb),
+      maxMemPctOfEnv: positive(usage?.maxMemPctOfEnv),
+    };
+  }
+  return {
+    source: typeof summary.source === "string" ? summary.source : "unknown",
+    services,
+    oomKills: positive(summary.oomKills),
+  };
+}
+
+/** Cap the embedded per-leg timeline; the raw series is never embedded. */
+const MAX_RESOURCE_POINTS = 40;
+
+function reduceResourceSeries(
+  file: ResourceSeriesFile | null,
+  front: string,
+): Array<{ t: number; cpu: number | null; mem: number | null }> | null {
+  const samples = file?.samples;
+  if (!Array.isArray(samples)) return null;
+  const points: Array<{ t: number; cpu: number | null; mem: number | null }> =
+    [];
+  for (const sample of samples) {
+    if (!sample || sample.service !== front) continue;
+    points.push({
+      t: positive(sample.t) ?? 0,
+      cpu: positive(sample.cpuPctOfEnv),
+      mem: positive(sample.memPctOfEnv),
+    });
+  }
+  if (points.length === 0) return null;
+  if (points.length <= MAX_RESOURCE_POINTS) return points;
+  const step = points.length / MAX_RESOURCE_POINTS;
+  const out: typeof points = [];
+  for (let i = 0; i < MAX_RESOURCE_POINTS; i += 1)
+    out.push(points[Math.floor(i * step)]!);
+  out[out.length - 1] = points[points.length - 1]!;
+  return out;
 }
 
 function reduceCapacity(
@@ -403,6 +522,7 @@ function reduceCapacity(
     vusMax: step.vusMax ?? null,
     generatorSaturated: step.generatorSaturated === true,
     thresholds: normaliseThresholds(step.thresholds),
+    resources: reduceResources(step.resources),
   }));
   steps.sort((a, b) => a.targetRate - b.targetRate);
   return {
@@ -415,6 +535,7 @@ function reduceCapacity(
 
 function reduceMutations(
   report: MutationsSummaryFile | null,
+  resources: ResourceSummaryFile | null | undefined,
 ): VariantMutationView | null {
   const metrics = report?.metrics;
   if (!metrics) return null;
@@ -456,6 +577,7 @@ function reduceMutations(
     duration,
     failures: typeof fails === "number" ? fails : null,
     thresholds: thresholdsFromK6(metrics),
+    resources: reduceResources(resources),
   };
 }
 
@@ -500,6 +622,14 @@ function buildVariant(
   const variantDir = path.join(runDir, "variants", result.id);
   const stages = result.stages ?? {};
   const correctness = stages.correctness;
+  const loadService =
+    manifest?.load?.service ?? (result.cohort === "spa-api" ? "api" : "app");
+  const capacityReport = readJson<CapacityFile>(
+    path.join(variantDir, "capacity.json"),
+  );
+  const mutationReport = readJson<MutationReportFile>(
+    path.join(variantDir, "mutations.json"),
+  );
   return {
     id: result.id,
     cohort: result.cohort,
@@ -519,14 +649,61 @@ function buildVariant(
       readJson<MutationsSummaryFile>(
         path.join(variantDir, "mutations-summary.json"),
       ),
+      mutationReport?.resources,
     ),
-    capacity: reduceCapacity(
-      readJson<CapacityFile>(path.join(variantDir, "capacity.json")),
-    ),
+    capacity: reduceCapacity(capacityReport),
     correctness: correctness ? (correctness.ok ? "pass" : "fail") : null,
-    // Deliberately never read: mutations.json (raw samples), capture.json
-    // (contains request bodies), *.log, lifecycle.json (docker stdout).
+    loadService,
+    resourceSeries: reduceAllResourceSeries(
+      variantDir,
+      loadService,
+      capacityReport,
+    ),
+    // Deliberately never read (beyond the resource aggregate): mutations.json
+    // raw samples, capture.json (request bodies), *.log, lifecycle.json stdout.
   };
+}
+
+/** Build the downsampled CPU%/RAM% timelines, one per leg with raw samples. */
+function reduceAllResourceSeries(
+  variantDir: string,
+  front: string,
+  capacity: CapacityFile | null,
+): ResourceSeriesView[] {
+  const series: ResourceSeriesView[] = [];
+  const readPoints = reduceResourceSeries(
+    readJson<ResourceSeriesFile>(
+      path.join(variantDir, "resources", "read-samples.json"),
+    ),
+    front,
+  );
+  if (readPoints) series.push({ label: "read", points: readPoints });
+  for (const step of [...(capacity?.steps ?? [])].sort(
+    (a, b) => (a.targetRate ?? 0) - (b.targetRate ?? 0),
+  )) {
+    if (typeof step.targetRate !== "number") continue;
+    const points = reduceResourceSeries(
+      readJson<ResourceSeriesFile>(
+        path.join(
+          variantDir,
+          "resources",
+          "capacity",
+          `${step.targetRate}-samples.json`,
+        ),
+      ),
+      front,
+    );
+    if (points) series.push({ label: `${step.targetRate}/s`, points });
+  }
+  const mutationPoints = reduceResourceSeries(
+    readJson<ResourceSeriesFile>(
+      path.join(variantDir, "resources", "mutations-samples.json"),
+    ),
+    front,
+  );
+  if (mutationPoints)
+    series.push({ label: "mutations", points: mutationPoints });
+  return series;
 }
 
 function readInventory(runDir: string): Map<string, StaticInventory> {
@@ -863,6 +1040,30 @@ const VIEWER_SCRIPT = `(function () {
   function fmtPct(v) {
     if (v === null || v === undefined) return "—";
     return Number(v).toFixed(2) + "%";
+  }
+
+  // --- container resources (container-resource-usage-tracking plan) -----------
+  function frontUsage(v, resources) {
+    if (!resources || !resources.services) return null;
+    return resources.services[v.loadService] || null;
+  }
+  // A per-metric binding-resource fact, e.g. "app CPU 99% of env, RAM 41% → CPU-bound".
+  function resourceFact(v, resources, where) {
+    var usage = frontUsage(v, resources);
+    if (!usage) return null;
+    var cpu = usage.maxCpuPctOfEnv, mem = usage.maxMemPctOfEnv;
+    var oom = resources.oomKills;
+    if ((cpu === null || cpu === undefined) && (mem === null || mem === undefined) && !(oom > 0)) return null;
+    var parts = [];
+    if (cpu !== null && cpu !== undefined) parts.push("CPU " + fmtNum(cpu) + "% of env");
+    if (mem !== null && mem !== undefined) parts.push("RAM " + fmtNum(mem) + "% of env");
+    if (oom && oom > 0) parts.push("OOM ×" + oom);
+    var binding;
+    if (oom && oom > 0) binding = "RAM-bound (OOM)";
+    else if (mem === null || mem === undefined) binding = "CPU-bound";
+    else if (cpu === null || cpu === undefined) binding = "RAM-bound";
+    else binding = cpu >= mem ? "CPU-bound" : "RAM-bound";
+    return { kind: "warn", text: where + " — " + parts.join(", ") + " → " + binding };
   }
 
   // --- inline SVG charts (plan V-A): hand-rolled, no library, no fetch --------
@@ -1238,6 +1439,21 @@ const VIEWER_SCRIPT = `(function () {
       cell: function (value) { return thresholdsCell(value); },
       title: "recorded k6 threshold labels (health labels, never gates)"
     }));
+    cols.push(col("load:cpu", "CPU% env", function (v) {
+      var usage = v.load ? frontUsage(v, v.load.resources) : null;
+      return usage ? usage.maxCpuPctOfEnv : null;
+    }, function (value) { return value === null || value === undefined ? "—" : fmtNum(value); }, {
+      numeric: true, lower: true, title: "peak loaded-service CPU as % of its resource envelope (not of host); lower is better"
+    }));
+    cols.push(col("load:mem", "MEM% env", function (v) {
+      var usage = v.load ? frontUsage(v, v.load.resources) : null;
+      return usage ? usage.maxMemPctOfEnv : null;
+    }, function (value) { return value === null || value === undefined ? "—" : fmtNum(value); }, {
+      numeric: true, lower: true, title: "peak loaded-service RAM as % of its resource envelope"
+    }));
+    cols.push(col("load:oom", "OOM", function (v) { return v.load && v.load.resources ? v.load.resources.oomKills : null; }, fmtInt, {
+      numeric: true, lower: true, title: "OOM kills during the leg (blank = not measured, never zero)"
+    }));
     return cols;
   }
 
@@ -1259,6 +1475,18 @@ const VIEWER_SCRIPT = `(function () {
     cols.push(col("mut:thresholds", "thresholds", function (v) { return v.mutations ? v.mutations.thresholds : null; }, null, {
       cell: function (value) { return thresholdsCell(value); },
       title: "recorded k6 threshold labels (health labels, never gates)"
+    }));
+    cols.push(col("mut:cpu", "CPU% env", function (v) {
+      var usage = v.mutations ? frontUsage(v, v.mutations.resources) : null;
+      return usage ? usage.maxCpuPctOfEnv : null;
+    }, function (value) { return value === null || value === undefined ? "—" : fmtNum(value); }, {
+      numeric: true, lower: true, title: "peak loaded-service CPU as % of its resource envelope (not of host)"
+    }));
+    cols.push(col("mut:mem", "MEM% env", function (v) {
+      var usage = v.mutations ? frontUsage(v, v.mutations.resources) : null;
+      return usage ? usage.maxMemPctOfEnv : null;
+    }, function (value) { return value === null || value === undefined ? "—" : fmtNum(value); }, {
+      numeric: true, lower: true, title: "peak loaded-service RAM as % of its resource envelope"
     }));
     return cols;
   }
@@ -1435,6 +1663,9 @@ const VIEWER_SCRIPT = `(function () {
     var anyCapacity = run.variants.some(function (v) { return v.capacity && v.capacity.steps && v.capacity.steps.length > 0; });
     if (anyCapacity) bodyEl.appendChild(capacitySection(run));
 
+    var resourceSec = resourceSection(run);
+    if (resourceSec) bodyEl.appendChild(resourceSec);
+
     var anyInventory = run.variants.some(function (v) { return v.inventory !== null; });
     bodyEl.appendChild(sectionTable("Static", "Static & complexity", "authored source vs on-disk footprint; bytes human-readable (exact in title)", staticColumns(), run.variants, anyInventory));
   }
@@ -1497,7 +1728,7 @@ const VIEWER_SCRIPT = `(function () {
     sec.appendChild(chartLegend(series));
     var table = el("table", "matrix");
     var thead = el("thead"), hr = el("tr");
-    ["variant", "target", "achieved", "p95 ms", "p99 ms", "dropped", "VUs", "generator", "thresholds", "mode"].forEach(function (label, idx) {
+    ["variant", "target", "achieved", "p95 ms", "p99 ms", "dropped", "VUs", "CPU% env", "MEM% env", "generator", "thresholds", "mode"].forEach(function (label, idx) {
       var th = el("th", null, label); if (idx === 0) th.style.textAlign = "left"; hr.appendChild(th);
     });
     thead.appendChild(hr); table.appendChild(thead);
@@ -1513,6 +1744,9 @@ const VIEWER_SCRIPT = `(function () {
         tr.appendChild(el("td", null, fmtNum(s.p99Ms)));
         tr.appendChild(el("td", null, s.droppedIterations === null || s.droppedIterations === undefined ? "—" : String(s.droppedIterations)));
         tr.appendChild(el("td", null, s.vusMax === null || s.vusMax === undefined ? "—" : String(s.vusMax)));
+        var stepUsage = frontUsage(v, s.resources);
+        tr.appendChild(el("td", null, stepUsage ? fmtNum(stepUsage.maxCpuPctOfEnv) : "—"));
+        tr.appendChild(el("td", null, stepUsage ? fmtNum(stepUsage.maxMemPctOfEnv) : "—"));
         tr.appendChild(el("td", null, s.generatorSaturated ? "saturated" : "ok"));
         var tc = el("td"); tc.appendChild(thresholdsCell(s.thresholds)); tr.appendChild(tc);
         tr.appendChild(el("td", null, v.capacity.mixed ? "mixed" : "read-only"));
@@ -1523,6 +1757,36 @@ const VIEWER_SCRIPT = `(function () {
     sec.appendChild(table);
     var notApplicable = run.variants.filter(function (v) { return v.capacity && v.capacity.applicable === false; });
     if (notApplicable.length) sec.appendChild(el("p", "note", "not applicable for: " + notApplicable.map(function (v) { return v.id; }).join(", ")));
+    return sec;
+  }
+
+  // CPU%/RAM% over time per leg (container-resource plan U4). The raw 1 Hz
+  // series is downsampled at build time; nothing is embedded that is not a view.
+  function resourceSection(run) {
+    var withSeries = run.variants.filter(function (v) { return v.resourceSeries && v.resourceSeries.length; });
+    if (!withSeries.length) return null;
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Resources — CPU/RAM over time"));
+    sec.appendChild(el("p", "sub", "percent of the loaded service's resource envelope (not of host); 1 Hz samples, downsampled. Blank = not measured."));
+    withSeries.forEach(function (v) {
+      if (state.cohort !== "all" && v.cohort !== state.cohort) return;
+      var card = el("div", "card wide");
+      card.appendChild(el("h3", null, v.id + " — " + v.loadService));
+      v.resourceSeries.forEach(function (leg) {
+        card.appendChild(el("h4", null, leg.label));
+        var categories = leg.points.map(function (p) { return Math.round(p.t / 1000) + "s"; });
+        var series = [
+          { label: "CPU % of envelope", color: cohortColor(v.cohort), title: v.id + " " + leg.label + " CPU % of envelope", values: leg.points.map(function (p) { return p.cpu; }) },
+          { label: "RAM % of envelope", color: "#b45309", title: v.id + " " + leg.label + " RAM % of envelope", values: leg.points.map(function (p) { return p.mem; }) }
+        ];
+        card.appendChild(lineChart(categories, series, { height: 150, minWidth: 420 }));
+      });
+      sec.appendChild(card);
+    });
+    sec.appendChild(chartLegend([
+      { label: "CPU % of envelope", color: "#4f46e5" },
+      { label: "RAM % of envelope", color: "#b45309" }
+    ]));
     return sec;
   }
 
@@ -1819,6 +2083,11 @@ const VIEWER_SCRIPT = `(function () {
             if (prevOps !== null && v.load.opsPerSecond !== null && prevOps > 0 && v.load.opsPerSecond <= prevOps * 1.02) {
               facts.push({ kind: "warn", text: "throughput flat/declining " + prevLabel + "→" + label });
             }
+            var loadUsage = frontUsage(v, v.load.resources);
+            if (loadUsage && (loadUsage.maxCpuPctOfEnv >= 90 || (v.load.resources && v.load.resources.oomKills > 0))) {
+              var loadFact = resourceFact(v, v.load.resources, "read leg at " + label);
+              if (loadFact) facts.push(loadFact);
+            }
             prevP95 = v.load.p95Ms; prevOps = v.load.opsPerSecond;
           }
         }
@@ -1828,6 +2097,12 @@ const VIEWER_SCRIPT = `(function () {
               facts.push({ kind: "fail", text: "dropped " + s.droppedIterations + " iters at " + s.targetRate + "/s (" + label + ")" });
             } else if (s.generatorSaturated) {
               facts.push({ kind: "warn", text: "ladder generator saturated at " + s.targetRate + "/s (" + label + ")" });
+            }
+            var usage = frontUsage(v, s.resources);
+            var tipped = (s.droppedIterations && s.droppedIterations > 0) || (s.resources && s.resources.oomKills > 0);
+            if (tipped || (usage && usage.maxCpuPctOfEnv >= 90)) {
+              var fact = resourceFact(v, s.resources, "tipped at " + s.targetRate + "/s (" + label + ")");
+              if (fact) facts.push(fact);
             }
           });
         }

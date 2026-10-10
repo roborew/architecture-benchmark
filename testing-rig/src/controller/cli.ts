@@ -294,6 +294,7 @@ async function main(): Promise<number> {
       fixture: config.fixture,
       artifacts,
       build: options.build,
+      keepRawSamples: config.report.keepRawSamples,
       correctness: stages.correctness,
       render: stages.render
         ? {

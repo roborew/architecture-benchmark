@@ -50,9 +50,18 @@ reuses), then the ladder.
 - `docker run -d --name bench-k6-<id> --network <project>_default
 --add-host host.docker.internal:host-gateway … grafana/k6 run <script>`; the
   controller passes `SUMMARY_FILE=/out/<name>.json` (the script writes there).
-- The generator's CPU is sampled with `docker stats`; a run whose generator
-  exceeds `load.generatorMaxCpuPercent` is marked **saturated** and its number is
-  withheld (a saturated generator measures itself).
+- A container-resource sampler runs around each leg (started just before the k6
+  container, stopped after it exits). It samples the stack's app/api/spa/db
+  containers and the `bench-k6-*` generator once per second from the Docker
+  Engine API — **percent of each service's `resources:` envelope**, not of host —
+  and folds per-leg maxima/averages + the OOM-kill delta into the reports. The
+  generator's own CPU (`generatorMaxCpuPercentObserved`) is derived from this
+  same pass; a run whose generator exceeds `load.generatorMaxCpuPercent` is
+  marked **saturated** and its throughput is withheld (a saturated generator
+  measures itself). An app pinned at ~100 % of _its_ envelope is a recorded
+  result, not a withheld number.
+- Raw 1 Hz series land in `variants/<id>/resources/*-samples.json` when the
+  config sets `report.keepRawSamples: true`.
 - `pg_stat_statements` totals are snapshotted before/after (`delta`).
 
 ## Known limitations

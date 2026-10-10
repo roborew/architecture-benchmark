@@ -7,8 +7,8 @@ the fairness rules the rig implements.
 ## Two kinds of comparison (never conflated)
 
 1. **Workload volume:** DB size fixed, operation count rises (e.g. 100 → 1000
-   successful mutations). Volume means *successful state changes against
-   predetermined distinct records*, not attempts that may silently target
+   successful mutations). Volume means _successful state changes against
+   predetermined distinct records_, not attempts that may silently target
    stale rows. Offered and achieved counts are recorded separately.
 2. **DB-size sensitivity:** operation count and mix fixed, database grows
    (1,000 → 50,000 → 500,000 tasks).
@@ -26,6 +26,11 @@ the independent variable.
   is always reported.
 - Warmup samples are discarded; measurement runs are serial per variant.
 - A cold browser context does not imply a cold app process.
+- **Container CPU/RAM** are recorded per variant during each load leg, as percent
+  **of the service's `resources:` envelope** (not of the host): app CPU budget,
+  app RAM budget, and OOM kills. A container pinned at ~100 % of its envelope is
+  a _result_, never a trial rejection — the rig measures, it does not gate. Only
+  **generator** saturation rejects (a saturated generator measures itself).
 
 ## Fairness invariants (phase 1)
 

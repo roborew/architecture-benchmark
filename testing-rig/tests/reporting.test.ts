@@ -13,6 +13,8 @@ import {
   toCsv,
   toHtml,
   toMarkdown,
+  type CapacityReportView,
+  type LoadReport,
   type RenderReport,
   type RunSummary,
 } from "../src/reporting/matrix.js";
@@ -175,6 +177,60 @@ describe("decision matrix", () => {
     // A variant with no render artefact keeps blank (never zero) render cells.
     const other = rows.find((r) => r.variant === "tanstack-express-rest")!;
     expect(other.renderTtfbMs).toBeNull();
+  });
+
+  it("populates peak envelope-pressure columns from load + capacity resources", async () => {
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
+    const load = new Map<string, LoadReport>([
+      [
+        "next-actions",
+        {
+          generatorSaturated: false,
+          opsPerSecond: 100,
+          target: "app",
+          resources: {
+            source: "api",
+            services: {
+              app: { maxCpuPctOfEnv: 61, maxMemPctOfEnv: 40 },
+            },
+            oomKills: 0,
+          },
+        },
+      ],
+    ]);
+    const capacity = new Map<string, CapacityReportView>([
+      [
+        "next-actions",
+        {
+          steps: [
+            {
+              targetRate: 20,
+              resources: {
+                services: { app: { maxCpuPctOfEnv: 99, maxMemPctOfEnv: 41 } },
+              },
+            },
+          ],
+        },
+      ],
+    ]);
+    const rows = buildMatrix(
+      summary,
+      new Map(),
+      manifests,
+      new Map(),
+      load,
+      capacity,
+    );
+    const next = rows.find((r) => r.variant === "next-actions")!;
+    // The ladder's top step, not the read leg's lower number, is the peak.
+    expect(next.appMaxCpuPctOfEnv).toBe(99);
+    expect(next.appMaxMemPctOfEnv).toBe(41);
+    // A variant with no resources keeps blank (never zero) resource cells.
+    const other = rows.find((r) => r.variant === "tanstack-express-rest")!;
+    expect(other.appMaxCpuPctOfEnv).toBeNull();
+    expect(other.appMaxMemPctOfEnv).toBeNull();
   });
 
   it("computes percentiles with interpolation", () => {

@@ -10,6 +10,15 @@ import { runCommand, type Compose } from "./docker.js";
 import { SEEDER_IMAGE, composeEnv } from "./plan.js";
 import { Compose as ComposeClass } from "./docker.js";
 import { verifyDigest, verifySchema } from "./verify.js";
+import {
+  generatorCpuPercent,
+  resourceSeriesFile,
+  startResourceSampler,
+  stopResourceSampler,
+  type ResourceSampler,
+  type ResourceSummary,
+  type SamplerCapture,
+} from "./sampler.js";
 import type { CapacityScenario } from "../config/schema.js";
 import type { FixtureParams } from "./fixture.js";
 import type { ResolvedVariant, ResourceCaps } from "./types.js";
@@ -65,6 +74,11 @@ export interface LifecycleOptions {
   correctness?: boolean;
   /** Run the render-speed collector (plan R6). Non-fatal: measurement, not a gate. */
   render?: { warmup: number; measured: number };
+  /**
+   * Write the raw 1 Hz resource series (`resources/*-samples.json`); the folded
+   * aggregates always land in the per-leg reports (plan §3.3).
+   */
+  keepRawSamples?: boolean;
   /** Run the load generator (plan R7). Non-fatal: measurement. */
   load?: {
     vus: number;
@@ -314,6 +328,8 @@ export interface LoadReport {
   paths: Record<string, { p50Ms: number | null; p95Ms: number | null }>;
   /** Recorded threshold labels (plan K2); never a gate. */
   thresholds: ThresholdResult[];
+  /** The app/db containers' own CPU/RAM during the leg (plan §3.3). */
+  resources: ResourceSummary | null;
   pgStatements: {
     before: number | null;
     after: number | null;
@@ -397,6 +413,40 @@ function k6ExitFatal(exitCode: number, thresholds: ThresholdResult[]): boolean {
   return !thresholds.some((threshold) => !threshold.ok);
 }
 
+// --- Container resource sampling (container-resource-usage-tracking plan) ----
+//
+// The sampler starts just before the k6 container is created and stops after it
+// exits, so the series covers exactly the leg. It samples the stack's own
+// services (app/api/spa/db) plus the `bench-k6-*` generator — the generator's CPU
+// is derived from this same pass (a consolidation, not a behaviour change).
+// Best-effort: a sampling failure is recorded as `resources: null`, never fatal.
+
+async function startLegSampler(
+  compose: Compose,
+  options: LifecycleOptions,
+  variant: ResolvedVariant,
+): Promise<ResourceSampler | null> {
+  return startResourceSampler({
+    compose,
+    caps: options.resources,
+    generatorName: `bench-k6-${variant.id}`,
+  });
+}
+
+/** Write the raw 1 Hz series, gated on `report.keepRawSamples` (plan §3.3). */
+function writeResourceSeries(
+  options: LifecycleOptions,
+  variant: ResolvedVariant,
+  relative: string,
+  capture: SamplerCapture | null,
+): void {
+  if (!options.keepRawSamples || !capture) return;
+  options.artifacts.writeJson(
+    `variants/${variant.id}/resources/${relative}`,
+    resourceSeriesFile(capture),
+  );
+}
+
 /**
  * Read-only load via `grafana/k6` on the stack network (plan §6.5/§8.2),
  * targeting the published host port through `host.docker.internal`. Monitors the
@@ -425,6 +475,7 @@ async function runLoadSuite(
   const { vus, durationSeconds, generatorMaxCpuPercent } = options.load!;
 
   const before = await postgresStatements(compose);
+  const sampler = await startLegSampler(compose, options, variant);
   const run = await runK6Container({
     containerName: `bench-k6-${variant.id}`,
     network,
@@ -439,7 +490,9 @@ async function runLoadSuite(
       DURATION: `${durationSeconds}s`,
     },
   });
+  const capture = await stopResourceSampler(sampler);
   options.artifacts.write(`variants/${variant.id}/k6.log`, run.logs);
+  writeResourceSeries(options, variant, "read-samples.json", capture);
 
   const summary =
     readJsonFile<K6SummaryFile>(path.join(outDir, "k6-summary.json")) ?? {};
@@ -449,6 +502,7 @@ async function runLoadSuite(
 
   const after = await postgresStatements(compose);
 
+  const generatorPercent = generatorCpuPercent(capture);
   const report: LoadReport = {
     target: target.service,
     baseUrl,
@@ -460,11 +514,13 @@ async function runLoadSuite(
     failedRate:
       summaryMetric(summary, "http_req_failed", "rate") ??
       summaryMetric(summary, "http_req_failed", "value"),
-    generatorMaxCpuPercentObserved: run.maxCpuPercent,
+    generatorMaxCpuPercentObserved: generatorPercent,
     generatorMaxCpuPercentLimit: generatorMaxCpuPercent,
-    generatorSaturated: run.maxCpuPercent > generatorMaxCpuPercent,
+    generatorSaturated:
+      generatorPercent !== null && generatorPercent > generatorMaxCpuPercent,
     paths: perPathLatency(summary),
     thresholds,
+    resources: capture?.summary ?? null,
     pgStatements: {
       before,
       after,
@@ -475,7 +531,7 @@ async function runLoadSuite(
   return report;
 }
 
-/** Run the pinned k6 image detached on the stack network; sample its CPU. */
+/** Run the pinned k6 image detached on the stack network; wait for it to exit. */
 async function runK6Container(options: {
   containerName: string;
   network: string;
@@ -484,7 +540,7 @@ async function runK6Container(options: {
   script: string;
   summaryFile: string;
   env: Record<string, string>;
-}): Promise<{ exitCode: number; maxCpuPercent: number; logs: string }> {
+}): Promise<{ exitCode: number; logs: string }> {
   await runCommand("docker", ["rm", "-f", options.containerName], {
     allowFailure: true,
   });
@@ -521,29 +577,13 @@ async function runK6Container(options: {
     );
   }
 
-  let maxCpuPercent = 0;
+  // The generator's CPU/RAM — and the app/db containers' — are sampled by the
+  // resource sampler around this call; this loop only waits for k6 to exit.
   for (;;) {
-    const stats = await runCommand(
-      "docker",
-      [
-        "stats",
-        "--no-stream",
-        "--format",
-        "{{.CPUPerc}}",
-        options.containerName,
-      ],
-      { allowFailure: true },
-    );
-    if (stats.code !== 0) break;
-    const percent = Number.parseFloat(stats.stdout.replace("%", "").trim());
-    if (Number.isFinite(percent))
-      maxCpuPercent = Math.max(maxCpuPercent, percent);
     const running = await runCommand(
       "docker",
       ["inspect", "-f", "{{.State.Running}}", options.containerName],
-      {
-        allowFailure: true,
-      },
+      { allowFailure: true },
     );
     if (running.stdout.trim() !== "true") break;
     await delay(1000);
@@ -559,7 +599,7 @@ async function runK6Container(options: {
   await runCommand("docker", ["rm", "-f", options.containerName], {
     allowFailure: true,
   });
-  return { exitCode, maxCpuPercent, logs: `${logs.stdout}${logs.stderr}` };
+  return { exitCode, logs: `${logs.stdout}${logs.stderr}` };
 }
 
 interface CaptureFile {
@@ -586,10 +626,12 @@ interface MutationReport {
     deletedRemaining: number | null;
     ok: boolean;
   };
-  generatorMaxCpuPercentObserved: number;
+  generatorMaxCpuPercentObserved: number | null;
   generatorSaturated: boolean;
   /** Recorded threshold labels (plan K2); never a gate. */
   thresholds: ThresholdResult[];
+  /** The app/db containers' own CPU/RAM during the leg (plan §3.3). */
+  resources: ResourceSummary | null;
   pgStatements: {
     before: number | null;
     after: number | null;
@@ -659,6 +701,7 @@ async function runMutationSuite(
     DELETE_TO: String(mutations.pools.deleteTo),
     READ_PATHS: mutations.readPaths.join(","),
   };
+  const sampler = await startLegSampler(compose, options, variant);
   const run = await runK6Container({
     containerName: `bench-k6-${variant.id}`,
     network,
@@ -668,7 +711,9 @@ async function runMutationSuite(
     summaryFile: "mutations-summary.json",
     env,
   });
+  const legCapture = await stopResourceSampler(sampler);
   options.artifacts.write(`variants/${variant.id}/mutations.log`, run.logs);
+  writeResourceSeries(options, variant, "mutations-samples.json", legCapture);
 
   const after = await postgresStatements(compose);
 
@@ -738,6 +783,7 @@ async function runMutationSuite(
       deletedRemaining === 0,
   };
 
+  const generatorPercent = generatorCpuPercent(legCapture);
   const report: MutationReport = {
     mutationOrigin,
     counts: mutations.counts,
@@ -748,10 +794,12 @@ async function runMutationSuite(
         summaryMetric(summary, "http_req_duration", "p(95)"),
     },
     postconditions,
-    generatorMaxCpuPercentObserved: run.maxCpuPercent,
+    generatorMaxCpuPercentObserved: generatorPercent,
     generatorSaturated:
-      run.maxCpuPercent > options.load!.generatorMaxCpuPercent,
+      generatorPercent !== null &&
+      generatorPercent > options.load!.generatorMaxCpuPercent,
     thresholds,
+    resources: legCapture?.summary ?? null,
     pgStatements: {
       before,
       after,
@@ -771,9 +819,11 @@ export interface CapacityStepReport {
   failedRate: number | null;
   droppedIterations: number | null;
   vusMax: number | null;
-  generatorMaxCpuPercentObserved: number;
+  generatorMaxCpuPercentObserved: number | null;
   generatorSaturated: boolean;
   thresholds: ThresholdResult[];
+  /** The app/db containers' own CPU/RAM during this step (plan §3.3). */
+  resources: ResourceSummary | null;
 }
 
 /**
@@ -830,6 +880,7 @@ async function runCapacitySuite(
 
   const steps: CapacityStepReport[] = [];
   for (const rate of scenario.ratesPerSecond) {
+    const sampler = await startLegSampler(compose, options, variant);
     const run = await runK6Container({
       containerName: `bench-k6-${variant.id}`,
       network,
@@ -856,6 +907,13 @@ async function runCapacitySuite(
         DELETE_TO: String(pools?.deleteTo ?? 1),
       },
     });
+    const legCapture = await stopResourceSampler(sampler);
+    writeResourceSeries(
+      options,
+      variant,
+      `capacity/${rate}-samples.json`,
+      legCapture,
+    );
     log.push(`=== ${rate}/s ===\n${run.logs}`);
 
     const summary =
@@ -863,6 +921,7 @@ async function runCapacitySuite(
         path.join(outDir, `capacity-${rate}-summary.json`),
       ) ?? {};
     const thresholds = summaryThresholds(summary);
+    const generatorPercent = generatorCpuPercent(legCapture);
     const step: CapacityStepReport = {
       targetRate: rate,
       requests: summaryMetric(summary, "http_reqs", "count"),
@@ -876,10 +935,12 @@ async function runCapacitySuite(
       vusMax:
         summaryMetric(summary, "vus_max", "value") ??
         summaryMetric(summary, "vus_max", "max"),
-      generatorMaxCpuPercentObserved: run.maxCpuPercent,
+      generatorMaxCpuPercentObserved: generatorPercent,
       generatorSaturated:
-        run.maxCpuPercent > options.load!.generatorMaxCpuPercent,
+        generatorPercent !== null &&
+        generatorPercent > options.load!.generatorMaxCpuPercent,
       thresholds,
+      resources: legCapture?.summary ?? null,
     };
     options.artifacts.writeJson(
       `variants/${variant.id}/capacity/${rate}.json`,
