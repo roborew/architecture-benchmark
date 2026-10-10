@@ -1,6 +1,7 @@
 // Controller entry point (plan §5). Usage:
-//   pnpm rig:run --config config/smoke-matrix.yaml
-//   pnpm rig:run --config config/default.yaml --only next-actions --no-build
+//   pnpm rig:run --config config/medium-2c2g.yaml
+//   pnpm rig:run --config config/small-1c1g.yaml --only next-actions --no-build
+//   pnpm rig:matrix                       # whole load × resource matrix (see matrix.ts)
 //
 // Serial by design (plan §7): one stack at a time on an idle host. Everything is
 // written under `testing-rig/results/<run-id>/`.
@@ -47,7 +48,7 @@ interface Options {
 
 function parseArgs(args: string[]): Options {
   const options: Options = {
-    config: path.join(rigRoot, "config", "default.yaml"),
+    config: path.join(rigRoot, "config", "medium-2c2g.yaml"),
     manifests: path.join(rigRoot, "manifests"),
     build: { noCache: false },
     buildSeeder: true,

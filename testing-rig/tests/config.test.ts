@@ -64,35 +64,40 @@ const parse = (mutate: (cfg: any) => void) => {
 };
 
 describe("experiment config schema", () => {
-  it("loads the shipped default and smoke configs", async () => {
-    const def = await loadConfig(path.join(rigRoot, "config", "default.yaml"));
-    expect(def.variants).toHaveLength(14);
-    expect(def.variants).not.toContain("next-template");
-    expect(def.load.generatorMaxCpuPercent).toBe(75);
-
-    const smoke = await loadConfig(
-      path.join(rigRoot, "config", "smoke-matrix.yaml"),
-    );
-    expect(smoke.trials).toBe(1);
-    expect(smoke.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
-  });
-
-  it("loads the shipped medium and heavy load profiles", async () => {
-    const medium = await loadConfig(
-      path.join(rigRoot, "config", "medium-load.yaml"),
-    );
-    expect(medium.name).toBe("medium-load");
-    expect(medium.variants).toHaveLength(14);
-    expect(medium.fixture.taskCount).toBe(10000);
-    expect(medium.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
-
-    const heavy = await loadConfig(
-      path.join(rigRoot, "config", "heavy-load.yaml"),
-    );
-    expect(heavy.name).toBe("heavy-load-max");
-    expect(heavy.variants).toHaveLength(14);
-    expect(heavy.resources.appCpus).toBe(4);
-    expect(heavy.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
+  it("loads the shipped load x resource matrix (small/medium/large x 1c1g/2c2g/4c4g)", async () => {
+    const levels = [
+      { level: "small", trials: 1, taskCount: 1000 },
+      { level: "medium", trials: 2, taskCount: 10000 },
+      { level: "large", trials: 3, taskCount: 100000 },
+    ];
+    const envelopes = [
+      { tag: "1c1g", cpus: 1, memoryMb: 1024 },
+      { tag: "2c2g", cpus: 2, memoryMb: 2048 },
+      { tag: "4c4g", cpus: 4, memoryMb: 4096 },
+    ];
+    for (const { level, trials, taskCount } of levels) {
+      for (const env of envelopes) {
+        const file = `${level}-${env.tag}.yaml`;
+        const cfg = await loadConfig(path.join(rigRoot, "config", file));
+        expect(cfg.name, file).toBe(level);
+        expect(cfg.variants, file).toHaveLength(14);
+        expect(cfg.variants, file).not.toContain("next-template");
+        expect(cfg.trials, file).toBe(trials);
+        expect(cfg.fixture.taskCount, file).toBe(taskCount);
+        // Each file bakes its own resource caps (the matrix's other axis).
+        expect(cfg.resources, file).toEqual({
+          appCpus: env.cpus,
+          appMemoryMb: env.memoryMb,
+          dbCpus: env.cpus,
+          dbMemoryMb: env.memoryMb,
+        });
+        expect(cfg.load.generatorMaxCpuPercent, file).toBe(75);
+        expect(
+          cfg.scenarios.map((s) => s.kind),
+          file,
+        ).toEqual(["volume", "capacity"]);
+      }
+    }
   });
 
   it("defaults generatorMaxCpuPercent when `load:` is absent", () => {
@@ -133,12 +138,11 @@ describe("experiment config schema", () => {
     expect(parse((c) => (c.stages = { render: "yes" })).success).toBe(false);
   });
 
-  it("selects all three stages in the shipped matrix configs, none in the example", async () => {
+  it("selects all three stages in the shipped matrix, none in the example", async () => {
     for (const file of [
-      "default.yaml",
-      "smoke-matrix.yaml",
-      "medium-load.yaml",
-      "heavy-load.yaml",
+      "small-1c1g.yaml",
+      "medium-2c2g.yaml",
+      "large-4c4g.yaml",
     ]) {
       const config = await loadConfig(path.join(rigRoot, "config", file));
       expect(config.stages, file).toEqual({
@@ -199,7 +203,7 @@ describe("experiment config schema", () => {
 
   it("hashes the effective run manifest deterministically", async () => {
     const config = await loadConfig(
-      path.join(rigRoot, "config", "smoke-matrix.yaml"),
+      path.join(rigRoot, "config", "small-2c2g.yaml"),
     );
     const a = effectiveRunManifest(config);
     const b = effectiveRunManifest(config);

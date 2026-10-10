@@ -1,9 +1,13 @@
-# Default experiment config (normative `scenarios:` shape — plan §4).
-# All 14 DB-backed variants. `next-template` is excluded deliberately: it has
-# no database, so it cannot participate in DB-backed runs (plan §8.4).
+# Large load @ 4 CPU / 4096 MB
+# One cell of the load x resource matrix (see pnpm rig:matrix). The only
+# difference between the large files is the resource envelope: they all
+# share the same workload so the pair isolates load from hardware.
+# NOTE: the read VUs derive from appCpus (VUs = appCpus x 2), so a bigger
+# envelope also offers more load -- use --resources with a base config to hold
+# offered load constant instead.
 
 schemaVersion: 1
-name: medium-crud-volume-100
+name: large
 variants:
   - next-actions
   - next-drizzle
@@ -19,16 +23,16 @@ variants:
   - tanstack-elixir-rest
   - tanstack-express-graphql
   - tanstack-express-orpc
-trials: 5
+trials: 3
 variantOrder: rotate
 
 fixture:
   seedVersion: 1
   seed: 42
-  projectCount: 50
-  userCount: 200
-  taskCount: 50000
-  commentCount: 100000
+  projectCount: 100
+  userCount: 500
+  taskCount: 100000
+  commentCount: 200000
   baseTimestamp: "2025-01-01T00:00:00Z"
   statusPercent: { todo: 50, "in progress": 30, done: 20 }
   workingSetFraction: 0.20
@@ -49,41 +53,35 @@ browser:
   operations: [list, detail, create, update, delete]
 
 scenarios:
-  - id: volume-100-writes
+  - id: volume-large-writes
     kind: volume
-    counts: { list: 400, detail: 200, create: 100, update: 100, delete: 100 }
-    concurrency: 5
-    maxAttemptsPerOperation: 110
-    maxDurationSeconds: 600
+    counts: { list: 2000, detail: 1000, create: 500, update: 500, delete: 500 }
+    concurrency: 25
+    maxAttemptsPerOperation: 650
+    maxDurationSeconds: 1800
     resetBefore: true
-  - id: capacity-mixed
+  - id: capacity-large-mixed
     kind: capacity
     weights: { list: 40, detail: 20, create: 15, update: 15, delete: 10 }
-    ratesPerSecond: [5, 10, 20, 40]
-    durationPerStepSeconds: 180
-    preallocatedVUs: 50
-    maxVUs: 200
+    ratesPerSecond: [20, 50, 100, 200]
+    durationPerStepSeconds: 120
+    preallocatedVUs: 100
+    maxVUs: 400
     resetBefore: true
 
 network:
   browserToAppAddedRttMs: 0
-  # Phase-1 cohort has no separate backend service: this must stay 0
-  # (the validator rejects nonzero values — plan §7).
   appToApiAddedRttMs: 0
 
 resources:
-  appCpus: 2
-  appMemoryMb: 2048
-  dbCpus: 2
-  dbMemoryMb: 2048
+  appCpus: 4
+  appMemoryMb: 4096
+  dbCpus: 4
+  dbMemoryMb: 4096
 
 load:
-  # A trial whose generator process exceeds this share of a core is rejected
-  # as generator-saturated, not counted as an app measurement (plan §6.5).
   generatorMaxCpuPercent: 75
 
-# Stage selection lives in the config so the canonical command stays the simple
-# `pnpm rig:run --config config/default.yaml` (plan D4).
 stages:
   correctness: true
   render: true

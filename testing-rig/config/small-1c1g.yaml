@@ -1,10 +1,13 @@
-# Smoke matrix — the reduced first-pass budget (plan §8.3).
-# One trial, the small fixture, one volume scenario, all 14 variants. It is the
-# config the R8 "first full matrix" gate is rehearsed against before the long
-# default run, and the one CI-style local checks should use.
+# Small load @ 1 CPU / 1024 MB
+# One cell of the load x resource matrix (see pnpm rig:matrix). The only
+# difference between the small files is the resource envelope: they all
+# share the same workload so the pair isolates load from hardware.
+# NOTE: the read VUs derive from appCpus (VUs = appCpus x 2), so a bigger
+# envelope also offers more load -- use --resources with a base config to hold
+# offered load constant instead.
 
 schemaVersion: 1
-name: smoke-matrix
+name: small
 variants:
   - next-actions
   - next-drizzle
@@ -50,16 +53,14 @@ browser:
   operations: [list, detail, create, update, delete]
 
 scenarios:
-  - id: volume-50-writes
+  - id: volume-small-writes
     kind: volume
     counts: { list: 100, detail: 50, create: 50, update: 50, delete: 50 }
     concurrency: 5
     maxAttemptsPerOperation: 60
     maxDurationSeconds: 300
     resetBefore: true
-  # A small capacity ladder so the compare dashboard has three levels of ladder
-  # data (plan K3/§8.2); keeps the smoke run ~1 min/variant longer.
-  - id: capacity-smoke-mixed
+  - id: capacity-small-mixed
     kind: capacity
     weights: { list: 40, detail: 20, create: 15, update: 15, delete: 10 }
     ratesPerSecond: [5, 10]
@@ -73,10 +74,10 @@ network:
   appToApiAddedRttMs: 0
 
 resources:
-  appCpus: 2
-  appMemoryMb: 2048
-  dbCpus: 2
-  dbMemoryMb: 2048
+  appCpus: 1
+  appMemoryMb: 1024
+  dbCpus: 1
+  dbMemoryMb: 1024
 
 load:
   generatorMaxCpuPercent: 75

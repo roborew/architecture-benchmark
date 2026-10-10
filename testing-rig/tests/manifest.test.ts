@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, loadManifestDirectory } from "../src/config/load.js";
 import { variantManifestSchema } from "../src/config/schema.js";
 
-const rigRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rigRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 const baseSpa = {
   schemaVersion: 2,
@@ -14,7 +17,12 @@ const baseSpa = {
   composeFile: "../apps/x/compose.yaml",
   projectPrefix: "bench-x",
   services: {
-    api: { composeService: "api", kind: "api", healthPath: "/healthz", hostPortEnv: "API_PORT" },
+    api: {
+      composeService: "api",
+      kind: "api",
+      healthPath: "/healthz",
+      hostPortEnv: "API_PORT",
+    },
     spa: {
       composeService: "spa",
       kind: "spa",
@@ -34,16 +42,22 @@ const baseSpa = {
 } as const;
 
 describe("variant manifest schema v2", () => {
-  it("validates every shipped manifest and matches the default config", async () => {
-    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
-    const config = await loadConfig(path.join(rigRoot, "config", "default.yaml"));
+  it("validates every shipped manifest and matches a shipped config", async () => {
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
+    const config = await loadConfig(
+      path.join(rigRoot, "config", "medium-2c2g.yaml"),
+    );
 
     expect(manifests.size).toBe(14);
     expect([...manifests.keys()].sort()).toEqual([...config.variants].sort());
   });
 
   it("gives spa-api variants an api + spa pair and singles an app", async () => {
-    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
     for (const manifest of manifests.values()) {
       if (manifest.cohort === "spa-api") {
         expect(manifest.services.api, manifest.id).toBeDefined();
@@ -63,7 +77,12 @@ describe("variant manifest schema v2", () => {
 
   it("rejects a variant that declares both app and api", () => {
     const manifest = structuredClone(baseSpa) as any;
-    manifest.services.app = { composeService: "app", kind: "app", healthPath: "/healthz", hostPortEnv: "APP_PORT" };
+    manifest.services.app = {
+      composeService: "app",
+      kind: "app",
+      healthPath: "/healthz",
+      hostPortEnv: "APP_PORT",
+    };
     expect(variantManifestSchema.safeParse(manifest).success).toBe(false);
   });
 

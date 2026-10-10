@@ -1,15 +1,13 @@
-# Heavy load — maximal push within the current load implementation.
-# NOTES BEFORE RUNNING (see plan §6.1):
-#  - the mutation leg uses volume-heavy-writes counts at concurrency appCpus*2
-#    (8), hard-capped at 10 minutes by the rig;
-#  - the capacity ladder below is executed as a constant-arrival-rate ladder
-#    (plan K3), one run per rate, reset once before the ladder;
-#  - trials is forward-compatible (one pass today);
-#  - seed/reset at this fixture size takes minutes per variant — rehearse with
-#    --only next-actions first, and check Docker Desktop's memory budget
-#    (this stack caps app 4096 + db 4096 + seeder/k6; VM headroom ≥ 10 GB).
+# Large load @ 1 CPU / 1024 MB
+# One cell of the load x resource matrix (see pnpm rig:matrix). The only
+# difference between the large files is the resource envelope: they all
+# share the same workload so the pair isolates load from hardware.
+# NOTE: the read VUs derive from appCpus (VUs = appCpus x 2), so a bigger
+# envelope also offers more load -- use --resources with a base config to hold
+# offered load constant instead.
+
 schemaVersion: 1
-name: heavy-load-max
+name: large
 variants:
   - next-actions
   - next-drizzle
@@ -55,14 +53,14 @@ browser:
   operations: [list, detail, create, update, delete]
 
 scenarios:
-  - id: volume-heavy-writes
+  - id: volume-large-writes
     kind: volume
     counts: { list: 2000, detail: 1000, create: 500, update: 500, delete: 500 }
     concurrency: 25
     maxAttemptsPerOperation: 650
     maxDurationSeconds: 1800
     resetBefore: true
-  - id: capacity-heavy-mixed
+  - id: capacity-large-mixed
     kind: capacity
     weights: { list: 40, detail: 20, create: 15, update: 15, delete: 10 }
     ratesPerSecond: [20, 50, 100, 200]
@@ -76,16 +74,14 @@ network:
   appToApiAddedRttMs: 0
 
 resources:
-  appCpus: 4
-  appMemoryMb: 4096
-  dbCpus: 4
-  dbMemoryMb: 4096
+  appCpus: 1
+  appMemoryMb: 1024
+  dbCpus: 1
+  dbMemoryMb: 1024
 
 load:
   generatorMaxCpuPercent: 75
 
-# Stage selection lives in the config so the canonical command stays the simple
-# `pnpm rig:run --config config/heavy-load.yaml` (plan D4).
 stages:
   correctness: true
   render: true

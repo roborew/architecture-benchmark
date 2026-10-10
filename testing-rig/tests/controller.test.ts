@@ -14,6 +14,11 @@ import {
 } from "../src/controller/fixture.js";
 import { composeEnv, planVariant } from "../src/controller/plan.js";
 import { parseResourcesSpec } from "../src/controller/resources.js";
+import {
+  DEFAULT_ENVELOPES,
+  DEFAULT_LEVELS,
+  planMatrix,
+} from "../src/controller/matrix.js";
 
 const rigRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -130,6 +135,32 @@ describe("resource envelope override (R1)", () => {
       /both cpus and memoryMb/,
     );
     expect(() => parseResourcesSpec("", base)).toThrow(/empty/);
+  });
+});
+
+describe("matrix runner", () => {
+  it("ships a small -> medium -> large ladder and 1c/2c/4c envelopes", () => {
+    expect(DEFAULT_LEVELS).toEqual(["small", "medium", "large"]);
+    expect(DEFAULT_ENVELOPES.map((e) => e.tag)).toEqual([
+      "1c1g",
+      "2c2g",
+      "4c4g",
+    ]);
+  });
+
+  it("plans levels x envelopes as standalone config files", () => {
+    const cells = planMatrix(
+      ["small", "medium"],
+      DEFAULT_ENVELOPES.slice(0, 2),
+    );
+    expect(cells.map((c) => c.label)).toEqual([
+      "small @ 1c1g",
+      "small @ 2c2g",
+      "medium @ 1c1g",
+      "medium @ 2c2g",
+    ]);
+    expect(cells[0]!.config.endsWith("config/small-1c1g.yaml")).toBe(true);
+    expect(cells[3]!.config.endsWith("config/medium-2c2g.yaml")).toBe(true);
   });
 });
 

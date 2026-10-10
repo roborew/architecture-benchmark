@@ -10,6 +10,7 @@ command arrays in manifests are a design shape the controller resolves itself.
 | File           | Responsibility                                                                                                                                                                                              |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cli.ts`       | Entry point (`pnpm rig:run`): parse args, load + cross-check config and manifests, preflight eligibility, plan variants, run them, write artefacts.                                                         |
+| `matrix.ts`    | Entry point (`pnpm rig:matrix`): run every `config/<load>-<env>.yaml` cell in one go (sequential). Pure `planMatrix` + spawn loop.                                                                          |
 | `types.ts`     | `ResolvedVariant`/`ResolvedService`, `CommandResult`, `CommandError`.                                                                                                                                       |
 | `docker.ts`    | `runCommand` (execFile wrapper) and the `Compose` class (`build`/`up`/`down`/`runService`/`exec`/`images`/`ps`/`logs`).                                                                                     |
 | `ports.ts`     | Distinct free host-port allocation, once per (run, variant).                                                                                                                                                |
@@ -37,15 +38,17 @@ with `reset`/`verify` available.
 
 ```bash
 cd testing-rig
-pnpm rig:run --config config/smoke-matrix.yaml                 # all 14 variants
-pnpm rig:run --config config/smoke-matrix.yaml --only next-actions
-pnpm rig:run --config config/default.yaml --only next-actions --no-build
+pnpm rig:run --config config/small-1c1g.yaml                  # all 14 variants
+pnpm rig:run --config config/medium-2c2g.yaml --only next-actions
+pnpm rig:run --config config/large-4c4g.yaml --only next-actions --no-build
+pnpm rig:matrix                                               # small/medium/large × 1c1g/2c2g/4c4g
 ```
 
 Flags: `--config`, `--manifests`, `--only id[,id]`, `--no-build`, `--no-cache`,
 `--skip-seeder-build`, `--readiness-timeout <ms>`, `--resources <spec>`
 (`BENCH_RESOURCES` is the env fallback), plus the one-off upward stage overrides
-`--with-correctness` / `--with-render` / `--with-load`.
+`--with-correctness` / `--with-render` / `--with-load`. `rig:matrix` takes
+`--loads`, `--envelopes`, `--dry-run` and forwards the pass-through flags.
 
 **Stage selection is config-driven** (plan D4): `stages: { correctness, render,
 load }` in the YAML decides what runs (defaults all-off, so every existing config

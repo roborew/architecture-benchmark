@@ -11,21 +11,26 @@ everything under `results/<run-id>/`.
 pnpm install
 
 # Validate configs + every variant manifest (no Docker):
-pnpm config:validate config/default.yaml manifests
+pnpm config:validate config/medium-2c2g.yaml manifests
 
-# Run a matrix (needs the Docker daemon). Stage selection lives in the config
-# (`stages:`), so the canonical command is just the config:
-# smoke-matrix = reduced first pass; medium-load / heavy-load = quick mid/max profiles.
-pnpm rig:run --config config/smoke-matrix.yaml
-pnpm rig:run --config config/medium-load.yaml
-pnpm rig:run --config config/default.yaml --only next-actions
+# Run one cell of the matrix (needs the Docker daemon). Stage selection lives in
+# the config (`stages:`), so the canonical command is just the config:
+#   <load>-<env>.yaml  =  small|medium|large  ×  1c1g|2c2g|4c4g
+pnpm rig:run --config config/small-1c1g.yaml
+pnpm rig:run --config config/medium-2c2g.yaml
+pnpm rig:run --config config/large-4c4g.yaml --only next-actions
+
+# Run the WHOLE matrix (every load level × resource envelope) in one go:
+pnpm rig:matrix
+pnpm rig:matrix --loads small,medium --envelopes 2c2g,4c4g
+pnpm rig:matrix --dry-run            # print the plan, run nothing
 
 # One-off upward stage overrides for rehearsals (the config normally decides):
-pnpm rig:run --config config/medium-load.yaml --with-load --with-render
+pnpm rig:run --config config/medium-2c2g.yaml --with-load --with-render
 
-# Resource envelope (hardware-limitation testing), folded in before hashing:
-pnpm rig:run --config config/medium-load.yaml --resources cpus=2,memoryMb=2048
-BENCH_RESOURCES="cpus=4,memoryMb=4096" pnpm rig:run --config config/heavy-load.yaml
+# Ad-hoc envelope override, folded in before hashing (alternative to a file):
+pnpm rig:run --config config/medium-2c2g.yaml --resources cpus=4,memoryMb=4096
+BENCH_RESOURCES="cpus=4,memoryMb=4096" pnpm rig:run --config config/large-2c2g.yaml
 
 pnpm test        # the rig's own tests (no Docker)
 pnpm typecheck
@@ -37,6 +42,27 @@ pnpm report <run-id>
 # Rebuild the single results page over every run:
 pnpm report:all                # → results/index.html
 ```
+
+### The load × resource matrix
+
+The `config/` directory holds one file per **load level × resource envelope**,
+named `<load>-<env>.yaml`:
+
+| Load level | Fixture     | Envelopes (app + db CPUs / RAM) |
+| ---------- | ----------- | ------------------------------- |
+| `small`    | 1 k tasks   | `1c1g`, `2c2g`, `4c4g`          |
+| `medium`   | 10 k tasks  | `1c1g`, `2c2g`, `4c4g`          |
+| `large`    | 100 k tasks | `1c1g`, `2c2g`, `4c4g`          |
+
+Each file bakes its resource caps into the config, so `pnpm rig:run --config
+config/medium-4c4g.yaml` is a self-contained cell. `pnpm rig:matrix` runs all of
+them sequentially in one command; the compare view groups the resulting runs by
+`configName × envelope`.
+
+> Note: the read leg's VUs derive from `appCpus` (VUs = `appCpus × 2`), so a
+> bigger baked envelope also offers more load. To hold offered load constant and
+> vary only hardware, use `--resources` against a single config instead (the
+> flag pins VUs to the config's `appCpus`).
 
 ### Measurement stages
 
@@ -50,16 +76,16 @@ Stage selection is **config-driven** (`stages:` in the YAML), so
 | `render`      | pinned-Chromium render collector (`src/render/collect.ts`)                   | non-fatal — recorded           | ~2–5 min           |
 | `load`        | k6 read leg **+** captured-request mutation replay **+** the capacity ladder | non-fatal — recorded/withheld  | ~2–6 min           |
 
-Every shipped config (`default`, `smoke-matrix`, `medium-load`, `heavy-load`) sets all
-three to `true`; `config/examples/volume-1000-writes.yaml` stays lean (all off).
-The effective selection is recorded in `preflight.json#stages`, so the viewer can
-tell "not requested" from "attempted and failed".
+Every shipped config sets all three stages to `true`;
+`config/examples/volume-1000-writes.yaml` stays lean (all off). The effective
+selection is recorded in `preflight.json#stages`, so the viewer can tell "not
+requested" from "attempted and failed".
 
 ### Resource envelopes (hardware-limitation testing)
 
 `--resources <spec>` (or `BENCH_RESOURCES="…"`; the flag wins) overrides the
 stack's CPU/RAM caps _before_ the effective-config hash is computed, so
-`medium-load @ 2c/2g` and `medium-load @ 4c/4g` are distinct runs with distinct
+`medium-2c2g @ 4c/4g` and `medium-4c4g` are distinct runs with distinct
 `effectiveManifestSha256` values. Two forms:
 
 - envelope — `cpus=2,memoryMb=2048` (sets app + db)
@@ -72,16 +98,16 @@ Under an override the closed-loop read VUs are pinned to the config's original
 
 ## Layout
 
-| Path              | What it is                                                                                                                                             |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `config/`         | Experiment YAML. `smoke-matrix.yaml` (reduced first pass), `medium-load.yaml` / `heavy-load.yaml` (quick mid/max profiles), `default.yaml` (full run). |
-| `manifests/`      | One schema-v2 manifest per variant (14 DB-backed variants; `next-template` is excluded).                                                               |
-| `seeder/`         | The canonical fixture-loader image (`bench-seeder`), built once and used by every stack.                                                               |
-| `src/config/`     | Strict Zod schemas, loaders, effective-run-manifest hashing, the `config:validate` CLI.                                                                |
-| `src/controller/` | The lifecycle state machine (see `src/controller/README.md`).                                                                                          |
-| `src/fixtures/`   | The canonical fixture generator (algorithm v1).                                                                                                        |
-| `src/reporting/`  | Decision-matrix generation (`pnpm report`), the results viewer (`pnpm report:all`), and the static/complexity inventory.                               |
-| `results/`        | Git-ignored run artefacts (effective config, per-variant lifecycle, logs, digests).                                                                    |
+| Path              | What it is                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `config/`         | Experiment YAML. One file per load × envelope: `small                                                                    | medium | large`×`1c1g | 2c2g | 4c4g` (`small-1c1g.yaml`…`large-4c4g.yaml`), plus `config/examples/`. |
+| `manifests/`      | One schema-v2 manifest per variant (14 DB-backed variants; `next-template` is excluded).                                 |
+| `seeder/`         | The canonical fixture-loader image (`bench-seeder`), built once and used by every stack.                                 |
+| `src/config/`     | Strict Zod schemas, loaders, effective-run-manifest hashing, the `config:validate` CLI.                                  |
+| `src/controller/` | The lifecycle state machine (see `src/controller/README.md`).                                                            |
+| `src/fixtures/`   | The canonical fixture generator (algorithm v1).                                                                          |
+| `src/reporting/`  | Decision-matrix generation (`pnpm report`), the results viewer (`pnpm report:all`), and the static/complexity inventory. |
+| `results/`        | Git-ignored run artefacts (effective config, per-variant lifecycle, logs, digests).                                      |
 
 ## How a run works
 

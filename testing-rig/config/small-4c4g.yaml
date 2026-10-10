@@ -1,0 +1,92 @@
+# Small load @ 4 CPU / 4096 MB
+# One cell of the load x resource matrix (see pnpm rig:matrix). The only
+# difference between the small files is the resource envelope: they all
+# share the same workload so the pair isolates load from hardware.
+# NOTE: the read VUs derive from appCpus (VUs = appCpus x 2), so a bigger
+# envelope also offers more load -- use --resources with a base config to hold
+# offered load constant instead.
+
+schemaVersion: 1
+name: small
+variants:
+  - next-actions
+  - next-drizzle
+  - next-prisma
+  - next-trpc
+  - next-orpc
+  - tanstack-start-react
+  - tanstack-start-solid
+  - tanstack-express-rest
+  - tanstack-fastify-rest
+  - tanstack-flask-rest
+  - tanstack-fastapi-rest
+  - tanstack-elixir-rest
+  - tanstack-express-graphql
+  - tanstack-express-orpc
+trials: 1
+variantOrder: rotate
+
+fixture:
+  seedVersion: 1
+  seed: 42
+  projectCount: 5
+  userCount: 20
+  taskCount: 1000
+  commentCount: 1000
+  baseTimestamp: "2025-01-01T00:00:00Z"
+  statusPercent: { todo: 50, "in progress": 30, done: 20 }
+  workingSetFraction: 0.20
+
+reset:
+  betweenPhases: true
+  betweenTrials: true
+  method: database-recreate
+
+browser:
+  engine: chromium
+  workers: 1
+  warmupSamples: 5
+  measuredSamples: 10
+  viewport: { width: 1365, height: 768 }
+  cacheProfile: cold-browser-context
+  prefetch: disabled
+  operations: [list, detail, create, update, delete]
+
+scenarios:
+  - id: volume-small-writes
+    kind: volume
+    counts: { list: 100, detail: 50, create: 50, update: 50, delete: 50 }
+    concurrency: 5
+    maxAttemptsPerOperation: 60
+    maxDurationSeconds: 300
+    resetBefore: true
+  - id: capacity-small-mixed
+    kind: capacity
+    weights: { list: 40, detail: 20, create: 15, update: 15, delete: 10 }
+    ratesPerSecond: [5, 10]
+    durationPerStepSeconds: 30
+    preallocatedVUs: 20
+    maxVUs: 100
+    resetBefore: true
+
+network:
+  browserToAppAddedRttMs: 0
+  appToApiAddedRttMs: 0
+
+resources:
+  appCpus: 4
+  appMemoryMb: 4096
+  dbCpus: 4
+  dbMemoryMb: 4096
+
+load:
+  generatorMaxCpuPercent: 75
+
+stages:
+  correctness: true
+  render: true
+  load: true
+
+report:
+  keepRawSamples: true
+  outputFormats: [json, csv, html]
