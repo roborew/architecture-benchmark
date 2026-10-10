@@ -21,6 +21,12 @@
     "yaml": "^2.8.1",
     "zod": "^4.6.5"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.18.0",
