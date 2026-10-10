@@ -10,6 +10,11 @@ everything under `results/<run-id>/`.
 ```bash
 pnpm install
 
+# One-time per machine: the correctness/render stages drive Playwright's own
+# pinned Chromium (never a system Chrome), which `pnpm install` does not
+# download. On Linux this also installs the OS libraries (via `sudo apt-get`):
+pnpm e2e:install
+
 # Validate configs + every variant manifest (no Docker):
 pnpm config:validate config/medium-2c2g.yaml manifests
 

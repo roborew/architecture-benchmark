@@ -6,7 +6,9 @@
 // Serial by design (plan §7): one stack at a time on an idle host. Everything is
 // written under `testing-rig/results/<run-id>/`.
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { argv, exit } from "node:process";
@@ -192,6 +194,32 @@ async function main(): Promise<number> {
   if (!(await dockerAvailable())) {
     console.error("preflight failed: the Docker daemon is not reachable");
     return 1;
+  }
+
+  // The Playwright stages drive Playwright's own pinned Chromium — never a
+  // system Chrome — so a fresh machine only needs it downloaded once into the
+  // shared browser cache. `playwright install` is a quick no-op when present,
+  // so ensure it here rather than letting every variant build, seed, and then
+  // fail at browser launch. Truly bare Linux hosts may also need the OS
+  // libraries: `pnpm e2e:install` (runs `sudo apt-get` under the hood).
+  if (stages.correctness || stages.render) {
+    const { chromium } = await import("@playwright/test");
+    if (!existsSync(chromium.executablePath())) {
+      console.log("Playwright chromium missing — downloading (one-time) …");
+      const installed = spawnSync(
+        "pnpm",
+        ["exec", "playwright", "install", "chromium"],
+        { cwd: rigRoot, stdio: "inherit", timeout: 10 * 60 * 1000 },
+      );
+      if (installed.status !== 0) {
+        console.error(
+          "preflight failed: could not install Playwright chromium " +
+            "(no network? run 'pnpm e2e:install' manually)",
+        );
+        if (installed.error) console.error(`  - ${installed.error.message}`);
+        return 1;
+      }
+    }
   }
 
   // Compose project names allow only lowercase alphanumerics, `-`, `_` and

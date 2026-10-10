@@ -10,7 +10,7 @@
     "report": "tsx src/reporting/cli.ts",
     "report:all": "tsx src/reporting/viewer-cli.ts",
     "e2e": "playwright test --config e2e/playwright.config.ts",
-    "e2e:install": "playwright install chromium",
+    "e2e:install": "playwright install --with-deps chromium",
     "render:collect": "tsx src/render/collect.ts",
     "seeder:build": "docker build -t bench-seeder:local seeder",
     "test": "vitest run",
