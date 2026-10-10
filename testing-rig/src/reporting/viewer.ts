@@ -13,7 +13,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import type { VariantManifest } from "../config/schema.js";
-import type { StaticInventory } from "./inventory.js";
+import type { DependencyManifest, StaticInventory } from "./inventory.js";
 import { percentile } from "./matrix.js";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,8 @@ export interface VariantInventoryView {
   totals: Bucket;
   /** On-disk footprint (V3): whole-directory `du`, no exclusions. */
   footprint: { files: number; bytes: number } | null;
+  /** Per-manifest breakdown (D3) — shown in the deps cell's tooltip. */
+  dependencyManifests: DependencyManifest[];
   directDependencies: number;
   languages: number;
   serviceCount: number;
@@ -62,6 +64,39 @@ export interface VariantLoadView {
   failedRate: number;
   generatorSaturated: boolean;
   pgStatementsDelta: number | null;
+  /** Labelled threshold results (K2) — never gates, only recorded labels. */
+  thresholds: ThresholdResult[];
+  /** Per-path read latency (K1), keyed by path. */
+  paths: Record<string, { p50Ms: number | null; p95Ms: number | null }>;
+}
+
+export interface ThresholdResult {
+  metric: string;
+  expression: string;
+  ok: boolean;
+}
+
+/** One capacity-ladder step (K3). */
+export interface CapacityStepView {
+  targetRate: number;
+  achievedPerSecond: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  failedRate: number | null;
+  droppedIterations: number | null;
+  vusMax: number | null;
+  generatorSaturated: boolean;
+  thresholds: ThresholdResult[];
+}
+
+/** The read-weighted mixed capacity ladder for one variant (K3). */
+export interface VariantCapacityView {
+  /** False when the ladder could not run for this variant (blank, not zero). */
+  applicable: boolean;
+  /** True when write ops replayed captured requests; false = read-only. */
+  mixed: boolean;
+  scenarioId: string;
+  steps: CapacityStepView[];
 }
 
 export interface VariantMutationView {
@@ -78,6 +113,8 @@ export interface VariantMutationView {
     max: number;
   } | null;
   failures: number | null;
+  /** Recorded threshold labels (K2) — never a gate. */
+  thresholds: ThresholdResult[];
 }
 
 export interface VariantView {
@@ -94,6 +131,7 @@ export interface VariantView {
   render: VariantRenderView | null;
   load: VariantLoadView | null;
   mutations: VariantMutationView | null;
+  capacity: VariantCapacityView | null;
   correctness: "pass" | "fail" | null;
 }
 
@@ -110,6 +148,17 @@ export interface RunView {
   totalCount: number;
   /** The effective-config.yaml, parsed as-is (the "inputs of the run"). */
   inputs: Record<string, unknown> | null;
+  /**
+   * Effective stage selection from `preflight.json` (plan D1/D2). Null for runs
+   * whose preflight predates D1 — the viewer then never guesses "not requested".
+   */
+  requestedStages: {
+    correctness: boolean;
+    render: boolean;
+    load: boolean;
+  } | null;
+  /** The `--only` filter, if any (explains a partial run). */
+  only: string[] | null;
   variants: VariantView[];
 }
 
@@ -121,6 +170,9 @@ interface PreflightFile {
   gitRevision?: string;
   config?: string;
   effectiveManifestSha256?: string;
+  /** Effective stage selection (plan D1). Absent in pre-D1 runs. */
+  stages?: { correctness?: boolean; render?: boolean; load?: boolean };
+  only?: string[] | null;
 }
 
 interface SummaryResult {
@@ -154,19 +206,47 @@ interface LoadFile {
   failedRate?: number | null;
   generatorSaturated?: boolean;
   pgStatements?: { before?: number; after?: number; delta?: number };
+  /** Per-path read latency (K1), keyed by path. */
+  paths?: Record<string, { p50Ms?: number | null; p95Ms?: number | null }>;
+  /** Recorded threshold labels (K2) — never a gate. */
+  thresholds?: ThresholdResult[];
+}
+
+interface CapacityStepFile {
+  targetRate?: number;
+  achievedPerSecond?: number | null;
+  p95Ms?: number | null;
+  p99Ms?: number | null;
+  failedRate?: number | null;
+  droppedIterations?: number | null;
+  vusMax?: number | null;
+  generatorSaturated?: boolean;
+  thresholds?: ThresholdResult[];
+}
+
+interface CapacityFile {
+  applicable?: boolean;
+  mixed?: boolean;
+  scenarioId?: string;
+  steps?: CapacityStepFile[];
 }
 
 interface K6Metric {
   count?: number;
   rate?: number;
+  value?: number;
   avg?: number;
   med?: number;
   min?: number;
   max?: number;
   fails?: number;
+  passes?: number;
   "p(90)"?: number;
   "p(95)"?: number;
   "p(99)"?: number;
+  /** New (handleSummary) shape: `{ [metric]: { values, thresholds } }`. */
+  values?: Record<string, number>;
+  thresholds?: Record<string, { ok?: boolean }>;
 }
 
 interface MutationsSummaryFile {
@@ -209,6 +289,57 @@ const p50 = (values: number[] | undefined): number | null =>
 const positive = (value: number | null | undefined): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
+/** Sort + sanitise recorded threshold labels (K2) so they render deterministically. */
+function normaliseThresholds(
+  raw: ThresholdResult[] | undefined,
+): ThresholdResult[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ThresholdResult[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    out.push({
+      metric: String(entry.metric ?? ""),
+      expression: String(entry.expression ?? ""),
+      ok: entry.ok === true,
+    });
+  }
+  out.sort((a, b) =>
+    a.metric === b.metric
+      ? a.expression < b.expression
+        ? -1
+        : a.expression > b.expression
+          ? 1
+          : 0
+      : a.metric < b.metric
+        ? -1
+        : 1,
+  );
+  return out;
+}
+
+/** Lift per-metric threshold results out of a raw k6 (handleSummary) metrics map. */
+function thresholdsFromK6(
+  metrics: Record<string, K6Metric> | undefined,
+): ThresholdResult[] {
+  const out: ThresholdResult[] = [];
+  for (const [metric, definition] of Object.entries(metrics ?? {})) {
+    for (const [expression, result] of Object.entries(
+      definition.thresholds ?? {},
+    ))
+      out.push({ metric, expression, ok: result?.ok === true });
+  }
+  return normaliseThresholds(out);
+}
+
+/** Read a k6 metric value from either the new (`values`) or legacy (flat) shape. */
+function k6Value(
+  metric: K6Metric | undefined,
+  key: string,
+): number | undefined {
+  const value = metric?.values?.[key] ?? metric?.[key as keyof K6Metric];
+  return typeof value === "number" ? value : undefined;
+}
+
 function reduceRender(report: RenderFile | null): VariantRenderView | null {
   if (!report) return null;
   const pages: VariantRenderView["pages"] = {};
@@ -233,6 +364,14 @@ function reduceRender(report: RenderFile | null): VariantRenderView | null {
 function reduceLoad(report: LoadFile | null): VariantLoadView | null {
   if (!report) return null;
   const generatorSaturated = report.generatorSaturated === true;
+  const paths: Record<string, { p50Ms: number | null; p95Ms: number | null }> =
+    {};
+  for (const [path, values] of Object.entries(report.paths ?? {})) {
+    paths[path] = {
+      p50Ms: positive(values.p50Ms ?? null),
+      p95Ms: positive(values.p95Ms ?? null),
+    };
+  }
   return {
     vus: report.vus ?? 0,
     requests: report.requests ?? 0,
@@ -245,6 +384,32 @@ function reduceLoad(report: LoadFile | null): VariantLoadView | null {
     failedRate: report.failedRate ?? 0,
     generatorSaturated,
     pgStatementsDelta: report.pgStatements?.delta ?? null,
+    paths,
+    thresholds: normaliseThresholds(report.thresholds),
+  };
+}
+
+function reduceCapacity(
+  report: CapacityFile | null,
+): VariantCapacityView | null {
+  if (!report) return null;
+  const steps: CapacityStepView[] = (report.steps ?? []).map((step) => ({
+    targetRate: step.targetRate ?? 0,
+    achievedPerSecond: positive(step.achievedPerSecond ?? null),
+    p95Ms: positive(step.p95Ms ?? null),
+    p99Ms: positive(step.p99Ms ?? null),
+    failedRate: step.failedRate ?? null,
+    droppedIterations: step.droppedIterations ?? null,
+    vusMax: step.vusMax ?? null,
+    generatorSaturated: step.generatorSaturated === true,
+    thresholds: normaliseThresholds(step.thresholds),
+  }));
+  steps.sort((a, b) => a.targetRate - b.targetRate);
+  return {
+    applicable: report.applicable !== false,
+    mixed: report.mixed === true,
+    scenarioId: report.scenarioId ?? "",
+    steps,
   };
 }
 
@@ -257,30 +422,31 @@ function reduceMutations(
     kind: "create" | "update" | "delete",
   ): { count: number; rate: number } | null => {
     const metric = metrics[`mk_${kind}_ok`];
-    return metric &&
-      typeof metric.count === "number" &&
-      typeof metric.rate === "number"
-      ? { count: metric.count, rate: metric.rate }
+    const count = k6Value(metric, "count");
+    const rate = k6Value(metric, "rate");
+    return typeof count === "number" && typeof rate === "number"
+      ? { count, rate }
       : null;
   };
   const raw = metrics.http_req_duration;
   const duration =
     raw &&
-    typeof raw.avg === "number" &&
-    typeof raw.med === "number" &&
-    typeof raw["p(90)"] === "number" &&
-    typeof raw["p(95)"] === "number" &&
-    typeof raw["p(99)"] === "number" &&
-    typeof raw.max === "number"
+    k6Value(raw, "avg") !== undefined &&
+    k6Value(raw, "med") !== undefined &&
+    k6Value(raw, "p(90)") !== undefined &&
+    k6Value(raw, "p(95)") !== undefined &&
+    k6Value(raw, "p(99)") !== undefined &&
+    k6Value(raw, "max") !== undefined
       ? {
-          avg: raw.avg,
-          med: raw.med,
-          p90: raw["p(90)"],
-          p95: raw["p(95)"],
-          p99: raw["p(99)"],
-          max: raw.max,
+          avg: k6Value(raw, "avg")!,
+          med: k6Value(raw, "med")!,
+          p90: k6Value(raw, "p(90)")!,
+          p95: k6Value(raw, "p(95)")!,
+          p99: k6Value(raw, "p(99)")!,
+          max: k6Value(raw, "max")!,
         }
       : null;
+  const fails = k6Value(metrics.http_req_failed, "fails");
   return {
     perOp: {
       create: perOpOf("create"),
@@ -288,10 +454,8 @@ function reduceMutations(
       delete: perOpOf("delete"),
     },
     duration,
-    failures:
-      typeof metrics.http_req_failed?.fails === "number"
-        ? metrics.http_req_failed.fails
-        : null,
+    failures: typeof fails === "number" ? fails : null,
+    thresholds: thresholdsFromK6(metrics),
   };
 }
 
@@ -318,6 +482,7 @@ function inventoryOf(
     },
     // Absent in inventory.json files written before V3.
     footprint: raw.footprint ?? null,
+    dependencyManifests: raw.dependencyManifests ?? [],
     directDependencies: raw.directDependencies,
     languages: raw.languages,
     serviceCount: raw.serviceCount,
@@ -354,6 +519,9 @@ function buildVariant(
       readJson<MutationsSummaryFile>(
         path.join(variantDir, "mutations-summary.json"),
       ),
+    ),
+    capacity: reduceCapacity(
+      readJson<CapacityFile>(path.join(variantDir, "capacity.json")),
     ),
     correctness: correctness ? (correctness.ok ? "pass" : "fail") : null,
     // Deliberately never read: mutations.json (raw samples), capture.json
@@ -405,6 +573,15 @@ function buildRun(
     okCount: results.filter((r) => r.status === "ok").length,
     totalCount: results.length,
     inputs: effective,
+    // Null for pre-D1 runs: the viewer must never guess "not requested".
+    requestedStages: preflight?.stages
+      ? {
+          correctness: preflight.stages.correctness === true,
+          render: preflight.stages.render === true,
+          load: preflight.stages.load === true,
+        }
+      : null,
+    only: preflight?.only ?? null,
     variants,
   };
 }
@@ -459,6 +636,162 @@ export function buildRunsIndex(
 }
 
 // ---------------------------------------------------------------------------
+// Compare view: load levels (plan V-B / R4)
+//
+// A load level is `configName × resource envelope` — `medium-load @ 2c/2g` and
+// `medium-load @ 4c/4g` are *different* levels, never quietly averaged (R4).
+// Levels are ordered by an ordinal derived from the inputs (fixture taskCount,
+// then total volume counts, then the max capacity rate); the envelope is a
+// separate axis and is never folded into the load ordinal.
+
+export interface LoadLevelEnvelope {
+  label: string;
+  appCpus: number | null;
+  appMemoryMb: number | null;
+  dbCpus: number | null;
+  dbMemoryMb: number | null;
+}
+
+export interface LoadLevelOrdinal {
+  taskCount: number;
+  volume: number;
+  maxRate: number;
+}
+
+export interface LoadLevel {
+  key: string;
+  /** Headline, e.g. `medium-load @ 2c/2048MB` (the numbers are the proof). */
+  label: string;
+  configName: string | null;
+  envelope: LoadLevelEnvelope | null;
+  ordinal: LoadLevelOrdinal;
+  /** Human-readable derivation of the ordinal, shown in the inputs table. */
+  ordinalProof: string;
+  /** Run ids in this level, newest first; `runIds[0]` is the primary run. */
+  runIds: string[];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const numeric = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+function envelopeOf(
+  inputs: Record<string, unknown> | null,
+): LoadLevelEnvelope | null {
+  const resources =
+    inputs && isRecord(inputs.resources) ? inputs.resources : null;
+  if (!resources) return null;
+  const appCpus = numeric(resources.appCpus);
+  const appMemoryMb = numeric(resources.appMemoryMb);
+  const dbCpus = numeric(resources.dbCpus);
+  const dbMemoryMb = numeric(resources.dbMemoryMb);
+  if (
+    appCpus === null &&
+    appMemoryMb === null &&
+    dbCpus === null &&
+    dbMemoryMb === null
+  )
+    return null;
+  return {
+    label: `${appCpus ?? "?"}c/${appMemoryMb ?? "?"}MB`,
+    appCpus,
+    appMemoryMb,
+    dbCpus,
+    dbMemoryMb,
+  };
+}
+
+function ordinalOf(run: RunView): LoadLevelOrdinal {
+  const inputs = run.inputs ?? {};
+  const fixture = isRecord(inputs.fixture) ? inputs.fixture : {};
+  const taskCount = numeric(fixture.taskCount) ?? 0;
+  const scenarios = Array.isArray(inputs.scenarios) ? inputs.scenarios : [];
+  let volume = 0;
+  let maxRate = 0;
+  for (const scenario of scenarios) {
+    if (!isRecord(scenario)) continue;
+    if (isRecord(scenario.counts)) {
+      for (const value of Object.values(scenario.counts))
+        volume += numeric(value) ?? 0;
+    }
+    if (Array.isArray(scenario.ratesPerSecond)) {
+      for (const rate of scenario.ratesPerSecond) {
+        const value = numeric(rate);
+        if (value !== null) maxRate = Math.max(maxRate, value);
+      }
+    }
+  }
+  return { taskCount, volume, maxRate };
+}
+
+/**
+ * Group runs into load levels (`configName × envelope`; runs without a config
+ * name group by run-id), newest run first within a level, levels ascending by
+ * the derived ordinal.
+ */
+export function deriveLoadLevels(runs: RunView[]): LoadLevel[] {
+  const levels = new Map<string, LoadLevel>();
+  for (const run of runs) {
+    const envelope = envelopeOf(run.inputs);
+    const configName = run.configName;
+    const key = configName
+      ? `${configName}@${envelope?.label ?? "default"}`
+      : `run:${run.runId}`;
+    let level = levels.get(key);
+    if (!level) {
+      const ordinal = ordinalOf(run);
+      level = {
+        key,
+        label: configName
+          ? `${configName} @ ${envelope?.label ?? "default"}`
+          : run.runId,
+        configName,
+        envelope,
+        ordinal,
+        ordinalProof:
+          `tasks ${ordinal.taskCount} · volume ops ${ordinal.volume} · ` +
+          `max rate ${ordinal.maxRate}/s`,
+        runIds: [],
+      };
+      levels.set(key, level);
+    }
+    level.runIds.push(run.runId);
+  }
+  const ordered = [...levels.values()];
+  ordered.sort(
+    (a, b) =>
+      a.ordinal.taskCount - b.ordinal.taskCount ||
+      a.ordinal.volume - b.ordinal.volume ||
+      a.ordinal.maxRate - b.ordinal.maxRate ||
+      (a.label < b.label ? -1 : a.label > b.label ? 1 : 0),
+  );
+  return ordered;
+}
+
+/** Deep-link state for compare mode: `#compare=<id>,<id>[&metric=ops]`. */
+export interface CompareState {
+  runIds: string[];
+  metric: string;
+}
+
+export function parseCompareHash(hash: string): CompareState {
+  const params = new URLSearchParams((hash || "").replace(/^#/, ""));
+  const runIds = (params.get("compare") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return { runIds, metric: params.get("metric") || "ops" };
+}
+
+export function formatCompareHash(state: CompareState): string {
+  const parts = [`compare=${state.runIds.join(",")}`];
+  if (state.metric) parts.push(`metric=${state.metric}`);
+  return parts.join("&");
+}
+
+// ---------------------------------------------------------------------------
 // HTML (plan §4.2/§4.3)
 
 const esc = (value: unknown): string =>
@@ -487,19 +820,26 @@ function optionLabel(run: RunView): string {
 
 const VIEWER_SCRIPT = `(function () {
   "use strict";
+  var SVGNS = "http://www.w3.org/2000/svg";
   var dataEl = document.getElementById("runs-data");
-  var runs = [];
-  try { runs = JSON.parse(dataEl.textContent) || []; } catch (e) { runs = []; }
+  var payload = {};
+  try { payload = JSON.parse(dataEl.textContent) || {}; } catch (e) { payload = {}; }
+  var runs = payload.runs || (Array.isArray(payload) ? payload : []);
+  var levels = payload.levels || [];
   var byId = {};
   for (var i = 0; i < runs.length; i++) byId[runs[i].runId] = runs[i];
 
   var select = document.getElementById("run-select");
   var prevBtn = document.getElementById("run-prev");
   var nextBtn = document.getElementById("run-next");
+  var runNav = document.getElementById("run-nav");
+  var compareNav = document.getElementById("compare-nav");
+  var modeRunBtn = document.getElementById("mode-run");
+  var modeCompareBtn = document.getElementById("mode-compare");
   var provEl = document.getElementById("provenance");
   var bodyEl = document.getElementById("view-body");
   var STORAGE_KEY = "bench-results-run";
-  var state = { runId: null, cohort: "all", sort: {} };
+  var state = { mode: "run", runId: null, cohort: "all", sort: {}, compareIds: [], metric: "ops", hiddenVariants: {} };
 
   function fmtBytes(v) {
     if (v === null || v === undefined) return "—";
@@ -523,6 +863,107 @@ const VIEWER_SCRIPT = `(function () {
   function fmtPct(v) {
     if (v === null || v === undefined) return "—";
     return Number(v).toFixed(2) + "%";
+  }
+
+  // --- inline SVG charts (plan V-A): hand-rolled, no library, no fetch --------
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS(SVGNS, tag);
+    if (attrs) for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, attrs[k]);
+    return node;
+  }
+  function cohortColor(cohort) {
+    if (cohort === "next-fullstack") return "#4f46e5";
+    if (cohort === "tanstack-start") return "#0891b2";
+    if (cohort === "spa-api") return "#b45309";
+    return "#64748b";
+  }
+  // Cohort-coloured vertical bars. items: [{label, value, cohort, title}]
+  function barChart(items, opts) {
+    opts = opts || {};
+    var known = items.filter(function (it) { return it.value !== null && it.value !== undefined; });
+    if (!known.length) return el("p", "note chart-empty", "— not measured");
+    var height = opts.height || 170;
+    var pad = { l: 52, r: 14, t: 12, b: 56 };
+    var bar = 26, gap = 10;
+    var width = Math.max(opts.minWidth || 360, pad.l + pad.r + known.length * (bar + gap));
+    var max = 0;
+    known.forEach(function (it) { if (it.value > max) max = it.value; });
+    if (!(max > 0)) max = 1;
+    var plotH = height - pad.t - pad.b;
+    var root = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "img" });
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t, x2: pad.l, y2: pad.t + plotH, class: "axis" }));
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t + plotH, x2: width - pad.r, y2: pad.t + plotH, class: "axis" }));
+    var ymax = svgEl("text", { x: pad.l - 6, y: pad.t + 10, "text-anchor": "end", class: "tick" });
+    ymax.textContent = fmtNum(max); root.appendChild(ymax);
+    known.forEach(function (it, index) {
+      var h = (it.value / max) * plotH;
+      var x = pad.l + index * (bar + gap) + gap / 2;
+      var rect = svgEl("rect", { x: x, y: pad.t + plotH - h, width: bar, height: Math.max(1, h), fill: cohortColor(it.cohort), rx: 2 });
+      var rt = svgEl("title", {}); rt.textContent = it.title || (it.label + ": " + fmtNum(it.value)); rect.appendChild(rt);
+      root.appendChild(rect);
+      var val = svgEl("text", { x: x + bar / 2, y: pad.t + plotH - h - 3, "text-anchor": "middle", class: "tick" });
+      val.textContent = fmtNum(it.value); root.appendChild(val);
+      var lab = svgEl("text", { x: x + bar / 2, y: pad.t + plotH + 12, "text-anchor": "end", class: "tick", transform: "rotate(-40 " + (x + bar / 2) + " " + (pad.t + plotH + 12) + ")" });
+      lab.textContent = it.label; root.appendChild(lab);
+    });
+    return root;
+  }
+  // Line chart over categories. series: [{label, color, values:[num|null], title}]
+  function lineChart(categories, series, opts) {
+    opts = opts || {};
+    var anyValue = false;
+    series.forEach(function (s) { s.values.forEach(function (v) { if (v !== null && v !== undefined) anyValue = true; }); });
+    if (!anyValue || categories.length === 0) return el("p", "note chart-empty", "— not measured");
+    var height = opts.height || 180;
+    var pad = { l: 56, r: 14, t: 12, b: 40 };
+    var width = Math.max(opts.minWidth || 480, pad.l + pad.r + categories.length * 90);
+    var plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
+    var max = 0;
+    series.forEach(function (s) { s.values.forEach(function (v) { if (v !== null && v !== undefined && v > max) max = v; }); });
+    if (!(max > 0)) max = 1;
+    var root = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "img" });
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t, x2: pad.l, y2: pad.t + plotH, class: "axis" }));
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t + plotH, x2: width - pad.r, y2: pad.t + plotH, class: "axis" }));
+    var ymax = svgEl("text", { x: pad.l - 6, y: pad.t + 10, "text-anchor": "end", class: "tick" });
+    ymax.textContent = fmtNum(max); root.appendChild(ymax);
+    var xAt = function (i) { return categories.length === 1 ? pad.l + plotW / 2 : pad.l + (i / (categories.length - 1)) * plotW; };
+    categories.forEach(function (label, i) {
+      var t = svgEl("text", { x: xAt(i), y: pad.t + plotH + 14, "text-anchor": "middle", class: "tick" });
+      t.textContent = label; root.appendChild(t);
+    });
+    series.forEach(function (s) {
+      var d = "";
+      s.values.forEach(function (v, i) {
+        if (v === null || v === undefined) return;
+        d += (d ? " L " : "M ") + xAt(i) + " " + (pad.t + plotH - (v / max) * plotH);
+      });
+      if (d) {
+        var path = svgEl("path", { d: d, fill: "none", stroke: s.color || "#334155", "stroke-width": 2 });
+        var pt = svgEl("title", {}); pt.textContent = s.title || s.label; path.appendChild(pt);
+        root.appendChild(path);
+      }
+    });
+    return root;
+  }
+  function chartLegend(series) {
+    var wrap = el("div", "legend-inline");
+    series.forEach(function (s) {
+      var span = el("span", "legend-item");
+      var swatch = el("span", "swatch"); swatch.style.background = s.color || "#334155";
+      span.appendChild(swatch); span.appendChild(document.createTextNode(s.label));
+      wrap.appendChild(span);
+    });
+    return wrap;
+  }
+  function thresholdsCell(list) {
+    var wrap = el("span", "thresholds");
+    if (!list || !list.length) return wrap;
+    list.forEach(function (t) {
+      var b = el("span", "badge " + (t.ok ? "pass" : "fail"), (t.ok ? "✓ " : "✗ ") + t.metric);
+      b.title = t.metric + " " + t.expression + (t.ok ? " (ok)" : " (failed)");
+      wrap.appendChild(b);
+    });
+    return wrap;
   }
 
   function el(tag, cls, text) {
@@ -644,13 +1085,49 @@ const VIEWER_SCRIPT = `(function () {
     return table;
   }
 
-  function sectionTable(sectionId, title, subtitle, columns, rows, hasData) {
+  function sectionTable(sectionId, title, subtitle, columns, rows, hasData, banner, chart) {
     var sec = el("section");
     sec.appendChild(el("h2", null, title));
     if (subtitle) sec.appendChild(el("p", "sub", subtitle));
-    if (!hasData) sec.appendChild(el("p", "note", "— not measured in this run."));
+    if (chart) sec.appendChild(chart);
+    if (!hasData) sec.appendChild(banner || el("p", "note", "— not measured in this run."));
     else sec.appendChild(renderTable(sectionId, columns, rows));
     return sec;
+  }
+
+  function firstDataOf(v) {
+    if (!v.render || !v.render.pages) return null;
+    var names = Object.keys(v.render.pages).sort();
+    for (var i = 0; i < names.length; i++) {
+      var page = v.render.pages[names[i]];
+      if (page && page.firstData !== null && page.firstData !== undefined) return page.firstData;
+    }
+    return null;
+  }
+  function barsFor(run, valueFn, titleFn) {
+    return run.variants.map(function (v) {
+      return { label: v.id, value: valueFn(v), cohort: v.cohort, title: (titleFn ? titleFn(v) : v.id) };
+    });
+  }
+
+  // Plan D2: a run whose config selected no stage renders a banner with the exact
+  // re-run command, never a bare empty table. A *requested* stage with no data
+  // keeps the plain "not measured" note (attempted-and-failed must look different
+  // from never-requested). Pre-D1 runs have requestedStages === null → no banner.
+  function notRequested(run, stage) {
+    return !!(run.requestedStages && run.requestedStages[stage] === false);
+  }
+  function notRequestedBanner(run, stage) {
+    var labels = { correctness: "correctness", render: "render", load: "load (read-only + mutations)" };
+    var p = el("p", "note not-requested");
+    p.appendChild(document.createTextNode("Not measured — this run's config selected no " + labels[stage] + " stage. Re-run: "));
+    var cmd = "pnpm rig:run --config " + (run.configFile || "<config>");
+    p.appendChild(el("code", null, cmd));
+    p.appendChild(document.createTextNode(" after setting stages." + stage + ": true, or add --with-" + stage + " for a one-off."));
+    return p;
+  }
+  function bannerFor(run, stage) {
+    return notRequested(run, stage) ? notRequestedBanner(run, stage) : null;
   }
 
   function stageColumns(run) {
@@ -757,6 +1234,10 @@ const VIEWER_SCRIPT = `(function () {
       title: "generator CPU vs limit",
       cls: function (value) { return value === "saturated" ? "badge fail" : value === "ok" ? "badge pass" : ""; }
     }));
+    cols.push(col("load:thresholds", "thresholds", function (v) { return v.load ? v.load.thresholds : null; }, null, {
+      cell: function (value) { return thresholdsCell(value); },
+      title: "recorded k6 threshold labels (health labels, never gates)"
+    }));
     return cols;
   }
 
@@ -775,6 +1256,10 @@ const VIEWER_SCRIPT = `(function () {
       }, fmtNum, { numeric: true, lower: true, title: pair[1] + " (lower is better)" }));
     });
     cols.push(col("mut:fail", "failures", function (v) { return v.mutations ? v.mutations.failures : null; }, fmtInt, { numeric: true, lower: true, title: "failed requests (lower is better)" }));
+    cols.push(col("mut:thresholds", "thresholds", function (v) { return v.mutations ? v.mutations.thresholds : null; }, null, {
+      cell: function (value) { return thresholdsCell(value); },
+      title: "recorded k6 threshold labels (health labels, never gates)"
+    }));
     return cols;
   }
 
@@ -794,7 +1279,15 @@ const VIEWER_SCRIPT = `(function () {
     cols.push(col("total:bytes", "authored size", function (v) { return v.inventory ? v.inventory.totals.bytes : null; }, fmtBytes, { numeric: true, lower: true, exact: exact, title: "authored bytes" }));
     cols.push(col("foot:files", "on-disk files", function (v) { return v.inventory && v.inventory.footprint ? v.inventory.footprint.files : null; }, fmtInt, { numeric: true, lower: true, title: "whole-directory footprint incl. deps/build (du)" }));
     cols.push(col("foot:bytes", "on-disk size", function (v) { return v.inventory && v.inventory.footprint ? v.inventory.footprint.bytes : null; }, fmtBytes, { numeric: true, lower: true, exact: exact, title: "whole-directory footprint incl. deps/build (du)" }));
-    cols.push(col("deps", "direct deps", function (v) { return v.inventory ? v.inventory.directDependencies : null; }, fmtInt, { numeric: true, lower: true, title: "direct dependencies (lower is better)" }));
+    cols.push(col("deps", "direct deps", function (v) { return v.inventory ? v.inventory.directDependencies : null; }, fmtInt, {
+      numeric: true, lower: true,
+      title: "direct dependencies (lower is better); per-manifest breakdown in the tooltip",
+      exact: function (value, row) {
+        var m = row.inventory && row.inventory.dependencyManifests;
+        if (!m || !m.length) return String(value) + " direct dependencies";
+        return m.map(function (x) { return x.path + ": " + x.directDependencies; }).join(" + ");
+      }
+    }));
     cols.push(col("langs", "languages", function (v) { return v.inventory ? v.inventory.languages : null; }, fmtInt, { numeric: true, lower: true }));
     cols.push(col("services", "services", function (v) { return v.inventory ? v.inventory.serviceCount : null; }, fmtInt, { numeric: true, lower: true }));
     cols.push(col("images", "images", function (v) { return v.inventory ? v.inventory.imageCount : null; }, fmtInt, { numeric: true, lower: true }));
@@ -864,7 +1357,7 @@ const VIEWER_SCRIPT = `(function () {
       var pairs = [];
       for (var j = 0; j < order.length; j++) pairs.push([order[j], s[order[j]]]);
       block.appendChild(kvTable(pairs));
-      if (s.kind === "capacity") block.appendChild(el("p", "note", "capacity ladder declared; not yet executed by the rig (R8)."));
+      if (s.kind === "capacity") block.appendChild(el("p", "note", "capacity ladder — executed as a constant-arrival-rate ladder (plan K3); see the capacity section for the steps."));
       card.appendChild(block);
     }
     return card;
@@ -885,7 +1378,7 @@ const VIEWER_SCRIPT = `(function () {
       if (inp.reset) grid.appendChild(kvCard("Reset", inp.reset, ["betweenPhases", "betweenTrials", "method"]));
       var runCard = el("div", "card");
       runCard.appendChild(el("h3", null, "Run"));
-      runCard.appendChild(kvTable([["trials", inp.trials], ["variantOrder", inp.variantOrder], ["variants", inp.variants ? inp.variants.length : undefined]]));
+      runCard.appendChild(kvTable([["trials", inp.trials], ["variantOrder", inp.variantOrder], ["variants", inp.variants ? inp.variants.length : undefined], ["stages", run.requestedStages || undefined], ["only", run.only && run.only.length ? run.only : undefined]]));
       grid.appendChild(runCard);
     }
     details.appendChild(grid);
@@ -906,6 +1399,7 @@ const VIEWER_SCRIPT = `(function () {
   }
 
   function render() {
+    if (state.mode === "compare") { renderCompare(); return; }
     var run = state.runId ? byId[state.runId] : null;
     bodyEl.textContent = "";
     if (!run) {
@@ -921,28 +1415,126 @@ const VIEWER_SCRIPT = `(function () {
     bodyEl.appendChild(sectionTable("Lifecycle", "Lifecycle", "status + build/up/seed/verify wall-clock per variant; blank = not run", identityCols().concat([statusColumn()]).concat(stageColumns(run)), run.variants, run.variants.length > 0));
 
     var anyCorrectness = run.variants.some(function (v) { return v.correctness !== null; });
-    bodyEl.appendChild(sectionTable("Correctness", "Correctness", "black-box suite result (needs --with-correctness)", idCols().concat([correctnessColumn()]), run.variants, anyCorrectness));
+    bodyEl.appendChild(sectionTable("Correctness", "Correctness", "black-box suite result", idCols().concat([correctnessColumn()]), run.variants, anyCorrectness, bannerFor(run, "correctness")));
 
     var anyRender = run.variants.some(function (v) { return v.render !== null; });
-    bodyEl.appendChild(sectionTable("Render", "Render", "p50 of raw samples — indicative single-host (needs --with-render)", renderColumns(run), run.variants, anyRender));
+    var renderChart = anyRender ? barChart(barsFor(run, firstDataOf, function (v) { return v.id + " first-data p50"; }), {}) : null;
+    bodyEl.appendChild(sectionTable("Render", "Render", "p50 of raw samples — indicative single-host", renderColumns(run), run.variants, anyRender, bannerFor(run, "render"), renderChart));
 
     var anyLoad = run.variants.some(function (v) { return v.load !== null; });
-    bodyEl.appendChild(sectionTable("Load-read", "Load — read-only capacity", "k6 read leg; a generator-saturated trial is withheld (needs --with-load)", loadReadColumns(), run.variants, anyLoad));
+    var opsChart = anyLoad ? barChart(barsFor(run, function (v) { return v.load && !v.load.generatorSaturated ? v.load.opsPerSecond : null; }, function (v) { return v.id + " read ops/s"; }), {}) : null;
+    bodyEl.appendChild(sectionTable("Load-read", "Load — read-only capacity", "k6 read leg; a generator-saturated trial is withheld", loadReadColumns(), run.variants, anyLoad, bannerFor(run, "load"), opsChart));
+
+    var anyPaths = run.variants.some(function (v) { return v.load && v.load.paths && Object.keys(v.load.paths).length > 0; });
+    if (anyPaths) bodyEl.appendChild(pathSection(run));
 
     var anyMutations = run.variants.some(function (v) { return v.mutations !== null; });
-    bodyEl.appendChild(sectionTable("Load-mutations", "Load — mutation volume", "k6 volume leg; per-op rate + latency percentiles (needs --with-load)", mutationColumns(), run.variants, anyMutations));
+    var mutChart = anyMutations ? barChart(barsFor(run, function (v) { return v.mutations && v.mutations.perOp.create ? v.mutations.perOp.create.rate : null; }, function (v) { return v.id + " create ops/s"; }), {}) : null;
+    bodyEl.appendChild(sectionTable("Load-mutations", "Load — mutation volume", "k6 volume leg; per-op rate + latency percentiles", mutationColumns(), run.variants, anyMutations, bannerFor(run, "load"), mutChart));
+
+    var anyCapacity = run.variants.some(function (v) { return v.capacity && v.capacity.steps && v.capacity.steps.length > 0; });
+    if (anyCapacity) bodyEl.appendChild(capacitySection(run));
 
     var anyInventory = run.variants.some(function (v) { return v.inventory !== null; });
     bodyEl.appendChild(sectionTable("Static", "Static & complexity", "authored source vs on-disk footprint; bytes human-readable (exact in title)", staticColumns(), run.variants, anyInventory));
   }
 
+  function pathSection(run) {
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Load — read latency by path"));
+    sec.appendChild(el("p", "sub", "p50/p95 of http_req_duration{path:…} sub-metrics (plan K1)"));
+    var table = el("table", "matrix");
+    var thead = el("thead"), hr = el("tr");
+    ["variant", "path", "p50 ms", "p95 ms"].forEach(function (label, idx) {
+      var th = el("th", null, label);
+      if (idx < 2) th.style.textAlign = "left";
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr); table.appendChild(thead);
+    var tbody = el("tbody");
+    var rows = [];
+    run.variants.forEach(function (v) {
+      if (state.cohort !== "all" && v.cohort !== state.cohort) return;
+      if (!v.load || !v.load.paths) return;
+      Object.keys(v.load.paths).sort().forEach(function (path) {
+        var entry = v.load.paths[path];
+        rows.push({ id: v.id, path: path, p50: entry.p50Ms, p95: entry.p95Ms });
+      });
+    });
+    if (!rows.length) {
+      var er = el("tr"), ec = el("td", "empty", "no per-path data"); ec.colSpan = 4; er.appendChild(ec); tbody.appendChild(er);
+    }
+    rows.forEach(function (r) {
+      var tr = el("tr");
+      var c1 = el("td", null, r.id); c1.style.textAlign = "left"; tr.appendChild(c1);
+      var c2 = el("td", null, r.path); c2.style.textAlign = "left"; tr.appendChild(c2);
+      tr.appendChild(el("td", null, fmtNum(r.p50)));
+      tr.appendChild(el("td", null, fmtNum(r.p95)));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    return sec;
+  }
+
+  function capacitySection(run) {
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Load — capacity ladder (tip-over)"));
+    sec.appendChild(el("p", "sub", "constant-arrival-rate: achieved vs target, p95 and dropped iterations per step. Read-weighted mixed capacity (plan K3) — not a mutation-capacity claim."));
+    var withCap = run.variants.filter(function (v) { return v.capacity && v.capacity.steps && v.capacity.steps.length; });
+    var rates = [];
+    withCap.forEach(function (v) { v.capacity.steps.forEach(function (s) { if (rates.indexOf(s.targetRate) < 0) rates.push(s.targetRate); }); });
+    rates.sort(function (a, b) { return a - b; });
+    var series = withCap.map(function (v) {
+      var byRate = {};
+      v.capacity.steps.forEach(function (s) { byRate[s.targetRate] = s; });
+      return {
+        label: v.id, color: cohortColor(v.cohort), title: v.id + " achieved req/s",
+        values: rates.map(function (r) { var s = byRate[r]; return s ? (s.generatorSaturated ? null : s.achievedPerSecond) : null; })
+      };
+    });
+    sec.appendChild(lineChart(rates.map(function (r) { return r + "/s"; }), series, {}));
+    sec.appendChild(chartLegend(series));
+    var table = el("table", "matrix");
+    var thead = el("thead"), hr = el("tr");
+    ["variant", "target", "achieved", "p95 ms", "p99 ms", "dropped", "VUs", "generator", "thresholds", "mode"].forEach(function (label, idx) {
+      var th = el("th", null, label); if (idx === 0) th.style.textAlign = "left"; hr.appendChild(th);
+    });
+    thead.appendChild(hr); table.appendChild(thead);
+    var tbody = el("tbody");
+    withCap.forEach(function (v) {
+      if (state.cohort !== "all" && v.cohort !== state.cohort) return;
+      v.capacity.steps.forEach(function (s) {
+        var tr = el("tr");
+        var c0 = el("td", null, v.id); c0.style.textAlign = "left"; tr.appendChild(c0);
+        tr.appendChild(el("td", null, String(s.targetRate) + "/s"));
+        tr.appendChild(el("td", null, s.generatorSaturated ? "withheld" : fmtNum(s.achievedPerSecond)));
+        tr.appendChild(el("td", null, s.generatorSaturated ? "withheld" : fmtNum(s.p95Ms)));
+        tr.appendChild(el("td", null, fmtNum(s.p99Ms)));
+        tr.appendChild(el("td", null, s.droppedIterations === null || s.droppedIterations === undefined ? "—" : String(s.droppedIterations)));
+        tr.appendChild(el("td", null, s.vusMax === null || s.vusMax === undefined ? "—" : String(s.vusMax)));
+        tr.appendChild(el("td", null, s.generatorSaturated ? "saturated" : "ok"));
+        var tc = el("td"); tc.appendChild(thresholdsCell(s.thresholds)); tr.appendChild(tc);
+        tr.appendChild(el("td", null, v.capacity.mixed ? "mixed" : "read-only"));
+        tbody.appendChild(tr);
+      });
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    var notApplicable = run.variants.filter(function (v) { return v.capacity && v.capacity.applicable === false; });
+    if (notApplicable.length) sec.appendChild(el("p", "note", "not applicable for: " + notApplicable.map(function (v) { return v.id; }).join(", ")));
+    return sec;
+  }
+
   function selectRun(runId, push) {
     if (!byId[runId]) runId = runs.length ? runs[0].runId : null;
+    state.mode = "run";
     state.runId = runId;
     state.cohort = "all";
     if (select && select.value !== runId && runId) select.value = runId;
     if (push && runId) { try { location.hash = runId; } catch (e) {} }
     try { if (runId) localStorage.setItem(STORAGE_KEY, runId); } catch (e) {}
+    syncModeChrome();
     render();
   }
   function step(delta) {
@@ -953,24 +1545,403 @@ const VIEWER_SCRIPT = `(function () {
     if (target < 0 || target >= runs.length) return;
     selectRun(runs[target].runId, true);
   }
-  function initialRunId() {
-    var hash = (location.hash || "").replace(/^#/, "");
-    if (hash && byId[hash]) return hash;
+
+  // --- compare mode (plan V-B) ----------------------------------------------
+  var METRICS = {
+    ops: { label: "read ops/s", lower: false,
+      get: function (v) { return v.load && !v.load.generatorSaturated ? v.load.opsPerSecond : null; },
+      withheld: function (v) { return !!(v.load && v.load.generatorSaturated); } },
+    p95: { label: "read p95 ms", lower: true,
+      get: function (v) { return v.load && !v.load.generatorSaturated ? v.load.p95Ms : null; },
+      withheld: function (v) { return !!(v.load && v.load.generatorSaturated); } },
+    "render-firstData": { label: "render first-data p50 ms", lower: true,
+      get: function (v) { return firstDataOf(v); }, withheld: function () { return false; } },
+    "mut-create": { label: "create ops/s", lower: false,
+      get: function (v) { return v.mutations && v.mutations.perOp.create ? v.mutations.perOp.create.rate : null; },
+      withheld: function () { return false; } }
+  };
+  var metricOf = function () { return METRICS[state.metric] || METRICS.ops; };
+
+  function compareHash(ids, metric) { return "compare=" + ids.join(",") + (metric ? "&metric=" + metric : ""); }
+  function parseHash(hashStr) {
+    var h = (hashStr || "").replace(/^#/, "");
+    if (h.indexOf("compare=") === 0 || h.indexOf("metric=") === 0 || h.indexOf("&") >= 0) {
+      var params = {};
+      h.split("&").forEach(function (pair) { var eq = pair.indexOf("="); if (eq >= 0) params[pair.slice(0, eq)] = decodeURIComponent(pair.slice(eq + 1)); });
+      if (params.compare !== undefined || params.metric !== undefined) {
+        return {
+          mode: "compare", metric: params.metric || "ops",
+          runIds: (params.compare || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+        };
+      }
+    }
+    return { mode: "run", runId: h || null };
+  }
+  function pushHash() {
     try {
-      var stored = localStorage.getItem(STORAGE_KEY);
-      if (stored && byId[stored]) return stored;
+      if (state.mode === "compare") location.hash = compareHash(state.compareIds, state.metric);
+      else if (state.runId) location.hash = state.runId;
     } catch (e) {}
-    return runs.length ? runs[0].runId : null;
+  }
+  function envLabelOf(r) {
+    if (!r) return "default";
+    return (r.appCpus === undefined ? "?" : r.appCpus) + "c/" + (r.appMemoryMb === undefined ? "?" : r.appMemoryMb) + "MB";
+  }
+  function levelKeyOf(run) {
+    var env = run.inputs && run.inputs.resources ? envLabelOf(run.inputs.resources) : "default";
+    return run.configName ? run.configName + "@" + env : "run:" + run.runId;
+  }
+  function compareLabel(run) {
+    return (run.configName || "unknown-config") + " — " + run.runId + " (" + run.okCount + "/" + run.totalCount + ")" + (run.incomplete ? " · incomplete" : "");
+  }
+  function defaultCompareIds() { return levels.map(function (lvl) { return lvl.runIds[0]; }).filter(Boolean); }
+  function compareLevels() {
+    var selected = state.compareIds.filter(function (id) { return byId[id]; });
+    var orderByKey = {};
+    for (var i = 0; i < levels.length; i++) orderByKey[levels[i].key] = i;
+    var map = {};
+    selected.forEach(function (id) {
+      var run = byId[id];
+      var key = levelKeyOf(run);
+      if (!map[key]) map[key] = { key: key, run: run };
+    });
+    var arr = [];
+    for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) arr.push(map[k]);
+    arr.forEach(function (lvl) {
+      var meta = null;
+      for (var j = 0; j < levels.length; j++) if (levels[j].key === lvl.key) meta = levels[j];
+      lvl.meta = meta;
+    });
+    arr.sort(function (a, b) {
+      var ai = a.meta ? orderByKey[a.key] : 999, bi = b.meta ? orderByKey[b.key] : 999;
+      if (ai !== bi) return ai - bi;
+      return a.key < b.key ? -1 : 1;
+    });
+    return arr;
+  }
+  function variantOf(col, id) {
+    for (var i = 0; i < col.run.variants.length; i++) if (col.run.variants[i].id === id) return col.run.variants[i];
+    return null;
+  }
+
+  function honestyStrip(cols) {
+    var notes = [];
+    var uniq = function (arr) { var seen = {}, out = []; arr.forEach(function (x) { if (x !== null && x !== undefined && !seen[x]) { seen[x] = 1; out.push(x); } }); return out; };
+    var revs = uniq(cols.map(function (c) { return c.run.gitRevision; }));
+    if (revs.length > 1) notes.push("different git revisions (" + revs.length + ")");
+    var shas = uniq(cols.map(function (c) { return c.run.effectiveManifestSha256; }));
+    if (shas.length > 1) notes.push("different effective-config sha256 (" + shas.length + ") — inputs differ");
+    var sets = uniq(cols.map(function (c) { return c.run.variants.map(function (v) { return v.id; }).sort().join("|"); }));
+    if (sets.length > 1) notes.push("different variant sets");
+    var stageSigs = uniq(cols.map(function (c) { var s = c.run.requestedStages; return s ? (s.correctness ? "1" : "0") + (s.render ? "1" : "0") + (s.load ? "1" : "0") : "?"; }));
+    if (stageSigs.length > 1) notes.push("stages requested differ between runs");
+    var wrap = el("div", "honesty");
+    if (!notes.length) wrap.appendChild(el("span", "note", "compared runs share revision, inputs, variant set and stage selection"));
+    else {
+      wrap.appendChild(el("strong", null, "comparison caveats: "));
+      notes.forEach(function (n) { wrap.appendChild(el("span", "badge warn", n)); });
+    }
+    return wrap;
+  }
+
+  function deepGet(obj, path) {
+    var cur = obj;
+    for (var i = 0; i < path.length; i++) { if (!cur || typeof cur !== "object") return undefined; cur = cur[path[i]]; }
+    return cur;
+  }
+  function inputRows() {
+    return [
+      { label: "config", get: function (r) { return r.run.configName || "—"; } },
+      { label: "envelope (app)", get: function (r) { return r.meta && r.meta.envelope ? r.meta.envelope.label : "—"; } },
+      { label: "stages", get: function (r) { var s = r.run.requestedStages; return s ? (["correctness", "render", "load"].filter(function (k) { return s[k]; }).join("+") || "none") : "—"; } },
+      { label: "trials", get: function (r) { return deepGet(r.run.inputs, ["trials"]); } },
+      { label: "fixture taskCount", get: function (r) { return deepGet(r.run.inputs, ["fixture", "taskCount"]); } },
+      { label: "fixture projectCount", get: function (r) { return deepGet(r.run.inputs, ["fixture", "projectCount"]); } },
+      { label: "fixture userCount", get: function (r) { return deepGet(r.run.inputs, ["fixture", "userCount"]); } },
+      { label: "fixture commentCount", get: function (r) { return deepGet(r.run.inputs, ["fixture", "commentCount"]); } },
+      { label: "browser measuredSamples", get: function (r) { return deepGet(r.run.inputs, ["browser", "measuredSamples"]); } },
+      { label: "volume counts", get: function (r) { return volumeSummary(r.run.inputs).counts; } },
+      { label: "volume concurrency", get: function (r) { return volumeSummary(r.run.inputs).concurrency; } },
+      { label: "capacity rates/s", get: function (r) { return capacitySummary(r.run.inputs).rates; } },
+      { label: "capacity step s", get: function (r) { return capacitySummary(r.run.inputs).duration; } },
+      { label: "load ordinal (derivation)", get: function (r) { return r.meta ? r.meta.ordinalProof : "—"; } },
+      { label: "git revision", get: function (r) { return r.run.gitRevision ? r.run.gitRevision.slice(0, 10) : "—"; } },
+      { label: "effective sha256", get: function (r) { return r.run.effectiveManifestSha256 ? r.run.effectiveManifestSha256.slice(0, 12) : "—"; } },
+      { label: "variants ok", get: function (r) { return r.run.okCount + "/" + r.run.totalCount; } }
+    ];
+  }
+  function volumeSummary(inputs) {
+    var scenarios = inputs && Array.isArray(inputs.scenarios) ? inputs.scenarios : [];
+    for (var i = 0; i < scenarios.length; i++) {
+      if (scenarios[i] && scenarios[i].counts) {
+        var counts = scenarios[i].counts, total = 0;
+        for (var k in counts) if (Object.prototype.hasOwnProperty.call(counts, k)) total += Number(counts[k]) || 0;
+        return { counts: total, concurrency: scenarios[i].concurrency };
+      }
+    }
+    return { counts: "—", concurrency: "—" };
+  }
+  function capacitySummary(inputs) {
+    var scenarios = inputs && Array.isArray(inputs.scenarios) ? inputs.scenarios : [];
+    for (var i = 0; i < scenarios.length; i++) {
+      if (scenarios[i] && scenarios[i].kind === "capacity") {
+        return { rates: (scenarios[i].ratesPerSecond || []).join(","), duration: scenarios[i].durationPerStepSeconds };
+      }
+    }
+    return { rates: "—", duration: "—" };
+  }
+
+  function compareInputs(cols) {
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Inputs side-by-side"));
+    sec.appendChild(el("p", "sub", "the deltas behind every metric: fixture, counts, resources, stages (differing cells highlighted)"));
+    var rows = inputRows();
+    var table = el("table", "matrix compare");
+    var thead = el("thead"), hr = el("tr");
+    var corner = el("th", null, "input"); corner.style.textAlign = "left"; hr.appendChild(corner);
+    cols.forEach(function (c) { hr.appendChild(el("th", null, c.meta ? c.meta.label : c.run.runId)); });
+    thead.appendChild(hr); table.appendChild(thead);
+    var tbody = el("tbody");
+    rows.forEach(function (row) {
+      var values = cols.map(function (c) { return row.get(c); });
+      var strings = values.map(function (v) { return v === undefined || v === null ? "—" : String(v); });
+      var differs = strings.some(function (s) { return s !== strings[0]; });
+      var tr = el("tr");
+      var th = el("td", "rowlabel", row.label); th.style.textAlign = "left"; tr.appendChild(th);
+      strings.forEach(function (s) {
+        var td = el("td", differs ? "diff" : null, s);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    return sec;
+  }
+
+  function compareGrid(cols) {
+    var metric = metricOf();
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Metric grid — " + metric.label));
+    sec.appendChild(el("p", "sub", "variant rows × load levels; the per-metric leader is bolded (no composite score). Blank = not measured; withheld = generator saturated."));
+    var ids = [];
+    cols.forEach(function (c) { c.run.variants.forEach(function (v) { if (ids.indexOf(v.id) < 0) ids.push(v.id); }); });
+    ids.sort();
+    var table = el("table", "matrix compare");
+    var thead = el("thead"), hr = el("tr");
+    var corner = el("th", null, "variant"); corner.style.textAlign = "left"; hr.appendChild(corner);
+    cols.forEach(function (c) { hr.appendChild(el("th", null, c.meta ? c.meta.label : c.run.runId)); });
+    thead.appendChild(hr); table.appendChild(thead);
+    var tbody = el("tbody");
+    ids.forEach(function (id) {
+      var values = cols.map(function (c) { var v = variantOf(c, id); return v ? metric.get(v) : null; });
+      var best = null;
+      values.forEach(function (val) { if (val === null || val === undefined) return; if (best === null || (metric.lower ? val < best : val > best)) best = val; });
+      var tr = el("tr");
+      var first = el("td", null, id); first.style.textAlign = "left"; tr.appendChild(first);
+      values.forEach(function (val, i) {
+        var v = variantOf(cols[i], id);
+        var td = el("td", null, null);
+        if (!v) td.textContent = "—";
+        else if (metric.withheld(v)) td.textContent = "withheld";
+        else td.textContent = fmtNum(val);
+        if (val !== null && best !== null && val === best) td.className = "leader";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    return sec;
+  }
+
+  function scalingChart(cols) {
+    var metric = metricOf();
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Scaling — " + metric.label + " vs load level"));
+    sec.appendChild(el("p", "sub", "one line per variant; click a legend item to hide/show it"));
+    var ids = [];
+    cols.forEach(function (c) { c.run.variants.forEach(function (v) { if (ids.indexOf(v.id) < 0) ids.push(v.id); }); });
+    ids.sort();
+    var categories = cols.map(function (c) { return c.meta ? c.meta.label : c.run.runId; });
+    var series = ids.filter(function (id) { return !state.hiddenVariants[id]; }).map(function (id) {
+      var cohort = null;
+      cols.forEach(function (c) { var v = variantOf(c, id); if (v && !cohort) cohort = v.cohort; });
+      return {
+        id: id, label: id, color: cohortColor(cohort), title: id,
+        values: cols.map(function (c) { var v = variantOf(c, id); return v ? metric.get(v) : null; })
+      };
+    });
+    sec.appendChild(lineChart(categories, series, { height: 220, minWidth: 560 }));
+    var legend = el("div", "legend-inline");
+    ids.forEach(function (id) {
+      var cohort = null;
+      cols.forEach(function (c) { var v = variantOf(c, id); if (v && !cohort) cohort = v.cohort; });
+      var btn = el("button", "legend-item" + (state.hiddenVariants[id] ? " off" : ""), null);
+      btn.type = "button";
+      var swatch = el("span", "swatch"); swatch.style.background = cohortColor(cohort); btn.appendChild(swatch);
+      btn.appendChild(document.createTextNode(id));
+      btn.addEventListener("click", function () { state.hiddenVariants[id] = !state.hiddenVariants[id]; render(); });
+      legend.appendChild(btn);
+    });
+    sec.appendChild(legend);
+    return sec;
+  }
+
+  function tipOverSection(cols) {
+    var sec = el("section");
+    sec.appendChild(el("h2", null, "Tip-over facts"));
+    sec.appendChild(el("p", "sub", "per-metric facts, never a composite score"));
+    var ids = [];
+    cols.forEach(function (c) { c.run.variants.forEach(function (v) { if (ids.indexOf(v.id) < 0) ids.push(v.id); }); });
+    ids.sort();
+    var table = el("table", "matrix compare");
+    var thead = el("thead"), hr = el("tr");
+    var corner = el("th", null, "variant"); corner.style.textAlign = "left"; hr.appendChild(corner);
+    var factsHead = el("th", null, "facts"); factsHead.style.textAlign = "left"; hr.appendChild(factsHead);
+    thead.appendChild(hr); table.appendChild(thead);
+    var tbody = el("tbody");
+    ids.forEach(function (id) {
+      var facts = [];
+      var prevP95 = null, prevOps = null, prevLabel = null;
+      cols.forEach(function (c) {
+        var v = variantOf(c, id);
+        var label = c.meta ? c.meta.label : c.run.runId;
+        if (!v) { prevLabel = label; return; }
+        if (v.correctness === "fail") facts.push({ kind: "fail", text: "correctness fail at " + label });
+        if (v.load) {
+          if (v.load.generatorSaturated) facts.push({ kind: "warn", text: "withheld (generator) at " + label });
+          else {
+            if (v.load.failedRate > 0) facts.push({ kind: "fail", text: "errors (" + (v.load.failedRate * 100).toFixed(2) + "%) at " + label });
+            if (prevP95 !== null && v.load.p95Ms !== null && prevP95 > 0 && v.load.p95Ms >= prevP95 * 4) {
+              facts.push({ kind: "warn", text: "p95 ×" + (v.load.p95Ms / prevP95).toFixed(1) + " at " + label });
+            }
+            if (prevOps !== null && v.load.opsPerSecond !== null && prevOps > 0 && v.load.opsPerSecond <= prevOps * 1.02) {
+              facts.push({ kind: "warn", text: "throughput flat/declining " + prevLabel + "→" + label });
+            }
+            prevP95 = v.load.p95Ms; prevOps = v.load.opsPerSecond;
+          }
+        }
+        if (v.capacity && v.capacity.steps && v.capacity.steps.length) {
+          v.capacity.steps.forEach(function (s) {
+            if (s.droppedIterations && s.droppedIterations > 0 && !s.generatorSaturated) {
+              facts.push({ kind: "fail", text: "dropped " + s.droppedIterations + " iters at " + s.targetRate + "/s (" + label + ")" });
+            } else if (s.generatorSaturated) {
+              facts.push({ kind: "warn", text: "ladder generator saturated at " + s.targetRate + "/s (" + label + ")" });
+            }
+          });
+        }
+        prevLabel = label;
+      });
+      var tr = el("tr");
+      var first = el("td", null, id); first.style.textAlign = "left"; tr.appendChild(first);
+      var cell = el("td"); cell.style.textAlign = "left";
+      if (!facts.length) cell.textContent = "no tip-over facts";
+      else facts.forEach(function (f) { cell.appendChild(el("span", "badge " + (f.kind === "fail" ? "fail" : "warn"), f.text)); cell.appendChild(document.createTextNode(" ")); });
+      tr.appendChild(cell);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    return sec;
+  }
+
+  function renderCompare() {
+    document.title = "Results — compare";
+    provEl.textContent = "";
+    bodyEl.textContent = "";
+    buildCompareNav();
+    var cols = compareLevels();
+    if (!cols.length) { bodyEl.appendChild(el("p", "note", "Select one or more runs to compare (one per load level recommended).")); return; }
+    bodyEl.appendChild(honestyStrip(cols));
+    bodyEl.appendChild(compareInputs(cols));
+    bodyEl.appendChild(compareGrid(cols));
+    bodyEl.appendChild(scalingChart(cols));
+    bodyEl.appendChild(tipOverSection(cols));
+  }
+
+  function buildCompareNav() {
+    compareNav.textContent = "";
+    var controls = el("div", "compare-controls");
+    var mlabel = el("label", null, "metric ");
+    var msel = el("select", null, null);
+    Object.keys(METRICS).forEach(function (key) {
+      var opt = el("option", null, METRICS[key].label); opt.value = key;
+      if (state.metric === key) opt.selected = true;
+      msel.appendChild(opt);
+    });
+    msel.addEventListener("change", function () { state.metric = msel.value; pushHash(); render(); });
+    controls.appendChild(mlabel); controls.appendChild(msel);
+    var selBtn = el("button", null, "one per level"); selBtn.type = "button";
+    selBtn.addEventListener("click", function () { state.compareIds = defaultCompareIds(); pushHash(); render(); });
+    controls.appendChild(selBtn);
+    var clearBtn = el("button", null, "clear"); clearBtn.type = "button";
+    clearBtn.addEventListener("click", function () { state.compareIds = []; pushHash(); render(); });
+    controls.appendChild(clearBtn);
+    compareNav.appendChild(controls);
+    var list = el("div", "run-checks");
+    runs.forEach(function (run) {
+      var label = el("label", "run-check");
+      var cb = el("input", null, null); cb.type = "checkbox"; cb.checked = state.compareIds.indexOf(run.runId) >= 0;
+      cb.addEventListener("change", function () {
+        if (cb.checked) { if (state.compareIds.indexOf(run.runId) < 0) state.compareIds.push(run.runId); }
+        else state.compareIds = state.compareIds.filter(function (id) { return id !== run.runId; });
+        pushHash(); render();
+      });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(compareLabel(run)));
+      list.appendChild(label);
+    });
+    compareNav.appendChild(list);
+  }
+
+  function syncModeChrome() {
+    if (modeRunBtn) modeRunBtn.className = state.mode === "run" ? "active" : "";
+    if (modeCompareBtn) modeCompareBtn.className = state.mode === "compare" ? "active" : "";
+    if (runNav) runNav.hidden = state.mode !== "run";
+    if (compareNav) compareNav.hidden = state.mode !== "compare";
+  }
+  function setMode(mode) {
+    state.mode = mode;
+    state.cohort = "all";
+    if (mode === "compare" && state.compareIds.length === 0) state.compareIds = defaultCompareIds();
+    syncModeChrome();
+    pushHash();
+    render();
   }
 
   if (select) select.addEventListener("change", function () { selectRun(select.value, true); });
   if (prevBtn) prevBtn.addEventListener("click", function () { step(-1); });
   if (nextBtn) nextBtn.addEventListener("click", function () { step(1); });
+  if (modeRunBtn) modeRunBtn.addEventListener("click", function () { setMode("run"); });
+  if (modeCompareBtn) modeCompareBtn.addEventListener("click", function () { setMode("compare"); });
   window.addEventListener("hashchange", function () {
-    var hash = (location.hash || "").replace(/^#/, "");
-    if (byId[hash] && hash !== state.runId) selectRun(hash, false);
+    var parsed = parseHash(location.hash);
+    if (parsed.mode === "compare") {
+      state.mode = "compare";
+      state.compareIds = parsed.runIds.filter(function (id) { return byId[id]; });
+      state.metric = parsed.metric;
+      syncModeChrome(); render();
+    } else if (parsed.runId && byId[parsed.runId] && parsed.runId !== state.runId) {
+      selectRun(parsed.runId, false);
+    }
   });
-  selectRun(initialRunId(), false);
+
+  (function init() {
+    var parsed = parseHash(location.hash);
+    if (parsed.mode === "compare" && parsed.runIds.length) {
+      state.mode = "compare";
+      state.metric = parsed.metric;
+      state.compareIds = parsed.runIds.filter(function (id) { return byId[id]; });
+      syncModeChrome();
+      render();
+      return;
+    }
+    var runId = parsed.runId && byId[parsed.runId] ? parsed.runId : null;
+    if (!runId) { try { var stored = localStorage.getItem(STORAGE_KEY); if (stored && byId[stored]) runId = stored; } catch (e) {} }
+    if (!runId) runId = runs.length ? runs[0].runId : null;
+    selectRun(runId, false);
+  })();
 })();`;
 
 const VIEWER_STYLE = `
@@ -993,6 +1964,30 @@ const VIEWER_STYLE = `
  h4{font-size:12px;margin:8px 0 4px;color:#475569}
  .sub{color:#64748b;margin:0 0 8px;font-size:12px}
  .note{color:#64748b;font-style:italic}
+ .note.not-requested{background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 10px;color:#92400e;font-style:normal}
+ .note.not-requested code{background:#fef3c7;padding:1px 5px;border-radius:3px;font-style:normal}
+ .title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+ .mode-toggle{display:flex;gap:0;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden}
+ .mode-toggle button{font:inherit;padding:4px 12px;border:0;background:#fff;cursor:pointer}
+ .mode-toggle button.active{background:#1e293b;color:#fff}
+ .compare-nav{margin-top:10px}
+ .compare-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+ .compare-controls button{font:inherit;font-size:12px;padding:3px 10px;cursor:pointer}
+ .run-checks{display:flex;gap:10px;flex-wrap:wrap;max-height:120px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#fff}
+ .run-check{font-size:12px;white-space:nowrap}
+ .honesty{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 24px 8px;color:#92400e}
+ table.matrix.compare td.rowlabel{color:#64748b;font-weight:600}
+ td.diff{background:#fff7ed}
+ .chart{width:100%;max-width:820px;height:auto;margin:6px 0}
+ .chart .axis{stroke:#cbd5e1;stroke-width:1}
+ .chart .tick{fill:#64748b;font-size:10px}
+ .chart-empty{color:#94a3b8}
+ .legend-inline{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0}
+ .legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#334155}
+ button.legend-item{font:inherit;font-size:11px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:1px 6px;cursor:pointer}
+ button.legend-item.off{opacity:.4;text-decoration:line-through}
+ .swatch{display:inline-block;width:10px;height:10px;border-radius:2px}
+ .thresholds{display:inline-flex;gap:4px;flex-wrap:wrap}
  table{border-collapse:collapse;font-size:12px}
  table.matrix th,table.matrix td{border:1px solid #e2e8f0;padding:4px 8px;text-align:right;white-space:nowrap}
  table.matrix th{background:#f8fafc;text-align:center;position:sticky;top:0;cursor:pointer;user-select:none}
@@ -1041,8 +2036,14 @@ export function renderViewerHtml(runs: RunView[]): string {
 </head>
 <body>
 <header class="topbar">
-  <h1>Architecture benchmark — results</h1>
-  <div class="run-nav">
+  <div class="title-row">
+    <h1>Architecture benchmark — results</h1>
+    <div class="mode-toggle">
+      <button type="button" id="mode-run" class="active">Run view</button>
+      <button type="button" id="mode-compare">Compare view</button>
+    </div>
+  </div>
+  <div class="run-nav" id="run-nav">
     <label for="run-select">Run</label>
     <select id="run-select">
       ${options}
@@ -1050,15 +2051,17 @@ export function renderViewerHtml(runs: RunView[]): string {
     <button type="button" id="run-prev" title="newer run">‹</button>
     <button type="button" id="run-next" title="older run">›</button>
   </div>
+  <div class="compare-nav" id="compare-nav" hidden></div>
   <div class="provenance" id="provenance"></div>
 </header>
 <main id="view-body"></main>
 <footer class="legend">
   Per-metric leaders are bolded; there is deliberately no composite score.
+  Charts are views — the tables are the source of truth.
   Blank means not measured, never zero. A generator-saturated load trial is
   withheld — generator saturated. Performance figures are indicative single-host.
 </footer>
-<script type="application/json" id="runs-data">${safeJson(runs)}</script>
+<script type="application/json" id="runs-data">${safeJson({ runs, levels: deriveLoadLevels(runs) })}</script>
 <script>${VIEWER_SCRIPT}</script>
 </body></html>
 `;

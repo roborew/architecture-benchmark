@@ -5,8 +5,12 @@ import path from "node:path";
 import type { VariantManifest } from "../src/config/schema.js";
 import {
   buildRunsIndex,
+  deriveLoadLevels,
+  formatCompareHash,
+  parseCompareHash,
   parseRunId,
   renderViewerHtml,
+  type RunView,
 } from "../src/reporting/viewer.js";
 
 // A Docker-free test over a synthesised `results/` tree (plan §3.3).
@@ -148,6 +152,14 @@ function makeResultsRoot(): string {
       p95Ms: 47.9,
       failedRate: 0,
       generatorSaturated: true,
+      paths: {
+        "/projects": { p50Ms: 12.3, p95Ms: 30.1 },
+        "/tasks/1": { p50Ms: 9, p95Ms: 22 },
+      },
+      thresholds: [
+        { metric: "http_req_failed", expression: "rate<0.01", ok: true },
+        { metric: "http_req_duration", expression: "p(95)<800", ok: false },
+      ],
       pgStatements: { before: 1, after: 2, delta: 1 },
     }),
   );
@@ -165,12 +177,50 @@ function makeResultsRoot(): string {
           "p(90)": 110,
           "p(95)": 120,
           "p(99)": 130,
+          thresholds: { "p(95)<1500": { ok: true } },
         },
         http_req_failed: { fails: 2, passes: 148 },
         mk_create_ok: { count: 50, rate: 5 },
         mk_update_ok: { count: 50, rate: 5 },
         mk_delete_ok: { count: 50, rate: 5 },
       },
+    }),
+  );
+  write(
+    root,
+    path.join(complete, "variants", "next-actions", "capacity.json"),
+    JSON.stringify({
+      applicable: true,
+      mixed: true,
+      scenarioId: "capacity-medium-mixed",
+      durationPerStepSeconds: 60,
+      ratesPerSecond: [10, 20],
+      steps: [
+        {
+          targetRate: 20,
+          achievedPerSecond: 19.8,
+          p95Ms: 60,
+          p99Ms: 90,
+          failedRate: 0,
+          droppedIterations: 0,
+          vusMax: 30,
+          generatorSaturated: false,
+          thresholds: [
+            { metric: "http_req_failed", expression: "rate<0.01", ok: true },
+          ],
+        },
+        {
+          targetRate: 10,
+          achievedPerSecond: 10,
+          p95Ms: 40,
+          p99Ms: 55,
+          failedRate: 0,
+          droppedIterations: 0,
+          vusMax: 20,
+          generatorSaturated: false,
+          thresholds: [],
+        },
+      ],
     }),
   );
   // Raw artefacts that must never be embedded.
@@ -421,10 +471,22 @@ describe("renderViewerHtml", () => {
     const root = makeResultsRoot();
     try {
       const html = renderViewerHtml(buildRunsIndex(root, manifests));
+      // No `src=`/`href=` attributes at all, and no external resource loading.
       expect(/\bsrc\s*=/.test(html)).toBe(false);
       expect(/\bhref\s*=/.test(html)).toBe(false);
-      expect(html).not.toContain("http://");
-      expect(html).not.toContain("https://");
+      expect(/\bsrc\s*=\s*["']https?:/i.test(html)).toBe(false);
+      expect(/\bhref\s*=\s*["']https?:/i.test(html)).toBe(false);
+      expect(html).not.toContain("fetch(");
+      expect(html).not.toContain("XMLHttpRequest");
+      expect(html).not.toContain("<link");
+      // The SVG namespace URI is a W3C identifier, not a fetched resource; it is
+      // the only `http://` that may appear.
+      const withoutSvgNs = html.replace(
+        /http:\/\/www\.w3\.org\/2000\/svg/g,
+        "",
+      );
+      expect(withoutSvgNs).not.toContain("http://");
+      expect(withoutSvgNs).not.toContain("https://");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -435,5 +497,269 @@ describe("renderViewerHtml", () => {
     expect(html).toContain("<!doctype html>");
     expect(html).toContain('id="runs-data"');
     expect(html).toContain('id="run-select"');
+  });
+
+  it("ships compare-mode chrome and the D2 re-run banner template", () => {
+    const html = renderViewerHtml(buildRunsIndex(makeResultsRoot(), manifests));
+    expect(html).toContain('id="mode-compare"');
+    expect(html).toContain('id="compare-nav"');
+    // The banner builds its command from the run's config file (plan D2).
+    expect(html).toContain("pnpm rig:run --config ");
+    expect(html).toContain("Not measured");
+  });
+});
+
+async function loadRun(root: string, runId: string): Promise<RunView> {
+  return buildRunsIndex(root, manifests).find((r) => r.runId === runId)!;
+}
+
+describe("K1/K2/K3 reductions", () => {
+  it("reduces per-path latency and threshold labels from load.json", async () => {
+    const root = makeResultsRoot();
+    try {
+      const run = await loadRun(root, "2026-10-09t17-44-06-935z");
+      const load = run.variants.find((v) => v.id === "next-actions")!.load!;
+      expect(load.paths["/projects"]).toEqual({ p50Ms: 12.3, p95Ms: 30.1 });
+      expect(load.thresholds).toEqual([
+        { metric: "http_req_duration", expression: "p(95)<800", ok: false },
+        { metric: "http_req_failed", expression: "rate<0.01", ok: true },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("lifts threshold labels from the raw mutations summary", async () => {
+    const root = makeResultsRoot();
+    try {
+      const run = await loadRun(root, "2026-10-09t17-44-06-935z");
+      const mut = run.variants.find((v) => v.id === "next-actions")!.mutations!;
+      expect(mut.thresholds).toEqual([
+        { metric: "http_req_duration", expression: "p(95)<1500", ok: true },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reduces the capacity ladder and sorts steps by target rate", async () => {
+    const root = makeResultsRoot();
+    try {
+      const run = await loadRun(root, "2026-10-09t17-44-06-935z");
+      const capacity = run.variants.find(
+        (v) => v.id === "next-actions",
+      )!.capacity!;
+      expect(capacity.mixed).toBe(true);
+      expect(capacity.steps.map((s) => s.targetRate)).toEqual([10, 20]);
+      expect(capacity.steps[1]!.achievedPerSecond).toBe(19.8);
+      expect(capacity.steps[1]!.thresholds).toHaveLength(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("D1/D2 effective stage selection", () => {
+  function flaggedRoot(stages: unknown | null): string {
+    const root = mkdtempSync(path.join(os.tmpdir(), "bench-viewer-stages-"));
+    const runId = "2026-10-10t15-15-18-542z";
+    const preflight: Record<string, unknown> = {
+      runId,
+      gitRevision: "abc",
+      config: "config/medium-load.yaml",
+    };
+    if (stages) preflight.stages = stages;
+    write(root, path.join(runId, "preflight.json"), JSON.stringify(preflight));
+    write(
+      root,
+      path.join(runId, "summary.json"),
+      JSON.stringify({
+        runId,
+        effectiveManifestSha256: "abc",
+        results: [summaryResult({ stages: { build: { ok: true, ms: 9 } } })],
+      }),
+    );
+    return root;
+  }
+
+  it("records requestedStages from preflight.json (false → banner data)", async () => {
+    const root = flaggedRoot({
+      correctness: false,
+      render: false,
+      load: false,
+    });
+    try {
+      const run = await loadRun(root, "2026-10-10t15-15-18-542z");
+      expect(run.requestedStages).toEqual({
+        correctness: false,
+        render: false,
+        load: false,
+      });
+      // The banner re-run command is built from the source config path.
+      expect(run.configFile).toBe("config/medium-load.yaml");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps requestedStages null for a pre-D1 run (never guess)", async () => {
+    const root = flaggedRoot(null);
+    try {
+      const run = await loadRun(root, "2026-10-10t15-15-18-542z");
+      expect(run.requestedStages).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("records --only as a partial-run marker", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "bench-viewer-only-"));
+    const runId = "2026-10-10t16-00-00-000z";
+    try {
+      write(
+        root,
+        path.join(runId, "preflight.json"),
+        JSON.stringify({
+          runId,
+          config: "config/medium-load.yaml",
+          stages: { correctness: true, render: true, load: true },
+          only: ["next-actions"],
+        }),
+      );
+      write(
+        root,
+        path.join(runId, "summary.json"),
+        JSON.stringify({ runId, results: [summaryResult()] }),
+      );
+      const run = await loadRun(root, runId);
+      expect(run.only).toEqual(["next-actions"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("compare model (V-B)", () => {
+  const runView = (overrides: Partial<RunView>): RunView => ({
+    runId: "r",
+    incomplete: false,
+    configName: null,
+    configFile: null,
+    gitRevision: null,
+    effectiveManifestSha256: null,
+    startedAt: null,
+    okCount: 0,
+    totalCount: 0,
+    inputs: null,
+    requestedStages: null,
+    only: null,
+    variants: [],
+    ...overrides,
+  });
+
+  const inputs = (
+    taskCount: number,
+    counts: Record<string, number>,
+    cpus: number,
+    mem: number,
+    rates: number[],
+  ): Record<string, unknown> => ({
+    name: "cfg",
+    trials: 1,
+    fixture: { taskCount, projectCount: 1, userCount: 1, commentCount: 1 },
+    scenarios: [
+      { id: "v", kind: "volume", counts, concurrency: 5 },
+      {
+        id: "c",
+        kind: "capacity",
+        ratesPerSecond: rates,
+        durationPerStepSeconds: 30,
+      },
+    ],
+    resources: {
+      appCpus: cpus,
+      appMemoryMb: mem,
+      dbCpus: cpus,
+      dbMemoryMb: mem,
+    },
+  });
+
+  it("groups configName × envelope and orders levels by the derived ordinal", () => {
+    const runs: RunView[] = [
+      runView({
+        runId: "2026-10-10t10-00-00-000z",
+        configName: "medium-load",
+        inputs: inputs(
+          10000,
+          { list: 400, create: 100 },
+          2,
+          2048,
+          [10, 20, 40],
+        ),
+      }),
+      runView({
+        runId: "2026-10-10t09-00-00-000z",
+        configName: "smoke-matrix",
+        inputs: inputs(1000, { list: 100 }, 2, 2048, [5, 10]),
+      }),
+      // Same config, different envelope → a *distinct* level (R4).
+      runView({
+        runId: "2026-10-10t11-00-00-000z",
+        configName: "medium-load",
+        inputs: inputs(
+          10000,
+          { list: 400, create: 100 },
+          4,
+          4096,
+          [10, 20, 40],
+        ),
+      }),
+      // Older run of the same config × envelope → same level, listed after.
+      runView({
+        runId: "2026-10-10t08-00-00-000z",
+        configName: "medium-load",
+        inputs: inputs(
+          10000,
+          { list: 400, create: 100 },
+          2,
+          2048,
+          [10, 20, 40],
+        ),
+      }),
+    ];
+    const levels = deriveLoadLevels(runs);
+    expect(levels.map((l) => l.key)).toEqual([
+      "smoke-matrix@2c/2048MB",
+      "medium-load@2c/2048MB",
+      "medium-load@4c/4096MB",
+    ]);
+    const medium2 = levels[1]!;
+    expect(medium2.runIds).toEqual([
+      "2026-10-10t10-00-00-000z",
+      "2026-10-10t08-00-00-000z",
+    ]);
+    expect(medium2.label).toBe("medium-load @ 2c/2048MB");
+    expect(medium2.ordinal.taskCount).toBe(10000);
+    expect(medium2.ordinal.maxRate).toBe(40);
+  });
+
+  it("groups configs without a name by run-id", () => {
+    const levels = deriveLoadLevels([
+      runView({ runId: "2026-10-10t12-00-00-000z", inputs: { fixture: {} } }),
+    ]);
+    expect(levels).toHaveLength(1);
+    expect(levels[0]!.key).toBe("run:2026-10-10t12-00-00-000z");
+    expect(levels[0]!.label).toBe("2026-10-10t12-00-00-000z");
+  });
+
+  it("round-trips the compare deep link", () => {
+    const state = { runIds: ["a", "b"], metric: "p95" };
+    const hash = formatCompareHash(state);
+    expect(hash).toBe("compare=a,b&metric=p95");
+    expect(parseCompareHash("#" + hash)).toEqual(state);
+    expect(parseCompareHash("compare=x,y")).toEqual({
+      runIds: ["x", "y"],
+      metric: "ops",
+    });
   });
 });
