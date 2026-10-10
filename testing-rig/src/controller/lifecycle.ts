@@ -10,6 +10,7 @@ import { runCommand, type Compose } from "./docker.js";
 import { SEEDER_IMAGE, composeEnv } from "./plan.js";
 import { Compose as ComposeClass } from "./docker.js";
 import { verifyDigest, verifySchema } from "./verify.js";
+import type { CapacityScenario } from "../config/schema.js";
 import type { FixtureParams } from "./fixture.js";
 import type { ResolvedVariant, ResourceCaps } from "./types.js";
 import type { RunArtifacts } from "./artifacts.js";
@@ -19,6 +20,16 @@ export interface StageRecord {
   ms: number;
   detail?: unknown;
 }
+
+/** A recorded k6 threshold label (plan K2) — a health label, never a gate. */
+export interface ThresholdResult {
+  metric: string;
+  expression: string;
+  ok: boolean;
+}
+
+/** k6's threshold-failure exit code; recorded as a signal, never a stage error. */
+const K6_THRESHOLD_EXIT = 99;
 
 export interface SeederReport {
   mode: string;
@@ -76,6 +87,12 @@ export interface LifecycleOptions {
       };
       readPaths: string[];
     };
+    /**
+     * Capacity ladder (plan K3): one `constant-arrival-rate` run per declared
+     * rate, executed after the read + mutation legs, per variant. Only present
+     * when the config declares a `capacity` scenario.
+     */
+    capacity?: { scenario: CapacityScenario };
   };
   readinessTimeoutMs?: number;
 }
@@ -281,7 +298,7 @@ async function postgresStatements(compose: Compose): Promise<number | null> {
   return Number.isFinite(value) ? value : null;
 }
 
-interface LoadReport {
+export interface LoadReport {
   target: string;
   baseUrl: string;
   vus: number;
@@ -293,11 +310,91 @@ interface LoadReport {
   generatorMaxCpuPercentObserved: number | null;
   generatorMaxCpuPercentLimit: number;
   generatorSaturated: boolean;
+  /** Per-path read latency (plan K1), keyed by the tagged path. */
+  paths: Record<string, { p50Ms: number | null; p95Ms: number | null }>;
+  /** Recorded threshold labels (plan K2); never a gate. */
+  thresholds: ThresholdResult[];
   pgStatements: {
     before: number | null;
     after: number | null;
     delta: number | null;
   };
+}
+
+// --- k6 summary helpers (plan K1/K2) ----------------------------------------
+//
+// The k6 scripts write a *flat* summary (see `load/summary.js`): the values map
+// is spread to the top level and a `thresholds` array is attached, so the
+// controller/viewer readers keep working and threshold results are carried.
+
+interface K6SummaryFile {
+  metrics?: Record<string, Record<string, unknown>>;
+  thresholds?: ThresholdResult[];
+}
+
+function readJsonFile<T>(file: string): T | null {
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function summaryMetric(
+  summary: K6SummaryFile,
+  name: string,
+  key: string,
+): number | null {
+  const value = summary.metrics?.[name]?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+function summaryThresholds(summary: K6SummaryFile): ThresholdResult[] {
+  const raw = summary.thresholds;
+  if (!Array.isArray(raw)) return [];
+  const out: ThresholdResult[] = [];
+  for (const entry of raw) {
+    if (
+      entry &&
+      typeof entry.metric === "string" &&
+      typeof entry.expression === "string" &&
+      typeof entry.ok === "boolean"
+    ) {
+      out.push({
+        metric: entry.metric,
+        expression: entry.expression,
+        ok: entry.ok,
+      });
+    }
+  }
+  return out;
+}
+
+/** Per-path latency from `http_req_duration{path:…}` sub-metric entries (K1). */
+function perPathLatency(
+  summary: K6SummaryFile,
+): Record<string, { p50Ms: number | null; p95Ms: number | null }> {
+  const paths: Record<string, { p50Ms: number | null; p95Ms: number | null }> =
+    {};
+  for (const [name, entry] of Object.entries(summary.metrics ?? {})) {
+    const match = /^http_req_duration\{path:(.+)\}$/.exec(name);
+    if (!match) continue;
+    paths[match[1]!] = {
+      p50Ms: typeof entry.med === "number" ? entry.med : null,
+      p95Ms: typeof entry["p(95)"] === "number" ? entry["p(95)"] : null,
+    };
+  }
+  return paths;
+}
+
+/**
+ * k6 exits non-zero when a threshold fails (code 99). That is a recorded signal,
+ * not a stage error (plan K2). Any *other* non-zero exit is fatal.
+ */
+function k6ExitFatal(exitCode: number, thresholds: ThresholdResult[]): boolean {
+  if (exitCode === 0) return false;
+  if (exitCode === K6_THRESHOLD_EXIT) return false;
+  return !thresholds.some((threshold) => !threshold.ok);
 }
 
 /**
@@ -323,122 +420,51 @@ async function runLoadSuite(
   }
 
   const outDir = path.join(options.artifacts.dir, "variants", variant.id);
-  const containerName = `bench-k6-${variant.id}`;
   const network = `${variant.projectName}_default`;
   const baseUrl = `http://host.docker.internal:${service.hostPort}`;
   const { vus, durationSeconds, generatorMaxCpuPercent } = options.load!;
 
   const before = await postgresStatements(compose);
-  await runCommand("docker", ["rm", "-f", containerName], {
-    allowFailure: true,
+  const run = await runK6Container({
+    containerName: `bench-k6-${variant.id}`,
+    network,
+    outDir,
+    rigRoot: options.rigRoot,
+    script: "/load/read.js",
+    summaryFile: "k6-summary.json",
+    env: {
+      BASE_URL: baseUrl,
+      PATHS: target.paths.join(","),
+      VUS: String(vus),
+      DURATION: `${durationSeconds}s`,
+    },
   });
+  options.artifacts.write(`variants/${variant.id}/k6.log`, run.logs);
 
-  const started = await runCommand(
-    "docker",
-    [
-      "run",
-      "-d",
-      "--name",
-      containerName,
-      "--network",
-      network,
-      "--add-host",
-      "host.docker.internal:host-gateway",
-      "-v",
-      `${path.join(options.rigRoot, "load")}:/load:ro`,
-      "-v",
-      `${outDir}:/out`,
-      "-e",
-      `BASE_URL=${baseUrl}`,
-      "-e",
-      `PATHS=${target.paths.join(",")}`,
-      "-e",
-      `VUS=${vus}`,
-      "-e",
-      `DURATION=${durationSeconds}s`,
-      "grafana/k6:latest",
-      "run",
-      "--summary-export",
-      "/out/k6-summary.json",
-      "/load/read.js",
-    ],
-    { allowFailure: true },
-  );
-  if (started.code !== 0) {
-    throw new Error(
-      `k6 container failed to start: ${started.stderr || started.stdout}`,
-    );
-  }
-
-  // Sample the generator's CPU while it runs (plan §6.5).
-  let maxCpuPercent = 0;
-  for (;;) {
-    const stats = await runCommand(
-      "docker",
-      ["stats", "--no-stream", "--format", "{{.CPUPerc}}", containerName],
-      { allowFailure: true },
-    );
-    if (stats.code !== 0) break;
-    const percent = Number.parseFloat(stats.stdout.replace("%", "").trim());
-    if (Number.isFinite(percent))
-      maxCpuPercent = Math.max(maxCpuPercent, percent);
-    const running = await runCommand(
-      "docker",
-      ["inspect", "-f", "{{.State.Running}}", containerName],
-      {
-        allowFailure: true,
-      },
-    );
-    if (running.stdout.trim() !== "true") break;
-    await delay(1000);
-  }
-
-  const waited = await runCommand("docker", ["wait", containerName], {
-    allowFailure: true,
-  });
-  const exitCode = Number(waited.stdout.trim());
-  const logs = await runCommand("docker", ["logs", containerName], {
-    allowFailure: true,
-  });
-  options.artifacts.write(
-    `variants/${variant.id}/k6.log`,
-    `${logs.stdout}${logs.stderr}`,
-  );
-  await runCommand("docker", ["rm", "-f", containerName], {
-    allowFailure: true,
-  });
-  if (exitCode !== 0) throw new Error(`k6 exited ${exitCode}; see k6.log`);
+  const summary =
+    readJsonFile<K6SummaryFile>(path.join(outDir, "k6-summary.json")) ?? {};
+  const thresholds = summaryThresholds(summary);
+  if (k6ExitFatal(run.exitCode, thresholds))
+    throw new Error(`k6 exited ${run.exitCode}; see k6.log`);
 
   const after = await postgresStatements(compose);
-
-  let summary: {
-    metrics?: Record<string, Record<string, number>>;
-  } = {};
-  try {
-    summary = JSON.parse(
-      readFileSync(path.join(outDir, "k6-summary.json"), "utf8"),
-    );
-  } catch {
-    // Summary export missing; metrics stay null below.
-  }
-  const metric = (name: string, key: string): number | null => {
-    const value = summary.metrics?.[name]?.[key];
-    return typeof value === "number" ? value : null;
-  };
 
   const report: LoadReport = {
     target: target.service,
     baseUrl,
     vus,
     durationSeconds,
-    requests: metric("http_reqs", "count"),
-    opsPerSecond: metric("http_reqs", "rate"),
-    p95Ms: metric("http_req_duration", "p(95)"),
+    requests: summaryMetric(summary, "http_reqs", "count"),
+    opsPerSecond: summaryMetric(summary, "http_reqs", "rate"),
+    p95Ms: summaryMetric(summary, "http_req_duration", "p(95)"),
     failedRate:
-      metric("http_req_failed", "rate") ?? metric("http_req_failed", "value"),
-    generatorMaxCpuPercentObserved: maxCpuPercent,
+      summaryMetric(summary, "http_req_failed", "rate") ??
+      summaryMetric(summary, "http_req_failed", "value"),
+    generatorMaxCpuPercentObserved: run.maxCpuPercent,
     generatorMaxCpuPercentLimit: generatorMaxCpuPercent,
-    generatorSaturated: maxCpuPercent > generatorMaxCpuPercent,
+    generatorSaturated: run.maxCpuPercent > generatorMaxCpuPercent,
+    paths: perPathLatency(summary),
+    thresholds,
     pgStatements: {
       before,
       after,
@@ -478,11 +504,13 @@ async function runK6Container(options: {
   ];
   for (const [key, value] of Object.entries(options.env))
     args.push("-e", `${key}=${value}`);
+  // The scripts write their summary via `handleSummary` to this path (plan K2):
+  // the legacy `--summary-export` shape cannot carry threshold results.
   args.push(
+    "-e",
+    `SUMMARY_FILE=/out/${options.summaryFile}`,
     "grafana/k6:latest",
     "run",
-    "--summary-export",
-    `/out/${options.summaryFile}`,
     options.script,
   );
 
@@ -560,33 +588,13 @@ interface MutationReport {
   };
   generatorMaxCpuPercentObserved: number;
   generatorSaturated: boolean;
+  /** Recorded threshold labels (plan K2); never a gate. */
+  thresholds: ThresholdResult[];
   pgStatements: {
     before: number | null;
     after: number | null;
     delta: number | null;
   };
-}
-
-/** Read-only k6 summary value helper. */
-function summaryValue(
-  summary: {
-    metrics?: Record<
-      string,
-      { values?: Record<string, number>; value?: number; count?: number }
-    >;
-  },
-  metric: string,
-  key: string,
-): number | null {
-  const entry = summary.metrics?.[metric];
-  const value =
-    entry?.values?.[key] ??
-    (key === "count"
-      ? entry?.count
-      : key === "rate"
-        ? entry?.value
-        : undefined);
-  return typeof value === "number" ? value : null;
 }
 
 /**
@@ -661,19 +669,15 @@ async function runMutationSuite(
     env,
   });
   options.artifacts.write(`variants/${variant.id}/mutations.log`, run.logs);
-  if (run.exitCode !== 0)
-    throw new Error(`k6 mutations exited ${run.exitCode}; see mutations.log`);
 
   const after = await postgresStatements(compose);
 
-  let summary: Parameters<typeof summaryValue>[0] = {};
-  try {
-    summary = JSON.parse(
-      readFileSync(path.join(outDir, "mutations-summary.json"), "utf8"),
-    );
-  } catch {
-    // summary missing
-  }
+  const summary =
+    readJsonFile<K6SummaryFile>(path.join(outDir, "mutations-summary.json")) ??
+    {};
+  const thresholds = summaryThresholds(summary);
+  if (k6ExitFatal(run.exitCode, thresholds))
+    throw new Error(`k6 mutations exited ${run.exitCode}; see mutations.log`);
 
   // 3. Verify DB postconditions (plan §4/§6.5).
   const leased = (from: number, to: number, count: number): number[] => {
@@ -717,11 +721,11 @@ async function runMutationSuite(
   );
 
   const achieved = {
-    list: summaryValue(summary, "http_reqs", "count"),
-    create: summaryValue(summary, "mk_create_ok", "count"),
-    update: summaryValue(summary, "mk_update_ok", "count"),
-    delete: summaryValue(summary, "mk_delete_ok", "count"),
-    atomic: summaryValue(summary, "mk_atomic_ok", "count"),
+    list: summaryMetric(summary, "http_reqs", "count"),
+    create: summaryMetric(summary, "mk_create_ok", "count"),
+    update: summaryMetric(summary, "mk_update_ok", "count"),
+    delete: summaryMetric(summary, "mk_delete_ok", "count"),
+    atomic: summaryMetric(summary, "mk_atomic_ok", "count"),
   };
 
   const postconditions = {
@@ -740,13 +744,14 @@ async function runMutationSuite(
     achieved,
     perOpP95Ms: {
       create:
-        summaryValue(summary, "http_req_duration{op:create}", "p(95)") ??
-        summaryValue(summary, "http_req_duration", "p(95)"),
+        summaryMetric(summary, "http_req_duration{op:create}", "p(95)") ??
+        summaryMetric(summary, "http_req_duration", "p(95)"),
     },
     postconditions,
     generatorMaxCpuPercentObserved: run.maxCpuPercent,
     generatorSaturated:
       run.maxCpuPercent > options.load!.generatorMaxCpuPercent,
+    thresholds,
     pgStatements: {
       before,
       after,
@@ -754,6 +759,158 @@ async function runMutationSuite(
     },
   };
   options.artifacts.writeJson(`variants/${variant.id}/mutations.json`, report);
+  return report;
+}
+
+export interface CapacityStepReport {
+  targetRate: number;
+  requests: number | null;
+  achievedPerSecond: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  failedRate: number | null;
+  droppedIterations: number | null;
+  vusMax: number | null;
+  generatorMaxCpuPercentObserved: number;
+  generatorSaturated: boolean;
+  thresholds: ThresholdResult[];
+}
+
+/**
+ * Read-weighted mixed capacity ladder (plan K3): one `constant-arrival-rate` run
+ * per declared rate. With the generator's CPU under the limit, dropped
+ * iterations (or a degraded p95) mark the app's tipping point — the whole point
+ * of the instrument. The ladder makes no mutation-*capacity* claim: mutations
+ * remain the closed-loop volume measurement.
+ */
+export interface CapacityReport {
+  /** False when the ladder could not run (rendered blank, never zero). */
+  applicable: boolean;
+  /** True when write ops replayed captured requests; false = read-only fallback. */
+  mixed: boolean;
+  scenarioId: string;
+  durationPerStepSeconds: number;
+  ratesPerSecond: number[];
+  steps: CapacityStepReport[];
+}
+
+async function runCapacitySuite(
+  variant: ResolvedVariant,
+  compose: Compose,
+  options: LifecycleOptions,
+): Promise<CapacityReport> {
+  const scenario = options.load!.capacity!.scenario;
+  const target = variant.load!;
+  const service =
+    target.service === "app"
+      ? variant.services.app
+      : target.service === "api"
+        ? variant.services.api
+        : variant.services.spa;
+  if (!service || service.hostPort === undefined) {
+    throw new Error(`no published '${target.service}' service for capacity`);
+  }
+
+  const outDir = path.join(options.artifacts.dir, "variants", variant.id);
+  const network = `${variant.projectName}_default`;
+  const baseUrl = `http://host.docker.internal:${service.hostPort}`;
+  const log: string[] = [];
+
+  // Reset once before the ladder (plan K3/§8.4): no reset between steps, so the
+  // point — sustained pressure across the ladder — is not destroyed.
+  if (scenario.resetBefore) {
+    await runSeeder(compose, variant, "reset", undefined, variant.resetCommand);
+  }
+
+  // Write ops replay the captured requests when the volume leg produced them;
+  // otherwise the ladder degrades to reads only (recorded, never hidden).
+  const capture = readJsonFile<CaptureFile>(path.join(outDir, "capture.json"));
+  const pools = options.load!.mutations?.pools ?? null;
+  const mixed = Boolean(capture?.ops?.create && pools);
+
+  const steps: CapacityStepReport[] = [];
+  for (const rate of scenario.ratesPerSecond) {
+    const run = await runK6Container({
+      containerName: `bench-k6-${variant.id}`,
+      network,
+      outDir,
+      rigRoot: options.rigRoot,
+      script: "/load/capacity.js",
+      summaryFile: `capacity-${rate}-summary.json`,
+      env: {
+        BASE_URL: baseUrl,
+        RATE: String(rate),
+        DURATION: `${scenario.durationPerStepSeconds}s`,
+        PREALLOCATED_VUS: String(scenario.preallocatedVUs),
+        MAX_VUS: String(scenario.maxVUs),
+        READ_PATHS: target.paths.join(","),
+        WEIGHT_LIST: String(scenario.weights.list),
+        WEIGHT_DETAIL: String(scenario.weights.detail),
+        WEIGHT_CREATE: String(scenario.weights.create),
+        WEIGHT_UPDATE: String(scenario.weights.update),
+        WEIGHT_DELETE: String(scenario.weights.delete),
+        CAPTURE: mixed ? JSON.stringify(capture) : "",
+        UPDATE_FROM: String(pools?.updateFrom ?? 1),
+        UPDATE_TO: String(pools?.updateTo ?? 1),
+        DELETE_FROM: String(pools?.deleteFrom ?? 1),
+        DELETE_TO: String(pools?.deleteTo ?? 1),
+      },
+    });
+    log.push(`=== ${rate}/s ===\n${run.logs}`);
+
+    const summary =
+      readJsonFile<K6SummaryFile>(
+        path.join(outDir, `capacity-${rate}-summary.json`),
+      ) ?? {};
+    const thresholds = summaryThresholds(summary);
+    const step: CapacityStepReport = {
+      targetRate: rate,
+      requests: summaryMetric(summary, "http_reqs", "count"),
+      achievedPerSecond: summaryMetric(summary, "http_reqs", "rate"),
+      p95Ms: summaryMetric(summary, "http_req_duration", "p(95)"),
+      p99Ms: summaryMetric(summary, "http_req_duration", "p(99)"),
+      failedRate:
+        summaryMetric(summary, "http_req_failed", "rate") ??
+        summaryMetric(summary, "http_req_failed", "value"),
+      droppedIterations: summaryMetric(summary, "dropped_iterations", "count"),
+      vusMax:
+        summaryMetric(summary, "vus_max", "value") ??
+        summaryMetric(summary, "vus_max", "max"),
+      generatorMaxCpuPercentObserved: run.maxCpuPercent,
+      generatorSaturated:
+        run.maxCpuPercent > options.load!.generatorMaxCpuPercent,
+      thresholds,
+    };
+    options.artifacts.writeJson(
+      `variants/${variant.id}/capacity/${rate}.json`,
+      step,
+    );
+    steps.push(step);
+
+    if (k6ExitFatal(run.exitCode, thresholds)) {
+      options.artifacts.write(
+        `variants/${variant.id}/capacity.log`,
+        log.join("\n"),
+      );
+      throw new Error(
+        `k6 capacity @ ${rate}/s exited ${run.exitCode}; see capacity.log`,
+      );
+    }
+  }
+  options.artifacts.write(
+    `variants/${variant.id}/capacity.log`,
+    log.join("\n"),
+  );
+
+  const report: CapacityReport = {
+    applicable: true,
+    mixed,
+    scenarioId: scenario.id,
+    durationPerStepSeconds: scenario.durationPerStepSeconds,
+    ratesPerSecond: [...scenario.ratesPerSecond],
+    steps,
+  };
+  options.artifacts.writeJson(`variants/${variant.id}/capacity.json`, report);
   return report;
 }
 
@@ -847,10 +1004,15 @@ export async function runVariant(
         const mutations = options.load.mutations
           ? await runMutationSuite(variant, compose, options)
           : null;
+        // The capacity ladder runs last: it reuses the mutation leg's captured
+        // requests for its write ops (plan K3).
+        const capacity = options.load.capacity
+          ? await runCapacitySuite(variant, compose, options)
+          : null;
         stages.load = {
           ok: true,
           ms: Date.now() - startedAt,
-          detail: { ...read, mutations },
+          detail: { ...read, mutations, capacity },
         };
       } catch (err) {
         stages.load = {

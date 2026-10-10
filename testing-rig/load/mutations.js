@@ -13,6 +13,7 @@ import http from "k6/http";
 import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { check } from "k6";
+import { summaryFile } from "./summary.js";
 
 const baseUrl = __ENV.BASE_URL;
 const capture = JSON.parse(__ENV.CAPTURE);
@@ -66,6 +67,12 @@ export const options = {
   scenarios,
   summaryTrendStats: ["avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
   discardResponseBodies: true,
+  // Recorded health labels, not gates (plan K2): `abortOnFail` stays false and
+  // the controller records the threshold-failure exit as a signal.
+  thresholds: {
+    http_req_failed: ["rate<0.01"],
+    http_req_duration: ["p(95)<1500"],
+  },
 };
 
 const literal = (text, from, to) =>
@@ -135,3 +142,7 @@ export function read() {
 }
 
 export const setup = () => ({ captured: !!capture.ops });
+
+export function handleSummary(data) {
+  return summaryFile(data);
+}
