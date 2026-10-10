@@ -2,27 +2,45 @@ import { describe, expect, it } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadManifestDirectory } from "../src/config/load.js";
-import { allocateDistinctHostPorts, allocateHostPorts } from "../src/controller/ports.js";
+import {
+  allocateDistinctHostPorts,
+  allocateHostPorts,
+} from "../src/controller/ports.js";
 import { resolveTokens, resolveTokenMap } from "../src/controller/tokens.js";
-import { checkEligibility, eligibilityPools, poolSize } from "../src/controller/fixture.js";
+import {
+  checkEligibility,
+  eligibilityPools,
+  poolSize,
+} from "../src/controller/fixture.js";
 import { composeEnv, planVariant } from "../src/controller/plan.js";
+import { parseResourcesSpec } from "../src/controller/resources.js";
 
-const rigRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rigRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 describe("token resolution", () => {
   it("substitutes known tokens", () => {
-    expect(resolveTokens("http://localhost:{{API_PORT}}", { API_PORT: 4321 })).toBe(
-      "http://localhost:4321",
-    );
+    expect(
+      resolveTokens("http://localhost:{{API_PORT}}", { API_PORT: 4321 }),
+    ).toBe("http://localhost:4321");
     expect(resolveTokens("{{ A }} {{B}}", { A: "x", B: 2 })).toBe("x 2");
   });
 
   it("throws on an unknown token rather than shipping a literal", () => {
-    expect(() => resolveTokens("{{NOPE}}", {})).toThrow(/unknown manifest token/);
+    expect(() => resolveTokens("{{NOPE}}", {})).toThrow(
+      /unknown manifest token/,
+    );
   });
 
   it("resolves a whole build-arg map", () => {
-    expect(resolveTokenMap({ VITE_API_URL: "http://localhost:{{API_PORT}}" }, { API_PORT: 5000 })).toEqual({
+    expect(
+      resolveTokenMap(
+        { VITE_API_URL: "http://localhost:{{API_PORT}}" },
+        { API_PORT: 5000 },
+      ),
+    ).toEqual({
       VITE_API_URL: "http://localhost:5000",
     });
   });
@@ -65,7 +83,9 @@ describe("fixture eligibility", () => {
   });
 
   it("accepts a plan within the pools", () => {
-    expect(checkEligibility(small, { updates: 100, deletes: 100 }).ok).toBe(true);
+    expect(checkEligibility(small, { updates: 100, deletes: 100 }).ok).toBe(
+      true,
+    );
   });
 
   it("rejects a plan that exceeds the delete pool", () => {
@@ -75,11 +95,56 @@ describe("fixture eligibility", () => {
   });
 });
 
+describe("resource envelope override (R1)", () => {
+  const base = { appCpus: 2, appMemoryMb: 2048, dbCpus: 2, dbMemoryMb: 2048 };
+
+  it("applies the envelope form to all four fields", () => {
+    expect(parseResourcesSpec("cpus=4,memoryMb=4096", base)).toEqual({
+      requested: { cpus: 4, memoryMb: 4096 },
+      resources: { appCpus: 4, appMemoryMb: 4096, dbCpus: 4, dbMemoryMb: 4096 },
+    });
+  });
+
+  it("merges the granular form onto the base envelope", () => {
+    expect(parseResourcesSpec("appCpus=8,dbMemoryMb=512", base)).toEqual({
+      requested: { appCpus: 8, dbMemoryMb: 512 },
+      resources: { appCpus: 8, appMemoryMb: 2048, dbCpus: 2, dbMemoryMb: 512 },
+    });
+  });
+
+  it("rejects unknown keys, bad values, and mixed forms", () => {
+    expect(() => parseResourcesSpec("cpu=4", base)).toThrow(/unknown/);
+    expect(() => parseResourcesSpec("cpus=0", base)).toThrow(
+      /positive integer/,
+    );
+    expect(() => parseResourcesSpec("cpus=2.5", base)).toThrow(
+      /positive integer/,
+    );
+    expect(() => parseResourcesSpec("cpus=2", base)).toThrow(
+      /both cpus and memoryMb/,
+    );
+    expect(() =>
+      parseResourcesSpec("cpus=2,memoryMb=2048,appCpus=4", base),
+    ).toThrow(/cannot mix/);
+    expect(() => parseResourcesSpec("cpus=9", base)).toThrow(
+      /both cpus and memoryMb/,
+    );
+    expect(() => parseResourcesSpec("", base)).toThrow(/empty/);
+  });
+});
+
 describe("planVariant", () => {
-  const resources = { appCpus: 2, appMemoryMb: 2048, dbCpus: 2, dbMemoryMb: 2048 };
+  const resources = {
+    appCpus: 2,
+    appMemoryMb: 2048,
+    dbCpus: 2,
+    dbMemoryMb: 2048,
+  };
 
   it("resolves a spa-api pair: absolute paths, unique project, distinct ports, tokens", async () => {
-    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
     const variant = await planVariant(manifests.get("tanstack-express-rest")!, {
       rigRoot,
       runId: "run1",
@@ -89,7 +154,9 @@ describe("planVariant", () => {
     expect(variant.projectName).toBe("bench-tanstack-express-rest-run1");
     expect(path.isAbsolute(variant.composeFile)).toBe(true);
     expect(variant.published.map((s) => s.slot)).toEqual(["api", "spa"]);
-    expect(variant.services.api!.hostPort).not.toBe(variant.services.spa!.hostPort);
+    expect(variant.services.api!.hostPort).not.toBe(
+      variant.services.spa!.hostPort,
+    );
     expect(variant.services.spa!.buildArgs!.VITE_API_URL).toBe(
       `http://localhost:${variant.services.api!.hostPort}`,
     );
@@ -97,13 +164,17 @@ describe("planVariant", () => {
     const env = composeEnv(variant, resources);
     expect(env.API_PORT).toBe(String(variant.services.api!.hostPort));
     expect(env.SPA_PORT).toBe(String(variant.services.spa!.hostPort));
-    expect(env.CORS_ORIGIN).toBe(`http://localhost:${variant.services.spa!.hostPort}`);
+    expect(env.CORS_ORIGIN).toBe(
+      `http://localhost:${variant.services.spa!.hostPort}`,
+    );
     expect(env.POSTGRES_URL).toContain("@db:5432/bench");
     expect(env.DB_CPUS).toBe("2");
   });
 
   it("resolves a single-service variant with no CORS origin", async () => {
-    const manifests = await loadManifestDirectory(path.join(rigRoot, "manifests"));
+    const manifests = await loadManifestDirectory(
+      path.join(rigRoot, "manifests"),
+    );
     const variant = await planVariant(manifests.get("next-actions")!, {
       rigRoot,
       runId: "run1",

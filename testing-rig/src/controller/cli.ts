@@ -21,6 +21,7 @@ import { dockerAvailable, runCommand } from "./docker.js";
 import { checkEligibility, eligibilityPools } from "./fixture.js";
 import { runVariant, type VariantResult } from "./lifecycle.js";
 import { planVariant, SEEDER_IMAGE } from "./plan.js";
+import { parseResourcesSpec } from "./resources.js";
 import { collectInventory } from "../reporting/inventory.js";
 import type { ResolvedVariant, ResourceCaps } from "./types.js";
 
@@ -39,6 +40,8 @@ interface Options {
   correctness: boolean;
   render: boolean;
   load: boolean;
+  /** Raw `--resources <spec>`; `BENCH_RESOURCES` is the env fallback. */
+  resources?: string;
   readinessTimeoutMs: number;
 }
 
@@ -84,6 +87,9 @@ function parseArgs(args: string[]): Options {
         break;
       case "--with-load":
         options.load = true;
+        break;
+      case "--resources":
+        options.resources = args[++i]!;
         break;
       case "--readiness-timeout":
         options.readinessTimeoutMs = Number(args[++i]);
@@ -145,6 +151,36 @@ async function main(): Promise<number> {
     ? config.variants.filter((id) => options.only!.includes(id))
     : config.variants;
 
+  // Config-driven stage selection (plan D4): the YAML decides which stages run,
+  // and the CLI `--with-*` flags remain as one-off *upward* overrides. The
+  // effective selection is recorded in preflight.json (plan D1) so the viewer
+  // can tell "not requested" apart from "attempted and failed".
+  const stages = {
+    correctness: config.stages.correctness || options.correctness,
+    render: config.stages.render || options.render,
+    load: config.stages.load || options.load,
+  };
+
+  // Resource envelope override (plan R1), applied to the parsed config *before*
+  // `effectiveRunManifest` hashing so provenance reflects the envelope. The CLI
+  // flag wins over `BENCH_RESOURCES` when both are set.
+  const originalCpus = config.resources.appCpus;
+  const resourceSpec = options.resources ?? process.env.BENCH_RESOURCES;
+  let resourcesRequested: Record<string, unknown> | null = null;
+  if (resourceSpec) {
+    let parsed;
+    try {
+      parsed = parseResourcesSpec(resourceSpec, resourcesOf(config));
+    } catch (err) {
+      console.error(
+        `invalid --resources: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 2;
+    }
+    Object.assign(config.resources, parsed.resources);
+    resourcesRequested = { ...parsed.requested, overridden: true };
+  }
+
   const problems = preflight(config, allManifests);
   if (problems.length > 0) {
     console.error("preflight failed:");
@@ -169,12 +205,28 @@ async function main(): Promise<number> {
     config: options.config,
     selected,
     effectiveManifestSha256: effective.sha256,
+    // Effective stage selection (plan D1): lets the viewer distinguish "not
+    // requested" from "attempted and failed". `only` explains partial runs.
+    stages,
+    only: options.only ?? null,
+    ...(resourcesRequested ? { resourcesRequested } : {}),
   });
 
   console.log(
     `run ${runId}: ${selected.length} variant(s), ${config.trials} trial(s)`,
   );
   console.log(`  effective manifest sha256: ${effective.sha256}`);
+  if (resourcesRequested) {
+    console.log(
+      `  resource envelope: app ${config.resources.appCpus} CPU / ${config.resources.appMemoryMb} MB, ` +
+        `db ${config.resources.dbCpus} CPU / ${config.resources.dbMemoryMb} MB (overridden)`,
+    );
+    if (originalCpus !== config.resources.appCpus) {
+      console.log(
+        `  load VUs pinned to the config's appCpus (${originalCpus}) — same offered load, different hardware (plan R2)`,
+      );
+    }
+  }
 
   if (options.build !== false && options.buildSeeder) {
     console.log(`building ${SEEDER_IMAGE} …`);
@@ -189,6 +241,12 @@ async function main(): Promise<number> {
 
   const resources = resourcesOf(config);
   const volumeScenario = config.scenarios.find((s) => s.kind === "volume");
+  const capacityScenario = config.scenarios.find((s) => s.kind === "capacity");
+  // Under an envelope override the closed-loop load legs would otherwise scale
+  // with the hardware; pin VUs to the config's original appCpus so the offered
+  // load is held constant (plan R2, option b). The K3 capacity ladder is
+  // rate-defined and is therefore the primary cross-envelope instrument.
+  const vuCpus = resourcesRequested ? originalCpus : config.resources.appCpus;
   const variants: ResolvedVariant[] = [];
   for (const id of selected) {
     variants.push(
@@ -235,16 +293,16 @@ async function main(): Promise<number> {
       fixture: config.fixture,
       artifacts,
       build: options.build,
-      correctness: options.correctness,
-      render: options.render
+      correctness: stages.correctness,
+      render: stages.render
         ? {
             warmup: config.browser.warmupSamples,
             measured: config.browser.measuredSamples,
           }
         : undefined,
-      load: options.load
+      load: stages.load
         ? {
-            vus: config.resources.appCpus * 2,
+            vus: vuCpus * 2,
             durationSeconds: 15,
             generatorMaxCpuPercent: config.load.generatorMaxCpuPercent,
             ...(volumeScenario
@@ -262,6 +320,9 @@ async function main(): Promise<number> {
                     readPaths: variant.load?.paths ?? [],
                   },
                 }
+              : {}),
+            ...(capacityScenario
+              ? { capacity: { scenario: capacityScenario } }
               : {}),
           }
         : undefined,
