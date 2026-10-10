@@ -78,8 +78,12 @@ const INFRA_FILES =
   /^(Dockerfile|Caddyfile|docker-compose\.ya?ml|compose\.ya?ml|\.dockerignore|next\.config\.(ts|js|mjs)|vite\.config\.(ts|js|mjs)|tsconfig.*\.json|eslint\.config\.(mjs|js)|postcss\.config\.(mjs|js)|tailwind\.config\.(ts|js)|biome\.json|drizzle\.config\.ts|prisma\d*\.config\.ts|vitest\.config\.ts|vitest\.setup\.ts|playwright\.config\.ts|tsr\.config\.json)$$/;
 
 function isTestPath(relative: string): boolean {
-  if (/(^|\/)(tests|test|__tests__|e2e|integration)\//.test(relative)) return true;
-  return /\.(test|spec|integration)\.[cm]?[jt]sx?$/.test(relative) || /(^|\/)(test_.*|.*_test)\.py$/.test(relative);
+  if (/(^|\/)(tests|test|__tests__|e2e|integration)\//.test(relative))
+    return true;
+  return (
+    /\.(test|spec|integration)\.[cm]?[jt]sx?$/.test(relative) ||
+    /(^|\/)(test_.*|.*_test)\.py$/.test(relative)
+  );
 }
 
 type LanguageTotals = { files: number; loc: number; bytes: number };
@@ -100,23 +104,42 @@ export interface StaticInventory {
   languages: number;
   serviceCount: number;
   imageCount: number;
+  /**
+   * Stat-only walk of the app directory with **no exclusions** — what `du`
+   * would see (deps, build output and lockfiles included). The authored
+   * buckets above exclude those; the two answer different questions and
+   * conflating them was the original counting bug (see the header comment).
+   * Absent in inventory.json files written before this field existed.
+   */
+  footprint: { files: number; bytes: number } | null;
 }
 
 function emptyBucket(): InventoryBucket {
   return { files: 0, loc: 0, bytes: 0, byLanguage: {} };
 }
 
-function add(bucket: InventoryBucket, language: string, loc: number, bytes: number): void {
+function add(
+  bucket: InventoryBucket,
+  language: string,
+  loc: number,
+  bytes: number,
+): void {
   bucket.files += 1;
   bucket.loc += loc;
   bucket.bytes += bytes;
-  const entry = (bucket.byLanguage[language] ??= { files: 0, loc: 0, bytes: 0 });
+  const entry = (bucket.byLanguage[language] ??= {
+    files: 0,
+    loc: 0,
+    bytes: 0,
+  });
   entry.files += 1;
   entry.loc += loc;
   entry.bytes += bytes;
 }
 
-function walk(root: string): Array<{ relative: string; bytes: number; loc: number }> {
+function walk(
+  root: string,
+): Array<{ relative: string; bytes: number; loc: number }> {
   const files: Array<{ relative: string; bytes: number; loc: number }> = [];
   const stack = [""];
   while (stack.length > 0) {
@@ -156,6 +179,44 @@ function walk(root: string): Array<{ relative: string; bytes: number; loc: numbe
     }
   }
   return files;
+}
+
+/**
+ * Whole-directory footprint: a `statSync`-only walk with **no exclusions** (the
+ * `du` view — node_modules, build output and lockfiles included). No file reads,
+ * so it stays cheap even over a populated node_modules tree.
+ */
+export function directoryFootprint(root: string): {
+  files: number;
+  bytes: number;
+} {
+  let files = 0;
+  let bytes = 0;
+  const stack = [""];
+  while (stack.length > 0) {
+    const relativeDir = stack.pop()!;
+    let entries: string[];
+    try {
+      entries = readdirSync(path.join(root, relativeDir));
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const relative = relativeDir ? path.join(relativeDir, entry) : entry;
+      let stats;
+      try {
+        stats = statSync(path.join(root, relative));
+      } catch {
+        continue;
+      }
+      if (stats.isDirectory()) stack.push(relative);
+      else if (stats.isFile()) {
+        files += 1;
+        bytes += stats.size;
+      }
+    }
+  }
+  return { files, bytes };
 }
 
 /** Count direct dependencies from whichever manifest the variant uses. */
@@ -202,8 +263,10 @@ export function collectInventory(options: {
     const base = path.basename(file.relative);
     const ext = path.extname(file.relative).toLowerCase();
     const language = LANGUAGE_BY_EXT[ext] ?? "Other";
-    if (INFRA_FILES.test(base)) add(infrastructure, language, file.loc, file.bytes);
-    else if (isTestPath(file.relative)) add(tests, language, file.loc, file.bytes);
+    if (INFRA_FILES.test(base))
+      add(infrastructure, language, file.loc, file.bytes);
+    else if (isTestPath(file.relative))
+      add(tests, language, file.loc, file.bytes);
     else add(source, language, file.loc, file.bytes);
   }
 
@@ -222,5 +285,6 @@ export function collectInventory(options: {
     languages,
     serviceCount: options.serviceCount,
     imageCount: options.imageCount,
+    footprint: directoryFootprint(options.appDirectory),
   };
 }

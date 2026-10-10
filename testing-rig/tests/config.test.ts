@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { effectiveRunManifest, loadConfig } from "../src/config/load.js";
 import { rigConfigSchema } from "../src/config/schema.js";
 
-const rigRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rigRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 const baseConfig = {
   schemaVersion: 1,
@@ -23,7 +26,11 @@ const baseConfig = {
     statusPercent: { todo: 50, "in progress": 30, done: 20 },
     workingSetFraction: 0.2,
   },
-  reset: { betweenPhases: true, betweenTrials: true, method: "database-recreate" },
+  reset: {
+    betweenPhases: true,
+    betweenTrials: true,
+    method: "database-recreate",
+  },
   browser: {
     engine: "chromium",
     workers: 1,
@@ -63,9 +70,29 @@ describe("experiment config schema", () => {
     expect(def.variants).not.toContain("next-template");
     expect(def.load.generatorMaxCpuPercent).toBe(75);
 
-    const smoke = await loadConfig(path.join(rigRoot, "config", "smoke-matrix.yaml"));
+    const smoke = await loadConfig(
+      path.join(rigRoot, "config", "smoke-matrix.yaml"),
+    );
     expect(smoke.trials).toBe(1);
     expect(smoke.scenarios).toHaveLength(1);
+  });
+
+  it("loads the shipped medium and heavy load profiles", async () => {
+    const medium = await loadConfig(
+      path.join(rigRoot, "config", "medium-load.yaml"),
+    );
+    expect(medium.name).toBe("medium-load");
+    expect(medium.variants).toHaveLength(14);
+    expect(medium.fixture.taskCount).toBe(10000);
+    expect(medium.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
+
+    const heavy = await loadConfig(
+      path.join(rigRoot, "config", "heavy-load.yaml"),
+    );
+    expect(heavy.name).toBe("heavy-load-max");
+    expect(heavy.variants).toHaveLength(14);
+    expect(heavy.resources.appCpus).toBe(4);
+    expect(heavy.scenarios.map((s) => s.kind)).toEqual(["volume", "capacity"]);
   });
 
   it("defaults generatorMaxCpuPercent when `load:` is absent", () => {
@@ -78,30 +105,45 @@ describe("experiment config schema", () => {
   });
 
   it("rejects the illustrative single `workload:` mapping", () => {
-    expect(parse((c) => (c.scenarios = [{ id: "w", workload: {} }])).success).toBe(false);
+    expect(
+      parse((c) => (c.scenarios = [{ id: "w", workload: {} }])).success,
+    ).toBe(false);
   });
 
   it("rejects statusPercent that does not sum to 100", () => {
     expect(
-      parse((c) => (c.fixture.statusPercent = { todo: 50, "in progress": 30, done: 30 })).success,
+      parse(
+        (c) =>
+          (c.fixture.statusPercent = { todo: 50, "in progress": 30, done: 30 }),
+      ).success,
     ).toBe(false);
   });
 
   it("rejects a nonzero appToApiAddedRttMs", () => {
-    expect(parse((c) => (c.network.appToApiAddedRttMs = 5)).success).toBe(false);
+    expect(parse((c) => (c.network.appToApiAddedRttMs = 5)).success).toBe(
+      false,
+    );
   });
 
   it("rejects a duplicate variant id", () => {
-    expect(parse((c) => (c.variants = ["next-actions", "next-actions"])).success).toBe(false);
+    expect(
+      parse((c) => (c.variants = ["next-actions", "next-actions"])).success,
+    ).toBe(false);
   });
 
   it("rejects generatorMaxCpuPercent out of range", () => {
-    expect(parse((c) => (c.load = { generatorMaxCpuPercent: 150 })).success).toBe(false);
-    expect(parse((c) => (c.load = { generatorMaxCpuPercent: 0 })).success).toBe(false);
+    expect(
+      parse((c) => (c.load = { generatorMaxCpuPercent: 150 })).success,
+    ).toBe(false);
+    expect(parse((c) => (c.load = { generatorMaxCpuPercent: 0 })).success).toBe(
+      false,
+    );
   });
 
   it("hashes the effective run manifest deterministically", async () => {
-    const config = await loadConfig(path.join(rigRoot, "config", "smoke-matrix.yaml"));
+    const config = await loadConfig(
+      path.join(rigRoot, "config", "smoke-matrix.yaml"),
+    );
     const a = effectiveRunManifest(config);
     const b = effectiveRunManifest(config);
     expect(a.sha256).toBe(b.sha256);

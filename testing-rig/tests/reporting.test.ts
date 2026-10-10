@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -44,6 +46,34 @@ describe("static inventory", () => {
     expect(
       countDirectDependencies(path.join(repoRoot, "apps", "next-actions")),
     ).toBeGreaterThan(3);
+  });
+
+  it("excludes deps from authored counts but includes them in the footprint", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "bench-inventory-"));
+    try {
+      writeFileSync(path.join(dir, "index.ts"), "export const a = 1;\n");
+      mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
+      writeFileSync(
+        path.join(dir, "node_modules", "dep", "index.js"),
+        "module.exports = 42;\n",
+      );
+      const inventory = collectInventory({
+        variantId: "tmp",
+        appDirectory: dir,
+        serviceCount: 1,
+        imageCount: 1,
+      });
+      // Authored source excludes node_modules…
+      expect(inventory.source.files).toBe(1);
+      // …but the on-disk footprint (the `du` view) includes it.
+      expect(inventory.footprint).not.toBeNull();
+      expect(inventory.footprint!.files).toBe(2);
+      expect(inventory.footprint!.bytes).toBeGreaterThan(
+        inventory.source.bytes,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

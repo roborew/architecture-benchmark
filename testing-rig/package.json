@@ -7,6 +7,7 @@
     "config:validate": "tsx src/config/validate.ts",
     "rig:run": "tsx src/controller/cli.ts",
     "report": "tsx src/reporting/cli.ts",
+    "report:all": "tsx src/reporting/viewer-cli.ts",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "e2e:install": "playwright install chromium",
     "render:collect": "tsx src/render/collect.ts",

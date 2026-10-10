@@ -18,7 +18,7 @@ import {
 import type { RigConfig, VariantManifest } from "../config/schema.js";
 import { RunArtifacts } from "./artifacts.js";
 import { dockerAvailable, runCommand } from "./docker.js";
-import { checkEligibility } from "./fixture.js";
+import { checkEligibility, eligibilityPools } from "./fixture.js";
 import { runVariant, type VariantResult } from "./lifecycle.js";
 import { planVariant, SEEDER_IMAGE } from "./plan.js";
 import { collectInventory } from "../reporting/inventory.js";
@@ -188,6 +188,7 @@ async function main(): Promise<number> {
   }
 
   const resources = resourcesOf(config);
+  const volumeScenario = config.scenarios.find((s) => s.kind === "volume");
   const variants: ResolvedVariant[] = [];
   for (const id of selected) {
     variants.push(
@@ -246,6 +247,22 @@ async function main(): Promise<number> {
             vus: config.resources.appCpus * 2,
             durationSeconds: 15,
             generatorMaxCpuPercent: config.load.generatorMaxCpuPercent,
+            ...(volumeScenario
+              ? {
+                  mutations: {
+                    counts: volumeScenario.counts,
+                    pools: {
+                      updateFrom: eligibilityPools(config.fixture).updatePool
+                        .from,
+                      updateTo: eligibilityPools(config.fixture).updatePool.to,
+                      deleteFrom: eligibilityPools(config.fixture).deletePool
+                        .from,
+                      deleteTo: eligibilityPools(config.fixture).deletePool.to,
+                    },
+                    readPaths: variant.load?.paths ?? [],
+                  },
+                }
+              : {}),
           }
         : undefined,
       readinessTimeoutMs: options.readinessTimeoutMs,
@@ -282,6 +299,21 @@ async function main(): Promise<number> {
     `\n${results.length - failed.length}/${results.length} variants ok`,
   );
   console.log(`artefacts: ${artifacts.dir}`);
+
+  // Refresh the consolidated results viewer so a bookmarked page always shows
+  // the run that just finished. Reporting must never affect the run's status.
+  try {
+    const { writeViewer } = await import("../reporting/viewer-cli.js");
+    const viewer = await writeViewer(path.join(rigRoot, "results"));
+    console.log(`results viewer: ${viewer.count} run(s) → ${viewer.file}`);
+  } catch (err) {
+    console.warn(
+      `results viewer not refreshed (run unaffected): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   return failed.length === 0 ? 0 : 1;
 }
 

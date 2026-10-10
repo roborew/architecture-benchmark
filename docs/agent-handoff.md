@@ -194,6 +194,38 @@ next-fullstack ~159–190, tanstack-start ~208–212 (SSR pages); spa-api API re
 ~862–5383 (fastapi lowest, phoenix highest). Click-to-visible-committed create
 ~232–268 ms across all cohorts. No run was generator-saturated.
 
+## Results viewer + quick load profiles (completed, validated 10 Oct 2026)
+
+Implemented per `docs/results-viewer-and-load-profiles-plan.md` (V1–V3, C).
+
+- **V1/V2 — the viewer.** New `src/reporting/viewer.ts`
+  (`buildRunsIndex` + `renderViewerHtml`) and `src/reporting/viewer-cli.ts`
+  (`pnpm report:all` → `results/index.html`). One self-contained page (inline
+  JSON, no server/CDN) with a run selector, deep links (`#<run-id>`),
+  `localStorage` persistence, cohort chips, sortable columns and per-metric
+  leaders (never a composite score). Reduces render samples to p50s and embeds
+  only trimmed data. The controller refreshes it at the end of every `rig:run`
+  in a try/catch (a reporting failure never fails a run).
+- **V3 — footprint.** `inventory.ts` gained a stat-only whole-directory
+  `footprint` (the `du` view, no exclusions) alongside the authored totals;
+  absent in old `inventory.json` files → the viewer shows "—".
+- **C — quick profiles.** `config/medium-load.yaml` (10 k tasks, 2 trials) and
+  `config/heavy-load.yaml` (100 k tasks, 4 CPUs → 8 load VUs); both declare a
+  `capacity` ladder that is **not yet executed** (R8) — labelled so in the
+  Inputs card.
+
+**Checks actually run and passed:** `pnpm config:validate` on both new configs
+(green); `pnpm typecheck` clean; `pnpm test` — new `tests/viewer.test.ts` (12/12:
+discovery, incomplete flags, p50 reduction, saturation withholding, trim rules,
+HTML escaping, offline rule) and the footprint/config tests green; `pnpm report:all`
+→ 34 runs indexed, 266 KB total (~8 KB/run), 0 external `src=`/`href=`; the page
+driven in headless Chromium (5 tables, cohort filter, deep link, "withheld"
+rendering) with no console errors.
+
+**Host runs still pending (Docker/long):** the §6.4 single-variant rehearsals and
+the full 14-variant medium/heavy matrices, plus the pre-existing failing
+`default.yaml`/`manifest` assertions from the in-progress `default.yaml` edit.
+
 ## Next steps
 
 1. **R8 remainder — the long `default.yaml` matrix run** (build/seed/verify +

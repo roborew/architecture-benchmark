@@ -54,11 +54,28 @@ export interface LifecycleOptions {
   correctness?: boolean;
   /** Run the render-speed collector (plan R6). Non-fatal: measurement, not a gate. */
   render?: { warmup: number; measured: number };
-  /** Run the read-only load generator (plan R7). Non-fatal: measurement. */
+  /** Run the load generator (plan R7). Non-fatal: measurement. */
   load?: {
     vus: number;
     durationSeconds: number;
     generatorMaxCpuPercent: number;
+    /** Volume-scenario mutation load; omit to run read-only. */
+    mutations?: {
+      counts: {
+        list: number;
+        detail: number;
+        create: number;
+        update: number;
+        delete: number;
+      };
+      pools: {
+        updateFrom: number;
+        updateTo: number;
+        deleteFrom: number;
+        deleteTo: number;
+      };
+      readPaths: string[];
+    };
   };
   readinessTimeoutMs?: number;
 }
@@ -432,6 +449,314 @@ async function runLoadSuite(
   return report;
 }
 
+/** Run the pinned k6 image detached on the stack network; sample its CPU. */
+async function runK6Container(options: {
+  containerName: string;
+  network: string;
+  outDir: string;
+  rigRoot: string;
+  script: string;
+  summaryFile: string;
+  env: Record<string, string>;
+}): Promise<{ exitCode: number; maxCpuPercent: number; logs: string }> {
+  await runCommand("docker", ["rm", "-f", options.containerName], {
+    allowFailure: true,
+  });
+  const args = [
+    "run",
+    "-d",
+    "--name",
+    options.containerName,
+    "--network",
+    options.network,
+    "--add-host",
+    "host.docker.internal:host-gateway",
+    "-v",
+    `${path.join(options.rigRoot, "load")}:/load:ro`,
+    "-v",
+    `${options.outDir}:/out`,
+  ];
+  for (const [key, value] of Object.entries(options.env))
+    args.push("-e", `${key}=${value}`);
+  args.push(
+    "grafana/k6:latest",
+    "run",
+    "--summary-export",
+    `/out/${options.summaryFile}`,
+    options.script,
+  );
+
+  const started = await runCommand("docker", args, { allowFailure: true });
+  if (started.code !== 0) {
+    throw new Error(
+      `k6 container failed to start: ${started.stderr || started.stdout}`,
+    );
+  }
+
+  let maxCpuPercent = 0;
+  for (;;) {
+    const stats = await runCommand(
+      "docker",
+      [
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{.CPUPerc}}",
+        options.containerName,
+      ],
+      { allowFailure: true },
+    );
+    if (stats.code !== 0) break;
+    const percent = Number.parseFloat(stats.stdout.replace("%", "").trim());
+    if (Number.isFinite(percent))
+      maxCpuPercent = Math.max(maxCpuPercent, percent);
+    const running = await runCommand(
+      "docker",
+      ["inspect", "-f", "{{.State.Running}}", options.containerName],
+      {
+        allowFailure: true,
+      },
+    );
+    if (running.stdout.trim() !== "true") break;
+    await delay(1000);
+  }
+
+  const waited = await runCommand("docker", ["wait", options.containerName], {
+    allowFailure: true,
+  });
+  const exitCode = Number(waited.stdout.trim());
+  const logs = await runCommand("docker", ["logs", options.containerName], {
+    allowFailure: true,
+  });
+  await runCommand("docker", ["rm", "-f", options.containerName], {
+    allowFailure: true,
+  });
+  return { exitCode, maxCpuPercent, logs: `${logs.stdout}${logs.stderr}` };
+}
+
+interface CaptureFile {
+  ops: Record<
+    string,
+    { op: string; method: string; origin: string; path: string }
+  >;
+}
+
+interface MutationReport {
+  mutationOrigin: string;
+  counts: {
+    list: number;
+    detail: number;
+    create: number;
+    update: number;
+    delete: number;
+  };
+  achieved: Record<string, number | null>;
+  perOpP95Ms: Record<string, number | null>;
+  postconditions: {
+    createdTasks: number | null;
+    updatedOk: number | null;
+    deletedRemaining: number | null;
+    ok: boolean;
+  };
+  generatorMaxCpuPercentObserved: number;
+  generatorSaturated: boolean;
+  pgStatements: {
+    before: number | null;
+    after: number | null;
+    delta: number | null;
+  };
+}
+
+/** Read-only k6 summary value helper. */
+function summaryValue(
+  summary: {
+    metrics?: Record<
+      string,
+      { values?: Record<string, number>; value?: number; count?: number }
+    >;
+  },
+  metric: string,
+  key: string,
+): number | null {
+  const entry = summary.metrics?.[metric];
+  const value =
+    entry?.values?.[key] ??
+    (key === "count"
+      ? entry?.count
+      : key === "rate"
+        ? entry?.value
+        : undefined);
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * Mutation load (plan §6.5/§5). Captures the app's real write requests
+ * (`capture.ts`), replays them via k6 with leased pool ids, and verifies the DB
+ * postconditions. This is the per-transport adapter, validated end-to-end.
+ */
+async function runMutationSuite(
+  variant: ResolvedVariant,
+  compose: Compose,
+  options: LifecycleOptions,
+): Promise<MutationReport> {
+  const front = variant.services.spa ?? variant.services.app;
+  if (!front || front.hostPort === undefined)
+    throw new Error("no app-facing service to capture");
+  const mutations = options.load!.mutations!;
+  const outDir = path.join(options.artifacts.dir, "variants", variant.id);
+  const network = `${variant.projectName}_default`;
+
+  // 1. Capture the real write requests.
+  const capturePath = path.join(outDir, "capture.json");
+  const captureRun = await runCommand(
+    "pnpm",
+    ["exec", "tsx", "src/load/capture.ts"],
+    {
+      cwd: options.rigRoot,
+      env: {
+        BENCH_BASE_URL: `http://localhost:${front.hostPort}`,
+        BENCH_VARIANT: variant.id,
+        BENCH_CAPTURE_REPORT: capturePath,
+      },
+      allowFailure: true,
+      timeoutMs: 5 * 60 * 1000,
+    },
+  );
+  options.artifacts.write(
+    `variants/${variant.id}/capture.log`,
+    `${captureRun.stdout}\n${captureRun.stderr}`,
+  );
+  if (captureRun.code !== 0)
+    throw new Error(`capture failed:\n${captureRun.stderr.slice(-2000)}`);
+  const capture = JSON.parse(readFileSync(capturePath, "utf8")) as CaptureFile;
+  const mutationOrigin = capture.ops.create!.origin;
+  const mutationPort = new URL(mutationOrigin).port;
+
+  const before = await postgresStatements(compose);
+
+  // 2. Replay as a volume scenario.
+  const env: Record<string, string> = {
+    BASE_URL: `http://host.docker.internal:${mutationPort}`,
+    CAPTURE: JSON.stringify(capture),
+    CONCURRENCY: String(options.load!.vus),
+    MAX_DURATION: "10m",
+    COUNT_LIST: String(mutations.counts.list),
+    COUNT_DETAIL: String(mutations.counts.detail),
+    COUNT_CREATE: String(mutations.counts.create),
+    COUNT_UPDATE: String(mutations.counts.update),
+    COUNT_DELETE: String(mutations.counts.delete),
+    UPDATE_FROM: String(mutations.pools.updateFrom),
+    UPDATE_TO: String(mutations.pools.updateTo),
+    DELETE_FROM: String(mutations.pools.deleteFrom),
+    DELETE_TO: String(mutations.pools.deleteTo),
+    READ_PATHS: mutations.readPaths.join(","),
+  };
+  const run = await runK6Container({
+    containerName: `bench-k6-${variant.id}`,
+    network,
+    outDir,
+    rigRoot: options.rigRoot,
+    script: "/load/mutations.js",
+    summaryFile: "mutations-summary.json",
+    env,
+  });
+  options.artifacts.write(`variants/${variant.id}/mutations.log`, run.logs);
+  if (run.exitCode !== 0)
+    throw new Error(`k6 mutations exited ${run.exitCode}; see mutations.log`);
+
+  const after = await postgresStatements(compose);
+
+  let summary: Parameters<typeof summaryValue>[0] = {};
+  try {
+    summary = JSON.parse(
+      readFileSync(path.join(outDir, "mutations-summary.json"), "utf8"),
+    );
+  } catch {
+    // summary missing
+  }
+
+  // 3. Verify DB postconditions (plan §4/§6.5).
+  const leased = (from: number, to: number, count: number): number[] => {
+    const span = to - from + 1;
+    return Array.from({ length: count }, (_, i) => from + (i % span));
+  };
+  const inList = (ids: number[]): string =>
+    ids.length ? `ARRAY[${ids.join(",")}]::bigint[]` : "ARRAY[]::bigint[]";
+  const psqlCount = async (sql: string): Promise<number | null> => {
+    const result = await compose.exec(
+      "db",
+      ["psql", "-U", "bench", "-d", "bench", "-tA", "-c", sql],
+      {
+        allowFailure: true,
+      },
+    );
+    if (result.code !== 0) return null;
+    const value = Number(
+      result.stdout.trim().split("\n").filter(Boolean).at(-1),
+    );
+    return Number.isFinite(value) ? value : null;
+  };
+  const updIds = leased(
+    mutations.pools.updateFrom,
+    mutations.pools.updateTo,
+    mutations.counts.update,
+  );
+  const delIds = leased(
+    mutations.pools.deleteFrom,
+    mutations.pools.deleteTo,
+    mutations.counts.delete,
+  );
+  const createdTasks = await psqlCount(
+    "SELECT count(*) FROM tasks WHERE title LIKE 'bench-load-create-%'",
+  );
+  const updatedOk = await psqlCount(
+    `SELECT count(*) FROM tasks WHERE id = ANY(${inList(updIds)}) AND title LIKE 'bench-load-update-%'`,
+  );
+  const deletedRemaining = await psqlCount(
+    `SELECT count(*) FROM tasks WHERE id = ANY(${inList(delIds)})`,
+  );
+
+  const achieved = {
+    list: summaryValue(summary, "http_reqs", "count"),
+    create: summaryValue(summary, "mk_create_ok", "count"),
+    update: summaryValue(summary, "mk_update_ok", "count"),
+    delete: summaryValue(summary, "mk_delete_ok", "count"),
+    atomic: summaryValue(summary, "mk_atomic_ok", "count"),
+  };
+
+  const postconditions = {
+    createdTasks,
+    updatedOk,
+    deletedRemaining,
+    ok:
+      (createdTasks ?? 0) >= mutations.counts.create &&
+      (updatedOk ?? -1) === mutations.counts.update &&
+      deletedRemaining === 0,
+  };
+
+  const report: MutationReport = {
+    mutationOrigin,
+    counts: mutations.counts,
+    achieved,
+    perOpP95Ms: {
+      create:
+        summaryValue(summary, "http_req_duration{op:create}", "p(95)") ??
+        summaryValue(summary, "http_req_duration", "p(95)"),
+    },
+    postconditions,
+    generatorMaxCpuPercentObserved: run.maxCpuPercent,
+    generatorSaturated:
+      run.maxCpuPercent > options.load!.generatorMaxCpuPercent,
+    pgStatements: {
+      before,
+      after,
+      delta: before !== null && after !== null ? after - before : null,
+    },
+  };
+  options.artifacts.writeJson(`variants/${variant.id}/mutations.json`, report);
+  return report;
+}
+
 async function buildStack(
   variant: ResolvedVariant,
   compose: Compose,
@@ -518,8 +843,15 @@ export async function runVariant(
     if (options.load && variant.load) {
       const startedAt = Date.now();
       try {
-        const detail = await runLoadSuite(variant, compose, options);
-        stages.load = { ok: true, ms: Date.now() - startedAt, detail };
+        const read = await runLoadSuite(variant, compose, options);
+        const mutations = options.load.mutations
+          ? await runMutationSuite(variant, compose, options)
+          : null;
+        stages.load = {
+          ok: true,
+          ms: Date.now() - startedAt,
+          detail: { ...read, mutations },
+        };
       } catch (err) {
         stages.load = {
           ok: false,
