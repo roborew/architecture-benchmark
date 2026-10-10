@@ -88,6 +88,14 @@ function isTestPath(relative: string): boolean {
 
 type LanguageTotals = { files: number; loc: number; bytes: number };
 
+/** A dependency manifest discovered under the app directory (plan D3). */
+export interface DependencyManifest {
+  /** Path relative to the app directory, e.g. `express-rest/package.json`. */
+  path: string;
+  kind: "npm" | "python" | "elixir";
+  directDependencies: number;
+}
+
 export interface InventoryBucket {
   files: number;
   loc: number;
@@ -100,6 +108,13 @@ export interface StaticInventory {
   source: InventoryBucket;
   tests: InventoryBucket;
   infrastructure: InventoryBucket;
+  /**
+   * Every dependency manifest discovered under the app directory (plan D3).
+   * `spa-api` variants keep one manifest per half in a subdirectory, so a
+   * root-only lookup undercounted them; the sum below fixes that.
+   */
+  dependencyManifests: DependencyManifest[];
+  /** Sum of `dependencyManifests[].directDependencies`. */
   directDependencies: number;
   languages: number;
   serviceCount: number;
@@ -219,34 +234,97 @@ export function directoryFootprint(root: string): {
   return { files, bytes };
 }
 
-/** Count direct dependencies from whichever manifest the variant uses. */
-export function countDirectDependencies(appDirectory: string): number {
-  const readIf = (name: string): string | undefined => {
-    try {
-      return readFileSync(path.join(appDirectory, name), "utf8");
-    } catch {
-      return undefined;
-    }
-  };
-
-  const pkg = readIf("package.json");
-  if (pkg) {
-    const parsed = JSON.parse(pkg) as { dependencies?: Record<string, string> };
+/** Count direct dependencies from a manifest's contents (semantics unchanged). */
+function countManifest(
+  kind: DependencyManifest["kind"],
+  contents: string,
+): number {
+  if (kind === "npm") {
+    const parsed = JSON.parse(contents) as {
+      dependencies?: Record<string, string>;
+    };
     return Object.keys(parsed.dependencies ?? {}).length;
   }
-
-  const pyproject = readIf("pyproject.toml");
-  if (pyproject) {
-    const match = pyproject.match(/dependencies\s*=\s*\[([\s\S]*?)\]/);
+  if (kind === "python") {
+    const match = contents.match(/dependencies\s*=\s*\[([\s\S]*?)\]/);
     return match ? (match[1]!.match(/"[^"]+"/g)?.length ?? 0) : 0;
   }
+  // Elixir: the known `{:dep,` regex counts Phoenix framework deps too — that is
+  // today's definition of "direct" for Elixir, unchanged by this discovery fix.
+  return (contents.match(/\{:[a-z_]+/g) ?? []).length;
+}
 
-  const mix = readIf("mix.exs");
-  if (mix) {
-    return (mix.match(/\{:[a-z_]+/g) ?? []).length;
+const MANIFEST_KINDS: Record<string, DependencyManifest["kind"]> = {
+  "package.json": "npm",
+  "pyproject.toml": "python",
+  "mix.exs": "elixir",
+};
+
+/**
+ * Discover every dependency manifest under `appDirectory` with a bounded depth
+ * (plan D3), honouring the same exclusion discipline as the authored walk
+ * (`EXCLUDED_DIRS`/`EXCLUDED_FILES`) — so `.next-e2e`, `node_modules` and
+ * lockfiles are never counted. Only the app directory is walked; the repo root
+ * never is. Counting semantics per manifest are unchanged.
+ */
+export function discoverDependencyManifests(
+  appDirectory: string,
+  maxDepth = 3,
+): DependencyManifest[] {
+  const manifests: DependencyManifest[] = [];
+  const stack: Array<{ relativeDir: string; depth: number }> = [
+    { relativeDir: "", depth: 0 },
+  ];
+  while (stack.length > 0) {
+    const { relativeDir, depth } = stack.pop()!;
+    let entries: string[];
+    try {
+      entries = readdirSync(path.join(appDirectory, relativeDir));
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const relative = relativeDir ? path.join(relativeDir, entry) : entry;
+      let stats;
+      try {
+        stats = statSync(path.join(appDirectory, relative));
+      } catch {
+        continue;
+      }
+      if (stats.isDirectory()) {
+        if (depth < maxDepth && !EXCLUDED_DIRS.has(entry)) {
+          stack.push({ relativeDir: relative, depth: depth + 1 });
+        }
+        continue;
+      }
+      if (!stats.isFile() || EXCLUDED_FILES.has(entry)) continue;
+      const kind = MANIFEST_KINDS[entry];
+      if (!kind) continue;
+      let contents = "";
+      try {
+        contents = readFileSync(path.join(appDirectory, relative), "utf8");
+      } catch {
+        continue;
+      }
+      let directDependencies = 0;
+      try {
+        directDependencies = countManifest(kind, contents);
+      } catch {
+        directDependencies = 0;
+      }
+      manifests.push({ path: relative, kind, directDependencies });
+    }
   }
+  manifests.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return manifests;
+}
 
-  return 0;
+/** Sum of direct dependencies across every discovered manifest (plan D3). */
+export function countDirectDependencies(appDirectory: string): number {
+  return discoverDependencyManifests(appDirectory).reduce(
+    (total, manifest) => total + manifest.directDependencies,
+    0,
+  );
 }
 
 export function collectInventory(options: {
@@ -276,12 +354,17 @@ export function collectInventory(options: {
     ...Object.keys(infrastructure.byLanguage),
   ]).size;
 
+  const dependencyManifests = discoverDependencyManifests(options.appDirectory);
   return {
     variantId: options.variantId,
     source,
     tests,
     infrastructure,
-    directDependencies: countDirectDependencies(options.appDirectory),
+    dependencyManifests,
+    directDependencies: dependencyManifests.reduce(
+      (total, manifest) => total + manifest.directDependencies,
+      0,
+    ),
     languages,
     serviceCount: options.serviceCount,
     imageCount: options.imageCount,
