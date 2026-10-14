@@ -111,20 +111,29 @@ const openTaskCount = () =>
 /**
  * The aggregate projection shared by `getUsers` and `getUser`.
  *
- * Every count is DISTINCT on its own side's key because the two LEFT JOINs
- * multiply: a member with 2 tasks and 2 comments produces 4 rows, and a plain
- * COUNT over that join would report 4 tasks.
+ * The counts are correlated subqueries, not LEFT JOIN aggregates: joining
+ * tasks × comments multiplies rows, and a COUNT(DISTINCT) over that product
+ * costs each member's tasks × comments — on the large fixture ~40M rows per
+ * request, enough to stall every page that renders a member select. Each
+ * subquery walks one index (tasks_assignee_id_idx, comments_author_id_idx),
+ * so the cost stays linear in the members listed, not in the data.
  */
 const USER_AGGREGATE_COLUMNS = {
   id: users.id,
   name: users.displayName,
   email: users.email,
-  assignedTaskCount: countDistinct(tasks.id),
-  openTaskCount:
-    sql<number>`count(distinct ${tasks.id}) filter (where ${ne(tasks.status, "done")})`.mapWith(
+  assignedTaskCount:
+    sql<number>`(select count(*)::int from ${tasks} where ${tasks.assigneeId} = ${users.id})`.mapWith(
       Number,
     ),
-  commentCount: countDistinct(comments.id),
+  openTaskCount:
+    sql<number>`(select count(*)::int from ${tasks} where ${tasks.assigneeId} = ${users.id} and ${ne(tasks.status, "done")})`.mapWith(
+      Number,
+    ),
+  commentCount:
+    sql<number>`(select count(*)::int from ${comments} where ${comments.authorId} = ${users.id})`.mapWith(
+      Number,
+    ),
 };
 
 export async function getProjects(value = ""): Promise<Project[]> {
@@ -605,14 +614,11 @@ export async function getUsers(value = ""): Promise<User[]> {
     return await db
       .select(USER_AGGREGATE_COLUMNS)
       .from(users)
-      .leftJoin(tasks, eq(users.id, tasks.assigneeId))
-      .leftJoin(comments, eq(users.id, comments.authorId))
       .where(
         term
           ? or(ilike(users.displayName, pattern), ilike(users.email, pattern))
           : undefined,
       )
-      .groupBy(users.id, users.displayName, users.email)
       .orderBy(desc(users.displayName), desc(users.id));
   } catch (error) {
     console.error("Database Error:", error);
@@ -630,10 +636,7 @@ export async function getUser(id: number): Promise<User | null> {
     const [user] = await db
       .select(USER_AGGREGATE_COLUMNS)
       .from(users)
-      .leftJoin(tasks, eq(users.id, tasks.assigneeId))
-      .leftJoin(comments, eq(users.id, comments.authorId))
-      .where(eq(users.id, id))
-      .groupBy(users.id, users.displayName, users.email);
+      .where(eq(users.id, id));
 
     return user ?? null;
   } catch (error) {

@@ -48,21 +48,22 @@ const DASHBOARD_PROJECTS = 2;
 /**
  * The aggregate projection shared by `getUsers` and `getUser`.
  *
- * Every count is DISTINCT on its own side's key because the two LEFT JOINs
- * multiply: a member with 2 tasks and 2 comments produces 4 rows, and a plain
- * COUNT over that join would report 4 tasks.
+ * The counts are correlated subqueries, not LEFT JOIN aggregates: joining
+ * tasks x comments multiplies rows, and a COUNT(DISTINCT) over that product
+ * costs each member's tasks x comments — on the large fixture ~40M rows per
+ * request, enough to stall every page that renders a member select. Each
+ * subquery walks one index (tasks_assignee_id_idx, comments_author_id_idx),
+ * so the cost stays linear in the members listed, not in the data.
  */
 const USER_AGGREGATES = sql`
   SELECT
     u.id::int AS id,
     u.display_name AS name,
     u.email,
-    COUNT(DISTINCT t.id)::int AS "assignedTaskCount",
-    COUNT(DISTINCT t.id) FILTER (WHERE t.status <> 'done')::int AS "openTaskCount",
-    COUNT(DISTINCT c.id)::int AS "commentCount"
+    (SELECT COUNT(*) FROM tasks t WHERE t.assignee_id = u.id)::int AS "assignedTaskCount",
+    (SELECT COUNT(*) FROM tasks t WHERE t.assignee_id = u.id AND t.status <> 'done')::int AS "openTaskCount",
+    (SELECT COUNT(*) FROM comments c WHERE c.author_id = u.id)::int AS "commentCount"
   FROM users u
-  LEFT JOIN tasks t ON u.id = t.assignee_id
-  LEFT JOIN comments c ON u.id = c.author_id
 `;
 
 /**
@@ -535,7 +536,6 @@ export async function getUsers(value = "") {
 		return await sql<User[]>`
       ${USER_AGGREGATES}
       ${where}
-      GROUP BY u.id, u.display_name, u.email
       ORDER BY u.display_name DESC, u.id DESC
     `;
 	} catch (error) {
@@ -554,7 +554,6 @@ export async function getUser(id: number): Promise<User | null> {
 		const [user] = await sql<User[]>`
       ${USER_AGGREGATES}
       WHERE u.id = ${id}
-      GROUP BY u.id, u.display_name, u.email
     `;
 
 		return user ?? null;
