@@ -10,8 +10,8 @@ output. A report is a reproducible view over the raw data, never the only copy.
 | `inventory.ts`  | Static & complexity inventory (plan §6.1): source vs tests vs infrastructure, by language; direct dependency count discovered across **all** nested manifests (D3, `dependencyManifests` breakdown); service/image counts; whole-directory `footprint`. Excludes deps, build output, lockfiles, generated code, fixtures and reports for the authored buckets. |
 | `matrix.ts`     | `buildMatrix` + `toCsv` / `toMarkdown` / `toHtml`, and `percentile`. Reads `summary.json`, `inventory.json`, each `variants/<id>/render.json` and the manifests.                                                                                                                                                                                               |
 | `cli.ts`        | `pnpm report [<run-id>]` → `results/<run-id>/report/{matrix.csv,matrix.md,index.html}`.                                                                                                                                                                                                                                                                        |
-| `viewer.ts`     | `buildRunsIndex(resultsRoot, manifests)` → `RunView[]`; `renderViewerHtml(runs)` → one self-contained page. Reduces raw render samples to p50s and embeds only trimmed data (plan §3).                                                                                                                                                                         |
-| `viewer-cli.ts` | `pnpm report:all` → `results/index.html` (every run). Also called by the controller after each run.                                                                                                                                                                                                                                                            |
+| `viewer.ts`     | `buildRunsIndex(resultsRoot, manifests)` → `RunView[]`; `renderViewerHtml()` → a data-free shell; `renderViewerData(runs)` → the trimmed `runs-data.json` the shell fetches on the fly. Reduces raw render samples to p50s; only trimmed views leave the run tree (plan §3).                                                                                   |
+| `viewer-cli.ts` | `pnpm report:all` → `results/index.html` + `results/runs-data.json` (every run). Also called by the controller after each run.                                                                                                                                                                                                                                 |
 
 ## Matrix shape
 
@@ -41,8 +41,11 @@ capacity. The column set is fixed so the matrix shape does not churn as they lan
 
 ## Results viewer (`pnpm report:all`)
 
-`results/index.html` — one self-contained page (no server, no CDN; opens from
-`file://`) with two modes:
+`results/index.html` is a **data-free shell**: it carries only the chrome, styles and
+rendering code, and fetches `results/runs-data.json` (the trimmed index) on the
+fly. Serve the results directory over HTTP (`python3 -m http.server` in it, then
+open `http://localhost:8000/`); a `file://` open cannot fetch and the page says
+so. Two modes:
 
 - **Run view** — a run selector over every directory under `results/`. Selecting a
   run swaps the provenance line, the Inputs card (the parsed `effective-config.yaml`,
@@ -51,8 +54,10 @@ capacity. The column set is fixed so the matrix shape does not churn as they lan
   an achieved-vs-target line chart), and Static & complexity (authored totals vs the
   whole-directory `footprint`). Inline-SVG bar charts sit above each table; a per-path
   read-latency table (K1) and per-threshold ✓/✗ badges (K2) are included, as are
-  container CPU/RAM columns and per-leg CPU%/RAM%-over-time charts (downsampled
-  from `resources/*-samples.json`; percent of the service's envelope, not of host).
+  container CPU/RAM columns, per-variant CPU%/RAM%-over-time charts and **overlaid**
+  resource charts — one line per variant on shared time axes per leg — for
+  variant-against-variant comparison (downsampled from `resources/*-samples.json`;
+  percent of the service's envelope, not of host).
 - **Compare view** — runs grouped into load levels (`configName × resource envelope`,
   R4): an inputs side-by-side table (differing cells highlighted), a metric grid
   (variant rows × level columns, per-metric leader), a scaling line chart (one line per
@@ -67,7 +72,8 @@ run's config, the section shows a **banner with the exact re-run command** (plan
 instead of a bare empty table; a requested-but-failed stage keeps its error. House rules
 hold: a per-column leader is bolded, but there is **no composite score**; a blank cell
 means _not measured_, never zero; a generator-saturated load trial renders as "withheld".
-The controller refreshes the page at the end of every `rig:run` (best-effort; a reporting
-failure never fails a run). The page embeds a trimmed index only (p50s, no raw sample
-arrays, never `capture.json` request bodies, `mutations.json` samples, `lifecycle.json`
-or logs).
+The controller refreshes the pair at the end of every `rig:run` (best-effort; a
+reporting failure never fails a run). `runs-data.json` carries a trimmed index
+only (p50s, no raw sample arrays, never `capture.json` request bodies,
+`mutations.json` samples, `lifecycle.json` or logs); the shell itself embeds no
+run data at all.

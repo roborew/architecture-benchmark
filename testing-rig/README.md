@@ -45,7 +45,7 @@ pnpm report                    # most recent run
 pnpm report <run-id>
 
 # Rebuild the single results page over every run:
-pnpm report:all                # → results/index.html
+pnpm report:all                # → results/index.html + runs-data.json
 ```
 
 ### The load × resource matrix
@@ -149,11 +149,14 @@ Under an override the closed-loop read VUs are pinned to the config's original
    `lifecycle.json`, `summary.json`, and (per `stages:`) correctness, render,
    load (`load.json`/`k6-summary.json`/`mutations-summary.json`) and capacity
    (`capacity.json`) artefacts.
-5. Refresh the results viewer (`results/index.html`) — best-effort; a reporting
-   failure never fails the run.
+5. Refresh the results viewer (`results/index.html` + `results/runs-data.json`)
+   — best-effort; a reporting failure never fails the run.
 
 The primary output — the decision matrix — is generated from this raw data
-(plan §6.6, `src/reporting/`). The single results viewer (`results/index.html`)
-has a **Run view** (charts above each table) and a **Compare view** (inputs
-side-by-side, a metric grid across load levels, scaling charts and per-metric
-tip-over facts). Open it directly via `file://`, no server needed.
+(plan §6.6, `src/reporting/`). The results viewer (`results/index.html`, which
+fetches `results/runs-data.json` on the fly) has a **Run view** (charts above
+each table, plus overlaid resource charts — one line per variant per leg) and a
+**Compare view** (inputs side-by-side, a metric grid across load levels, scaling
+charts and per-metric tip-over facts). Serve the results directory over HTTP to
+view it (`python3 -m http.server` then open `http://localhost:8000/`); a
+`file://` open cannot fetch the data file and the page says so.

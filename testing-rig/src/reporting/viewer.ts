@@ -971,15 +971,7 @@ export function formatCompareHash(state: CompareState): string {
 // ---------------------------------------------------------------------------
 // HTML (plan §4.2/§4.3)
 
-const esc = (value: unknown): string =>
-  String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-/** JSON safe to inline in a `<script>` element: no `<`, `>`, `&`, U+2028/9. */
+/** JSON safe for a data file the shell fetches: no `<`, `>`, `&`, U+2028/9. */
 function safeJson(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, "\\u003c")
@@ -989,22 +981,14 @@ function safeJson(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-function optionLabel(run: RunView): string {
-  const name = run.configName ?? "unknown-config";
-  const flag = run.incomplete ? " · incomplete" : "";
-  return `${name} — ${run.runId} (${run.okCount}/${run.totalCount} ok)${flag}`;
-}
-
 const VIEWER_SCRIPT = `(function () {
   "use strict";
   var SVGNS = "http://www.w3.org/2000/svg";
-  var dataEl = document.getElementById("runs-data");
-  var payload = {};
-  try { payload = JSON.parse(dataEl.textContent) || {}; } catch (e) { payload = {}; }
-  var runs = payload.runs || (Array.isArray(payload) ? payload : []);
-  var levels = payload.levels || [];
+  var runs = [];
+  var levels = [];
   var byId = {};
-  for (var i = 0; i < runs.length; i++) byId[runs[i].runId] = runs[i];
+  var booted = false;
+  var loadingEl = document.getElementById("loading");
 
   var select = document.getElementById("run-select");
   var prevBtn = document.getElementById("run-prev");
@@ -1155,6 +1139,62 @@ const VIEWER_SCRIPT = `(function () {
       wrap.appendChild(span);
     });
     return wrap;
+  }
+  // Line chart over numeric x (seconds), so series of different lengths and
+  // sample times share one axis — the overlaid resource view needs that.
+  // series: [{label, color, title, points: [{x, y}]}] with y skipped when null.
+  function xyChart(series, opts) {
+    opts = opts || {};
+    var anyValue = false, maxX = 0, maxY = 0;
+    series.forEach(function (s) {
+      s.points.forEach(function (p) {
+        if (p.y === null || p.y === undefined) return;
+        anyValue = true;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      });
+    });
+    if (!anyValue) return el("p", "note chart-empty", "— not measured");
+    var height = opts.height || 200;
+    var width = opts.width || 780;
+    var pad = { l: 56, r: 14, t: 12, b: 34 };
+    var plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
+    if (!(maxY > 0)) maxY = 1;
+    if (!(maxX > 0)) maxX = 1;
+    var root = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "img" });
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t, x2: pad.l, y2: pad.t + plotH, class: "axis" }));
+    root.appendChild(svgEl("line", { x1: pad.l, y1: pad.t + plotH, x2: width - pad.r, y2: pad.t + plotH, class: "axis" }));
+    [0, maxY / 2, maxY].forEach(function (tv) {
+      var y = pad.t + plotH - (tv / maxY) * plotH;
+      var t = svgEl("text", { x: pad.l - 6, y: y + 4, "text-anchor": "end", class: "tick" });
+      t.textContent = fmtNum(tv); root.appendChild(t);
+      if (tv > 0 && tv < maxY) root.appendChild(svgEl("line", { x1: pad.l, x2: width - pad.r, y1: y, y2: y, class: "gridline" }));
+    });
+    var step = maxX / 4, mag = Math.pow(10, Math.floor(Math.log(step) / Math.LN10));
+    var norm = step / mag;
+    var nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    var tickStep = nice * mag;
+    for (var tv = 0; tv <= maxX + 1e-9; tv += tickStep) {
+      var t = svgEl("text", { x: pad.l + (tv / maxX) * plotW, y: pad.t + plotH + 14, "text-anchor": "middle", class: "tick" });
+      t.textContent = fmtNum(tv); root.appendChild(t);
+    }
+    series.forEach(function (s) {
+      var d = "";
+      s.points.forEach(function (p) {
+        if (p.y === null || p.y === undefined) return;
+        d += (d ? " L " : "M ") + (pad.l + (p.x / maxX) * plotW) + " " + (pad.t + plotH - (p.y / maxY) * plotH);
+      });
+      if (d) {
+        var path = svgEl("path", { d: d, fill: "none", stroke: s.color || "#334155", "stroke-width": 2 });
+        var pt = svgEl("title", {}); pt.textContent = s.title || s.label; path.appendChild(pt);
+        root.appendChild(path);
+      }
+    });
+    return root;
+  }
+  // A stable per-variant colour: golden-angle hues keep neighbours distinct.
+  function variantColor(index) {
+    return "hsl(" + Math.round((index * 137.508) % 360) + ", 62%, 40%)";
   }
   function thresholdsCell(list) {
     var wrap = el("span", "thresholds");
@@ -1783,6 +1823,47 @@ const VIEWER_SCRIPT = `(function () {
       });
       sec.appendChild(card);
     });
+
+    // Overlaid comparison (plan U4-2): one line per variant on shared time
+    // axes, so each leg can be read variant against variant. Legs are ordered
+    // read first, capacity rates ascending, mutations last.
+    var legOrder = [];
+    withSeries.forEach(function (v) {
+      v.resourceSeries.forEach(function (leg) { if (legOrder.indexOf(leg.label) < 0) legOrder.push(leg.label); });
+    });
+    legOrder.sort(function (a, b) {
+      var rank = function (label) { return label === "read" ? -1 : label === "mutations" ? 1 : 0; };
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      var na = parseFloat(a), nb = parseFloat(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    var overlayVariants = withSeries.filter(function (v) { return state.cohort === "all" || v.cohort === state.cohort; });
+    var colors = {};
+    overlayVariants.forEach(function (v, i) { colors[v.id] = variantColor(i); });
+    legOrder.forEach(function (label) {
+      var legOf = function (v) {
+        for (var i = 0; i < v.resourceSeries.length; i++) if (v.resourceSeries[i].label === label) return v.resourceSeries[i];
+        return null;
+      };
+      var cpuSeries = [], memSeries = [];
+      overlayVariants.forEach(function (v) {
+        var leg = legOf(v);
+        if (!leg) return;
+        cpuSeries.push({ label: v.id, color: colors[v.id], title: v.id + " " + label + " CPU % of envelope", points: leg.points.map(function (p) { return { x: p.t / 1000, y: p.cpu }; }) });
+        memSeries.push({ label: v.id, color: colors[v.id], title: v.id + " " + label + " RAM % of envelope", points: leg.points.map(function (p) { return { x: p.t / 1000, y: p.mem }; }) });
+      });
+      if (!cpuSeries.length) return;
+      var card = el("div", "card wide");
+      card.appendChild(el("h3", null, "Overlaid — " + label));
+      card.appendChild(el("h4", null, "CPU % of envelope"));
+      card.appendChild(xyChart(cpuSeries, { height: 200 }));
+      card.appendChild(el("h4", null, "RAM % of envelope"));
+      card.appendChild(xyChart(memSeries, { height: 200 }));
+      sec.appendChild(card);
+    });
+    if (overlayVariants.length > 1)
+      sec.appendChild(chartLegend(overlayVariants.map(function (v) { return { label: v.id, color: colors[v.id] }; })));
     sec.appendChild(chartLegend([
       { label: "CPU % of envelope", color: "#4f46e5" },
       { label: "RAM % of envelope", color: "#b45309" }
@@ -2185,24 +2266,25 @@ const VIEWER_SCRIPT = `(function () {
     render();
   }
 
-  if (select) select.addEventListener("change", function () { selectRun(select.value, true); });
-  if (prevBtn) prevBtn.addEventListener("click", function () { step(-1); });
-  if (nextBtn) nextBtn.addEventListener("click", function () { step(1); });
-  if (modeRunBtn) modeRunBtn.addEventListener("click", function () { setMode("run"); });
-  if (modeCompareBtn) modeCompareBtn.addEventListener("click", function () { setMode("compare"); });
-  window.addEventListener("hashchange", function () {
-    var parsed = parseHash(location.hash);
-    if (parsed.mode === "compare") {
-      state.mode = "compare";
-      state.compareIds = parsed.runIds.filter(function (id) { return byId[id]; });
-      state.metric = parsed.metric;
-      syncModeChrome(); render();
-    } else if (parsed.runId && byId[parsed.runId] && parsed.runId !== state.runId) {
-      selectRun(parsed.runId, false);
-    }
-  });
-
-  (function init() {
+  // --- on-the-fly data (runs-data.json) -------------------------------------
+  // The shell carries no run data; it fetches the sibling runs-data.json at
+  // runtime. file:// pages cannot fetch, so opening the page straight from
+  // disk gets an explanation instead of a blank body.
+  function optionLabel(run) {
+    var name = run.configName || "unknown-config";
+    var flag = run.incomplete ? " · incomplete" : "";
+    return name + " — " + run.runId + " (" + run.okCount + "/" + run.totalCount + " ok)" + flag;
+  }
+  function populateSelect() {
+    if (!select) return;
+    select.textContent = "";
+    runs.forEach(function (run) {
+      var opt = el("option", null, optionLabel(run));
+      opt.value = run.runId;
+      select.appendChild(opt);
+    });
+  }
+  function init() {
     var parsed = parseHash(location.hash);
     if (parsed.mode === "compare" && parsed.runIds.length) {
       state.mode = "compare";
@@ -2216,7 +2298,56 @@ const VIEWER_SCRIPT = `(function () {
     if (!runId) { try { var stored = localStorage.getItem(STORAGE_KEY); if (stored && byId[stored]) runId = stored; } catch (e) {} }
     if (!runId) runId = runs.length ? runs[0].runId : null;
     selectRun(runId, false);
-  })();
+  }
+  function boot(payload) {
+    runs = (payload && payload.runs) || [];
+    levels = (payload && payload.levels) || [];
+    byId = {};
+    for (var i = 0; i < runs.length; i++) byId[runs[i].runId] = runs[i];
+    if (loadingEl && loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl);
+    populateSelect();
+    booted = true;
+    init();
+  }
+  function loadError(err) {
+    if (loadingEl && loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl);
+    bodyEl.textContent = "";
+    var box = el("details", "error");
+    box.open = true;
+    box.appendChild(el("summary", null, "Could not load runs-data.json"));
+    var pre = el("pre");
+    pre.textContent = String(err && err.message ? err.message : err);
+    box.appendChild(pre);
+    var note = el("p", "note");
+    note.textContent = "The page loads results on the fly from runs-data.json, so it needs an HTTP server — a file:// page cannot fetch it. Serve the results directory, e.g. \\"python3 -m http.server 8000\\" run in this folder, then open the served page (localhost:8000).";
+    bodyEl.appendChild(box);
+    bodyEl.appendChild(note);
+  }
+
+  if (select) select.addEventListener("change", function () { selectRun(select.value, true); });
+  if (prevBtn) prevBtn.addEventListener("click", function () { step(-1); });
+  if (nextBtn) nextBtn.addEventListener("click", function () { step(1); });
+  if (modeRunBtn) modeRunBtn.addEventListener("click", function () { setMode("run"); });
+  if (modeCompareBtn) modeCompareBtn.addEventListener("click", function () { setMode("compare"); });
+  window.addEventListener("hashchange", function () {
+    if (!booted) return;
+    var parsed = parseHash(location.hash);
+    if (parsed.mode === "compare") {
+      state.mode = "compare";
+      state.compareIds = parsed.runIds.filter(function (id) { return byId[id]; });
+      state.metric = parsed.metric;
+      syncModeChrome(); render();
+    } else if (parsed.runId && byId[parsed.runId] && parsed.runId !== state.runId) {
+      selectRun(parsed.runId, false);
+    }
+  });
+
+  fetch("runs-data.json", { cache: "no-store" })
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText);
+      return res.json();
+    })
+    .then(boot, loadError);
 })();`;
 
 const VIEWER_STYLE = `
@@ -2255,6 +2386,7 @@ const VIEWER_STYLE = `
  td.diff{background:#fff7ed}
  .chart{width:100%;max-width:820px;height:auto;margin:6px 0}
  .chart .axis{stroke:#cbd5e1;stroke-width:1}
+ .chart .gridline{stroke:#eef2f7;stroke-width:1}
  .chart .tick{fill:#64748b;font-size:10px}
  .chart-empty{color:#94a3b8}
  .legend-inline{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0}
@@ -2292,17 +2424,21 @@ const VIEWER_STYLE = `
 `;
 
 /**
- * Render the single self-contained results page. All data is inline (a
- * `file://` page cannot `fetch()` local JSON), there is no external script or
- * stylesheet, and every dynamic string is escaped or rendered via `textContent`.
+ * The on-the-fly data payload (`results/runs-data.json`), fetched by the shell
+ * at runtime. Same trimmed shape the page used to inline: p50s and folded
+ * per-leg views only — never raw sample arrays, capture bodies or logs.
  */
-export function renderViewerHtml(runs: RunView[]): string {
-  const options = runs
-    .map(
-      (run) =>
-        `<option value="${esc(run.runId)}">${esc(optionLabel(run))}</option>`,
-    )
-    .join("\n      ");
+export function renderViewerData(runs: RunView[]): string {
+  return safeJson({ runs, levels: deriveLoadLevels(runs) });
+}
+
+/**
+ * Render the viewer shell (`results/index.html`). The page contains only the
+ * chrome, styles and rendering code — no run data. It fetches the sibling
+ * `runs-data.json` at runtime, so it must be served over HTTP; opened from
+ * `file://` the fetch is blocked and the page says so.
+ */
+export function renderViewerHtml(): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2320,23 +2456,20 @@ export function renderViewerHtml(runs: RunView[]): string {
   </div>
   <div class="run-nav" id="run-nav">
     <label for="run-select">Run</label>
-    <select id="run-select">
-      ${options}
-    </select>
+    <select id="run-select"></select>
     <button type="button" id="run-prev" title="newer run">‹</button>
     <button type="button" id="run-next" title="older run">›</button>
   </div>
   <div class="compare-nav" id="compare-nav" hidden></div>
   <div class="provenance" id="provenance"></div>
 </header>
-<main id="view-body"></main>
+<main id="view-body"><p class="note" id="loading">Loading runs-data.json …</p></main>
 <footer class="legend">
   Per-metric leaders are bolded; there is deliberately no composite score.
   Charts are views — the tables are the source of truth.
   Blank means not measured, never zero. A generator-saturated load trial is
   withheld — generator saturated. Performance figures are indicative single-host.
 </footer>
-<script type="application/json" id="runs-data">${safeJson({ runs, levels: deriveLoadLevels(runs) })}</script>
 <script>${VIEWER_SCRIPT}</script>
 </body></html>
 `;

@@ -9,6 +9,7 @@ import {
   formatCompareHash,
   parseCompareHash,
   parseRunId,
+  renderViewerData,
   renderViewerHtml,
   type RunView,
 } from "../src/reporting/viewer.js";
@@ -483,17 +484,38 @@ describe("buildRunsIndex", () => {
   });
 });
 
-describe("renderViewerHtml", () => {
-  it("lists every run as an option and a deep-link target", () => {
+describe("renderViewerHtml / renderViewerData", () => {
+  it("ships a data-free shell that fetches runs-data.json on the fly", () => {
     const root = makeResultsRoot();
     try {
       const runs = buildRunsIndex(root, manifests);
-      const html = renderViewerHtml(runs);
+      const html = renderViewerHtml();
+      // No run data is inlined in the shell — not even the run ids.
+      expect(html).not.toContain('<script type="application/json"');
       for (const run of runs) {
-        expect(html).toContain(`<option value="${run.runId}">`);
+        expect(html).not.toContain(`>${run.runId}<`);
       }
-      expect(html).toContain('id="runs-data"');
-      expect(html).toContain("smoke-matrix");
+      // The shell loads its data at runtime from the sibling JSON file.
+      expect(html).toContain('fetch("runs-data.json"');
+      expect(html).toContain('id="run-select"');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("data lists every run, and only the trimmed view", () => {
+    const root = makeResultsRoot();
+    try {
+      const runs = buildRunsIndex(root, manifests);
+      const data = renderViewerData(runs);
+      const parsed = JSON.parse(data) as { runs: unknown[]; levels: unknown[] };
+      expect(parsed.runs).toHaveLength(runs.length);
+      expect(parsed.levels).toBeDefined();
+      for (const run of runs) {
+        expect(data).toContain(run.runId);
+      }
+      // Option labels are built from this payload at runtime.
+      expect(data).toContain("smoke-matrix");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -502,28 +524,28 @@ describe("renderViewerHtml", () => {
   it("does not embed raw samples, capture bodies or lifecycle stdout", () => {
     const root = makeResultsRoot();
     try {
-      const html = renderViewerHtml(buildRunsIndex(root, manifests));
-      expect(html).not.toContain("capture-secret-body");
-      expect(html).not.toContain('"create":[100,200,300]'); // raw interaction array
-      expect(html).not.toContain('"ttfb":10,"fcp":40'); // raw page array
-      expect(html).not.toContain("raw-sample");
-      expect(html).not.toContain("cpuPctOfEnv"); // raw resource series
-      expect(html).not.toContain("memWorkingSetMb");
+      const data = renderViewerData(buildRunsIndex(root, manifests));
+      expect(data).not.toContain("capture-secret-body");
+      expect(data).not.toContain('"create":[100,200,300]'); // raw interaction array
+      expect(data).not.toContain('"ttfb":10,"fcp":40'); // raw page array
+      expect(data).not.toContain("raw-sample");
+      expect(data).not.toContain("cpuPctOfEnv"); // raw resource series
+      expect(data).not.toContain("memWorkingSetMb");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("escapes error strings containing < and & in the embedded payload", () => {
+  it("escapes error strings containing < and & in the data payload", () => {
     const root = makeResultsRoot();
     try {
-      const html = renderViewerHtml(buildRunsIndex(root, manifests));
+      const data = renderViewerData(buildRunsIndex(root, manifests));
       // The raw malicious sequence never appears…
-      expect(html).not.toContain("<bad>");
-      expect(html).not.toContain('<bad> & "</script>');
+      expect(data).not.toContain("<bad>");
+      expect(data).not.toContain('<bad> & "</script>');
       // …because <, > and & are emitted as JSON unicode escapes.
-      expect(html).toContain("\\u003cbad\\u003e");
-      expect(html).toContain("\\u0026");
+      expect(data).toContain("\\u003cbad\\u003e");
+      expect(data).toContain("\\u0026");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -532,13 +554,14 @@ describe("renderViewerHtml", () => {
   it("contains no external src/href references (offline rule)", () => {
     const root = makeResultsRoot();
     try {
-      const html = renderViewerHtml(buildRunsIndex(root, manifests));
+      const html = renderViewerHtml();
       // No `src=`/`href=` attributes at all, and no external resource loading.
       expect(/\bsrc\s*=/.test(html)).toBe(false);
       expect(/\bhref\s*=/.test(html)).toBe(false);
       expect(/\bsrc\s*=\s*["']https?:/i.test(html)).toBe(false);
       expect(/\bhref\s*=\s*["']https?:/i.test(html)).toBe(false);
-      expect(html).not.toContain("fetch(");
+      // The only fetch is the relative sibling data file, never an external URL.
+      expect(html).not.toMatch(/fetch\(\s*["']https?:/i);
       expect(html).not.toContain("XMLHttpRequest");
       expect(html).not.toContain("<link");
       // The SVG namespace URI is a W3C identifier, not a fetched resource; it is
@@ -555,19 +578,26 @@ describe("renderViewerHtml", () => {
   });
 
   it("renders a valid page with no runs", () => {
-    const html = renderViewerHtml([]);
+    const html = renderViewerHtml();
     expect(html).toContain("<!doctype html>");
-    expect(html).toContain('id="runs-data"');
+    expect(html).toContain('fetch("runs-data.json"');
     expect(html).toContain('id="run-select"');
   });
 
   it("ships compare-mode chrome and the D2 re-run banner template", () => {
-    const html = renderViewerHtml(buildRunsIndex(makeResultsRoot(), manifests));
+    const html = renderViewerHtml();
     expect(html).toContain('id="mode-compare"');
     expect(html).toContain('id="compare-nav"');
     // The banner builds its command from the run's config file (plan D2).
     expect(html).toContain("pnpm rig:run --config ");
     expect(html).toContain("Not measured");
+  });
+
+  it("ships overlaid resource-comparison charts (one line per variant)", () => {
+    const html = renderViewerHtml();
+    expect(html).toContain("Overlaid — ");
+    expect(html).toContain("function xyChart(");
+    expect(html).toContain("function variantColor(");
   });
 });
 

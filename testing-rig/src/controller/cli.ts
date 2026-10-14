@@ -396,7 +396,9 @@ async function main(): Promise<number> {
   try {
     const { writeViewer } = await import("../reporting/viewer-cli.js");
     const viewer = await writeViewer(path.join(rigRoot, "results"));
-    console.log(`results viewer: ${viewer.count} run(s) → ${viewer.file}`);
+    console.log(
+      `results viewer: ${viewer.count} run(s) → ${viewer.file} (+ ${viewer.dataFile})`,
+    );
   } catch (err) {
     console.warn(
       `results viewer not refreshed (run unaffected): ${
