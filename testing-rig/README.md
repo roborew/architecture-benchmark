@@ -45,7 +45,7 @@ pnpm report                    # most recent run
 pnpm report <run-id>
 
 # Rebuild the single results page over every run:
-pnpm report:all                # → results/index.html + runs-data.json
+pnpm report:all                # → results/index.html + runs-data.json + runs-data.js
 ```
 
 ### The load × resource matrix
@@ -98,7 +98,7 @@ its RAM". Per leg they are folded into the existing reports:
 
 - `variants/<id>/load.json`, `mutations.json` and `capacity/<rate>.json` gain a
   `resources: { source, services: { app: { maxCpuPctOfEnv, avgCpuPctOfEnv,
-maxMemMb, maxMemPctOfEnv }, db: {…}, … }, oomKills }` block.
+  maxMemMb, maxMemPctOfEnv }, db: {…}, … }, oomKills }` block.
 - The raw 1 Hz series (`resources/read-samples.json`,
   `resources/mutations-samples.json`, `resources/capacity/<rate>-samples.json`)
   is written only when the config sets `report.keepRawSamples: true`.
@@ -149,12 +149,14 @@ Under an override the closed-loop read VUs are pinned to the config's original
    `lifecycle.json`, `summary.json`, and (per `stages:`) correctness, render,
    load (`load.json`/`k6-summary.json`/`mutations-summary.json`) and capacity
    (`capacity.json`) artefacts.
-5. Refresh the results viewer (`results/index.html` + `results/runs-data.json`)
+5. Refresh the results viewer (`results/index.html` + `results/runs-data.json` +
+   `results/runs-data.js`)
    — best-effort; a reporting failure never fails the run.
 
 The primary output — the decision matrix — is generated from this raw data
 (plan §6.6, `src/reporting/`). The results viewer (`results/index.html`, which
-fetches `results/runs-data.json` on the fly) has a **Run view** (charts above
+fetches `results/runs-data.json` on the fly, falling back to `results/runs-data.js`
+when opened from disk) has a **Run view** (charts above
 each table, plus overlaid resource charts — one line per variant per leg) and a
 **Compare view** (inputs side-by-side, a metric grid across load levels, scaling
 charts and per-metric tip-over facts). Serve the results directory over HTTP to

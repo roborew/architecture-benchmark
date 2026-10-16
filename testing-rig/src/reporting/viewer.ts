@@ -125,10 +125,7 @@ export interface VariantCapacityView {
 }
 
 export interface VariantMutationView {
-  perOp: Record<
-    "create" | "update" | "delete",
-    { count: number; rate: number } | null
-  >;
+  perOp: Record<"create" | "update" | "delete", { count: number; rate: number } | null>;
   duration: {
     avg: number;
     med: number;
@@ -222,10 +219,7 @@ interface SummaryFile {
 }
 
 interface RenderFile {
-  pages?: Record<
-    string,
-    Array<{ ttfb: number; fcp: number; lcp: number; firstData: number }>
-  >;
+  pages?: Record<string, Array<{ ttfb: number; fcp: number; lcp: number; firstData: number }>>;
   interactions?: Record<string, number[]>;
 }
 
@@ -334,9 +328,7 @@ function readJson<T>(file: string): T | null {
 function readYaml(file: string): Record<string, unknown> | null {
   try {
     const parsed = YAML.parse(readFileSync(file, "utf8")) as unknown;
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -344,8 +336,7 @@ function readYaml(file: string): Record<string, unknown> | null {
 
 /** `2026-10-09t17-44-06-935z` → `2026-10-09T17:44:06.935Z`. */
 export function parseRunId(runId: string): string | null {
-  const match =
-    /^(\d{4}-\d{2}-\d{2})[tT](\d{2})-(\d{2})-(\d{2})-(\d{3})[zZ]$/.exec(runId);
+  const match = /^(\d{4}-\d{2}-\d{2})[tT](\d{2})-(\d{2})-(\d{2})-(\d{3})[zZ]$/.exec(runId);
   if (!match) return null;
   return `${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`;
 }
@@ -357,9 +348,7 @@ const positive = (value: number | null | undefined): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
 /** Sort + sanitise recorded threshold labels (K2) so they render deterministically. */
-function normaliseThresholds(
-  raw: ThresholdResult[] | undefined,
-): ThresholdResult[] {
+function normaliseThresholds(raw: ThresholdResult[] | undefined): ThresholdResult[] {
   if (!Array.isArray(raw)) return [];
   const out: ThresholdResult[] = [];
   for (const entry of raw) {
@@ -385,24 +374,17 @@ function normaliseThresholds(
 }
 
 /** Lift per-metric threshold results out of a raw k6 (handleSummary) metrics map. */
-function thresholdsFromK6(
-  metrics: Record<string, K6Metric> | undefined,
-): ThresholdResult[] {
+function thresholdsFromK6(metrics: Record<string, K6Metric> | undefined): ThresholdResult[] {
   const out: ThresholdResult[] = [];
   for (const [metric, definition] of Object.entries(metrics ?? {})) {
-    for (const [expression, result] of Object.entries(
-      definition.thresholds ?? {},
-    ))
+    for (const [expression, result] of Object.entries(definition.thresholds ?? {}))
       out.push({ metric, expression, ok: result?.ok === true });
   }
   return normaliseThresholds(out);
 }
 
 /** Read a k6 metric value from either the new (`values`) or legacy (flat) shape. */
-function k6Value(
-  metric: K6Metric | undefined,
-  key: string,
-): number | undefined {
+function k6Value(metric: K6Metric | undefined, key: string): number | undefined {
   const value = metric?.values?.[key] ?? metric?.[key as keyof K6Metric];
   return typeof value === "number" ? value : undefined;
 }
@@ -431,8 +413,7 @@ function reduceRender(report: RenderFile | null): VariantRenderView | null {
 function reduceLoad(report: LoadFile | null): VariantLoadView | null {
   if (!report) return null;
   const generatorSaturated = report.generatorSaturated === true;
-  const paths: Record<string, { p50Ms: number | null; p95Ms: number | null }> =
-    {};
+  const paths: Record<string, { p50Ms: number | null; p95Ms: number | null }> = {};
   for (const [path, values] of Object.entries(report.paths ?? {})) {
     paths[path] = {
       p50Ms: positive(values.p50Ms ?? null),
@@ -444,9 +425,7 @@ function reduceLoad(report: LoadFile | null): VariantLoadView | null {
     requests: report.requests ?? 0,
     // A generator-saturated trial is an invalid app measurement: withhold the
     // numbers (keep the flag so the UI can say why) — plan §2/§4.3/§6.5.
-    opsPerSecond: generatorSaturated
-      ? null
-      : positive(report.opsPerSecond ?? null),
+    opsPerSecond: generatorSaturated ? null : positive(report.opsPerSecond ?? null),
     p95Ms: generatorSaturated ? null : positive(report.p95Ms ?? null),
     failedRate: report.failedRate ?? 0,
     generatorSaturated,
@@ -461,8 +440,7 @@ function reduceLoad(report: LoadFile | null): VariantLoadView | null {
 function reduceResources(
   summary: ResourceSummaryFile | null | undefined,
 ): VariantResourceView | null {
-  if (!summary || !summary.services || typeof summary.services !== "object")
-    return null;
+  if (!summary || !summary.services || typeof summary.services !== "object") return null;
   const services: Record<string, VariantResourceUsageView> = {};
   for (const [name, usage] of Object.entries(summary.services)) {
     services[name] = {
@@ -488,8 +466,7 @@ function reduceResourceSeries(
 ): Array<{ t: number; cpu: number | null; mem: number | null }> | null {
   const samples = file?.samples;
   if (!Array.isArray(samples)) return null;
-  const points: Array<{ t: number; cpu: number | null; mem: number | null }> =
-    [];
+  const points: Array<{ t: number; cpu: number | null; mem: number | null }> = [];
   for (const sample of samples) {
     if (!sample || sample.service !== front) continue;
     points.push({
@@ -502,15 +479,12 @@ function reduceResourceSeries(
   if (points.length <= MAX_RESOURCE_POINTS) return points;
   const step = points.length / MAX_RESOURCE_POINTS;
   const out: typeof points = [];
-  for (let i = 0; i < MAX_RESOURCE_POINTS; i += 1)
-    out.push(points[Math.floor(i * step)]!);
+  for (let i = 0; i < MAX_RESOURCE_POINTS; i += 1) out.push(points[Math.floor(i * step)]!);
   out[out.length - 1] = points[points.length - 1]!;
   return out;
 }
 
-function reduceCapacity(
-  report: CapacityFile | null,
-): VariantCapacityView | null {
+function reduceCapacity(report: CapacityFile | null): VariantCapacityView | null {
   if (!report) return null;
   const steps: CapacityStepView[] = (report.steps ?? []).map((step) => ({
     targetRate: step.targetRate ?? 0,
@@ -545,9 +519,7 @@ function reduceMutations(
     const metric = metrics[`mk_${kind}_ok`];
     const count = k6Value(metric, "count");
     const rate = k6Value(metric, "rate");
-    return typeof count === "number" && typeof rate === "number"
-      ? { count, rate }
-      : null;
+    return typeof count === "number" && typeof rate === "number" ? { count, rate } : null;
   };
   const raw = metrics.http_req_duration;
   const duration =
@@ -581,9 +553,7 @@ function reduceMutations(
   };
 }
 
-function inventoryOf(
-  raw: StaticInventory | undefined,
-): VariantInventoryView | null {
+function inventoryOf(raw: StaticInventory | undefined): VariantInventoryView | null {
   if (!raw) return null;
   const bucket = (b: StaticInventory["source"]): Bucket => ({
     files: b.files,
@@ -622,14 +592,9 @@ function buildVariant(
   const variantDir = path.join(runDir, "variants", result.id);
   const stages = result.stages ?? {};
   const correctness = stages.correctness;
-  const loadService =
-    manifest?.load?.service ?? (result.cohort === "spa-api" ? "api" : "app");
-  const capacityReport = readJson<CapacityFile>(
-    path.join(variantDir, "capacity.json"),
-  );
-  const mutationReport = readJson<MutationReportFile>(
-    path.join(variantDir, "mutations.json"),
-  );
+  const loadService = manifest?.load?.service ?? (result.cohort === "spa-api" ? "api" : "app");
+  const capacityReport = readJson<CapacityFile>(path.join(variantDir, "capacity.json"));
+  const mutationReport = readJson<MutationReportFile>(path.join(variantDir, "mutations.json"));
   return {
     id: result.id,
     cohort: result.cohort,
@@ -641,24 +606,16 @@ function buildVariant(
     error: result.error ?? null,
     stages,
     inventory: inventoryOf(inventory.get(result.id)),
-    render: reduceRender(
-      readJson<RenderFile>(path.join(variantDir, "render.json")),
-    ),
+    render: reduceRender(readJson<RenderFile>(path.join(variantDir, "render.json"))),
     load: reduceLoad(readJson<LoadFile>(path.join(variantDir, "load.json"))),
     mutations: reduceMutations(
-      readJson<MutationsSummaryFile>(
-        path.join(variantDir, "mutations-summary.json"),
-      ),
+      readJson<MutationsSummaryFile>(path.join(variantDir, "mutations-summary.json")),
       mutationReport?.resources,
     ),
     capacity: reduceCapacity(capacityReport),
     correctness: correctness ? (correctness.ok ? "pass" : "fail") : null,
     loadService,
-    resourceSeries: reduceAllResourceSeries(
-      variantDir,
-      loadService,
-      capacityReport,
-    ),
+    resourceSeries: reduceAllResourceSeries(variantDir, loadService, capacityReport),
     // Deliberately never read (beyond the resource aggregate): mutations.json
     // raw samples, capture.json (request bodies), *.log, lifecycle.json stdout.
   };
@@ -672,9 +629,7 @@ function reduceAllResourceSeries(
 ): ResourceSeriesView[] {
   const series: ResourceSeriesView[] = [];
   const readPoints = reduceResourceSeries(
-    readJson<ResourceSeriesFile>(
-      path.join(variantDir, "resources", "read-samples.json"),
-    ),
+    readJson<ResourceSeriesFile>(path.join(variantDir, "resources", "read-samples.json")),
     front,
   );
   if (readPoints) series.push({ label: "read", points: readPoints });
@@ -684,25 +639,17 @@ function reduceAllResourceSeries(
     if (typeof step.targetRate !== "number") continue;
     const points = reduceResourceSeries(
       readJson<ResourceSeriesFile>(
-        path.join(
-          variantDir,
-          "resources",
-          "capacity",
-          `${step.targetRate}-samples.json`,
-        ),
+        path.join(variantDir, "resources", "capacity", `${step.targetRate}-samples.json`),
       ),
       front,
     );
     if (points) series.push({ label: `${step.targetRate}/s`, points });
   }
   const mutationPoints = reduceResourceSeries(
-    readJson<ResourceSeriesFile>(
-      path.join(variantDir, "resources", "mutations-samples.json"),
-    ),
+    readJson<ResourceSeriesFile>(path.join(variantDir, "resources", "mutations-samples.json")),
     front,
   );
-  if (mutationPoints)
-    series.push({ label: "mutations", points: mutationPoints });
+  if (mutationPoints) series.push({ label: "mutations", points: mutationPoints });
   return series;
 }
 
@@ -721,20 +668,10 @@ function buildRun(
 ): RunView {
   const results = summary?.results ?? [];
   const inventory = readInventory(runDir);
-  const variants = results.map((result) =>
-    buildVariant(result, runDir, inventory, manifests),
-  );
+  const variants = results.map((result) => buildVariant(result, runDir, inventory, manifests));
   // Stable across runs (cohort, then id) so two runs are easy to eyeball.
   variants.sort((a, b) =>
-    a.cohort === b.cohort
-      ? a.id < b.id
-        ? -1
-        : a.id > b.id
-          ? 1
-          : 0
-      : a.cohort < b.cohort
-        ? -1
-        : 1,
+    a.cohort === b.cohort ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.cohort < b.cohort ? -1 : 1,
   );
   return {
     runId,
@@ -743,9 +680,7 @@ function buildRun(
     configFile: preflight?.config ?? null,
     gitRevision: preflight?.gitRevision ?? null,
     effectiveManifestSha256:
-      summary?.effectiveManifestSha256 ??
-      preflight?.effectiveManifestSha256 ??
-      null,
+      summary?.effectiveManifestSha256 ?? preflight?.effectiveManifestSha256 ?? null,
     startedAt: parseRunId(runId),
     okCount: results.filter((r) => r.status === "ok").length,
     totalCount: results.length,
@@ -793,9 +728,7 @@ export function buildRunsIndex(
     } catch {
       continue;
     }
-    const preflight = readJson<PreflightFile>(
-      path.join(runDir, "preflight.json"),
-    );
+    const preflight = readJson<PreflightFile>(path.join(runDir, "preflight.json"));
     const summary = readJson<SummaryFile>(path.join(runDir, "summary.json"));
     const effective = readYaml(path.join(runDir, "effective-config.yaml"));
     if (!preflight && !summary && !effective) continue; // not a run
@@ -854,22 +787,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const numeric = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-function envelopeOf(
-  inputs: Record<string, unknown> | null,
-): LoadLevelEnvelope | null {
-  const resources =
-    inputs && isRecord(inputs.resources) ? inputs.resources : null;
+function envelopeOf(inputs: Record<string, unknown> | null): LoadLevelEnvelope | null {
+  const resources = inputs && isRecord(inputs.resources) ? inputs.resources : null;
   if (!resources) return null;
   const appCpus = numeric(resources.appCpus);
   const appMemoryMb = numeric(resources.appMemoryMb);
   const dbCpus = numeric(resources.dbCpus);
   const dbMemoryMb = numeric(resources.dbMemoryMb);
-  if (
-    appCpus === null &&
-    appMemoryMb === null &&
-    dbCpus === null &&
-    dbMemoryMb === null
-  )
+  if (appCpus === null && appMemoryMb === null && dbCpus === null && dbMemoryMb === null)
     return null;
   return {
     label: `${appCpus ?? "?"}c/${appMemoryMb ?? "?"}MB`,
@@ -890,8 +815,7 @@ function ordinalOf(run: RunView): LoadLevelOrdinal {
   for (const scenario of scenarios) {
     if (!isRecord(scenario)) continue;
     if (isRecord(scenario.counts)) {
-      for (const value of Object.values(scenario.counts))
-        volume += numeric(value) ?? 0;
+      for (const value of Object.values(scenario.counts)) volume += numeric(value) ?? 0;
     }
     if (Array.isArray(scenario.ratesPerSecond)) {
       for (const rate of scenario.ratesPerSecond) {
@@ -913,17 +837,13 @@ export function deriveLoadLevels(runs: RunView[]): LoadLevel[] {
   for (const run of runs) {
     const envelope = envelopeOf(run.inputs);
     const configName = run.configName;
-    const key = configName
-      ? `${configName}@${envelope?.label ?? "default"}`
-      : `run:${run.runId}`;
+    const key = configName ? `${configName}@${envelope?.label ?? "default"}` : `run:${run.runId}`;
     let level = levels.get(key);
     if (!level) {
       const ordinal = ordinalOf(run);
       level = {
         key,
-        label: configName
-          ? `${configName} @ ${envelope?.label ?? "default"}`
-          : run.runId,
+        label: configName ? `${configName} @ ${envelope?.label ?? "default"}` : run.runId,
         configName,
         envelope,
         ordinal,
@@ -2266,10 +2186,10 @@ const VIEWER_SCRIPT = `(function () {
     render();
   }
 
-  // --- on-the-fly data (runs-data.json) -------------------------------------
+  // --- on-the-fly data (runs-data.json / runs-data.js) ----------------------
   // The shell carries no run data; it fetches the sibling runs-data.json at
   // runtime. file:// pages cannot fetch, so opening the page straight from
-  // disk gets an explanation instead of a blank body.
+  // disk falls back to the sibling runs-data.js, which a script tag can load.
   function optionLabel(run) {
     var name = run.configName || "unknown-config";
     var flag = run.incomplete ? " · incomplete" : "";
@@ -2319,7 +2239,7 @@ const VIEWER_SCRIPT = `(function () {
     pre.textContent = String(err && err.message ? err.message : err);
     box.appendChild(pre);
     var note = el("p", "note");
-    note.textContent = "The page loads results on the fly from runs-data.json, so it needs an HTTP server — a file:// page cannot fetch it. Serve the results directory, e.g. \\"python3 -m http.server 8000\\" run in this folder, then open the served page (localhost:8000).";
+    note.textContent = "The page loads results on the fly from the sibling runs-data.json, falling back to the sibling runs-data.js when fetch is blocked (file://). Keep all three files in the same folder; regenerate them with pnpm report:all if the data files are missing.";
     bodyEl.appendChild(box);
     bodyEl.appendChild(note);
   }
@@ -2342,12 +2262,27 @@ const VIEWER_SCRIPT = `(function () {
     }
   });
 
+  // fetch first (fresh data when served over HTTP); when fetch is blocked or
+  // fails, fall back to the sibling runs-data.js, which a script tag can load
+  // even from file://. Only if both fail does the page explain itself.
+  function loadViaScriptFallback(cause) {
+    var s = document.createElement("script");
+    s.src = "runs-data.js";
+    s.onload = function () {
+      if (window.__RUNS_DATA__) { boot(window.__RUNS_DATA__); return; }
+      loadError(new Error(String(cause) + " — runs-data.js did not define window.__RUNS_DATA__"));
+    };
+    s.onerror = function () {
+      loadError(new Error(String(cause) + " — and the runs-data.js fallback did not load"));
+    };
+    document.head.appendChild(s);
+  }
   fetch("runs-data.json", { cache: "no-store" })
     .then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText);
       return res.json();
     })
-    .then(boot, loadError);
+    .then(boot, loadViaScriptFallback);
 })();`;
 
 const VIEWER_STYLE = `
@@ -2433,10 +2368,21 @@ export function renderViewerData(runs: RunView[]): string {
 }
 
 /**
+ * The same payload as `renderViewerData`, wrapped as a JS assignment
+ * (`results/runs-data.js`). A script tag can load a sibling file from `file://`
+ * too, so the shell falls back to this when `fetch` is blocked — i.e. when the
+ * generated page is opened straight from disk.
+ */
+export function renderViewerDataJs(runs: RunView[]): string {
+  return `window.__RUNS_DATA__ = ${renderViewerData(runs)};\n`;
+}
+
+/**
  * Render the viewer shell (`results/index.html`). The page contains only the
  * chrome, styles and rendering code — no run data. It fetches the sibling
- * `runs-data.json` at runtime, so it must be served over HTTP; opened from
- * `file://` the fetch is blocked and the page says so.
+ * `runs-data.json` at runtime, falling back to loading the sibling
+ * `runs-data.js` via a script tag when `fetch` is blocked (`file://`), so the
+ * generated page works both served over HTTP and opened straight from disk.
  */
 export function renderViewerHtml(): string {
   return `<!doctype html>
