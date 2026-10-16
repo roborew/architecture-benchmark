@@ -11,18 +11,18 @@ name: large
 variants:
   - next-actions
   - next-drizzle
-  - next-prisma
-  - next-trpc
-  - next-orpc
-  - tanstack-start-react
-  - tanstack-start-solid
-  - tanstack-express-rest
-  - tanstack-fastify-rest
-  - tanstack-flask-rest
-  - tanstack-fastapi-rest
-  - tanstack-elixir-rest
-  - tanstack-express-graphql
-  - tanstack-express-orpc
+  # - next-prisma
+  # - next-trpc
+  # - next-orpc
+  # - tanstack-start-react
+  # - tanstack-start-solid
+  # - tanstack-express-rest
+  # - tanstack-fastify-rest
+  # - tanstack-flask-rest
+  # - tanstack-fastapi-rest
+  # - tanstack-elixir-rest
+  # - tanstack-express-graphql
+  # - tanstack-express-orpc
 trials: 3
 variantOrder: rotate
 

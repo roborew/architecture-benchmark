@@ -28,11 +28,7 @@ import { parseResourcesSpec } from "./resources.js";
 import { collectInventory } from "../reporting/inventory.js";
 import type { ResolvedVariant, ResourceCaps } from "./types.js";
 
-const rigRoot = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+const rigRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 interface Options {
   config: string;
@@ -114,14 +110,10 @@ function resourcesOf(config: RigConfig): ResourceCaps {
 }
 
 /** Refuse impossible plans before any image is built (plan §5). */
-function preflight(
-  config: RigConfig,
-  manifests: Map<string, VariantManifest>,
-): string[] {
+function preflight(config: RigConfig, manifests: Map<string, VariantManifest>): string[] {
   const problems: string[] = [];
   for (const id of config.variants) {
-    if (!manifests.has(id))
-      problems.push(`config references '${id}' but no manifest exists`);
+    if (!manifests.has(id)) problems.push(`config references '${id}' but no manifest exists`);
   }
   for (const scenario of config.scenarios) {
     if (scenario.kind !== "volume") continue;
@@ -130,8 +122,7 @@ function preflight(
       deletes: scenario.counts.delete,
     });
     if (!result.ok) {
-      for (const reason of result.reasons)
-        problems.push(`scenario '${scenario.id}': ${reason}`);
+      for (const reason of result.reasons) problems.push(`scenario '${scenario.id}': ${reason}`);
     }
   }
   return problems;
@@ -175,9 +166,7 @@ async function main(): Promise<number> {
     try {
       parsed = parseResourcesSpec(resourceSpec, resourcesOf(config));
     } catch (err) {
-      console.error(
-        `invalid --resources: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.error(`invalid --resources: ${err instanceof Error ? err.message : String(err)}`);
       return 2;
     }
     Object.assign(config.resources, parsed.resources);
@@ -206,11 +195,11 @@ async function main(): Promise<number> {
     const { chromium } = await import("@playwright/test");
     if (!existsSync(chromium.executablePath())) {
       console.log("Playwright chromium missing — downloading (one-time) …");
-      const installed = spawnSync(
-        "pnpm",
-        ["exec", "playwright", "install", "chromium"],
-        { cwd: rigRoot, stdio: "inherit", timeout: 10 * 60 * 1000 },
-      );
+      const installed = spawnSync("pnpm", ["exec", "playwright", "install", "chromium"], {
+        cwd: rigRoot,
+        stdio: "inherit",
+        timeout: 10 * 60 * 1000,
+      });
       if (installed.status !== 0) {
         console.error(
           "preflight failed: could not install Playwright chromium " +
@@ -241,9 +230,7 @@ async function main(): Promise<number> {
     ...(resourcesRequested ? { resourcesRequested } : {}),
   });
 
-  console.log(
-    `run ${runId}: ${selected.length} variant(s), ${config.trials} trial(s)`,
-  );
+  console.log(`run ${runId}: ${selected.length} variant(s), ${config.trials} trial(s)`);
   console.log(`  effective manifest sha256: ${effective.sha256}`);
   if (resourcesRequested) {
     console.log(
@@ -259,13 +246,9 @@ async function main(): Promise<number> {
 
   if (options.build !== false && options.buildSeeder) {
     console.log(`building ${SEEDER_IMAGE} …`);
-    await runCommand(
-      "docker",
-      ["build", "-t", SEEDER_IMAGE, path.join(rigRoot, "seeder")],
-      {
-        timeoutMs: 30 * 60 * 1000,
-      },
-    );
+    await runCommand("docker", ["build", "-t", SEEDER_IMAGE, path.join(rigRoot, "seeder")], {
+      timeoutMs: 30 * 60 * 1000,
+    });
   }
 
   const resources = resourcesOf(config);
@@ -278,9 +261,7 @@ async function main(): Promise<number> {
   const vuCpus = resourcesRequested ? originalCpus : config.resources.appCpus;
   const variants: ResolvedVariant[] = [];
   for (const id of selected) {
-    variants.push(
-      await planVariant(allManifests.get(id)!, { rigRoot, runId, resources }),
-    );
+    variants.push(await planVariant(allManifests.get(id)!, { rigRoot, runId, resources }));
   }
   artifacts.writeJson(
     "run-manifest.json",
@@ -289,9 +270,7 @@ async function main(): Promise<number> {
       cohort: v.cohort,
       projectName: v.projectName,
       composeFile: v.composeFile,
-      ports: Object.fromEntries(
-        v.published.map((s) => [s.hostPortEnv, s.hostPort]),
-      ),
+      ports: Object.fromEntries(v.published.map((s) => [s.hostPortEnv, s.hostPort])),
     })),
   );
 
@@ -305,10 +284,7 @@ async function main(): Promise<number> {
         serviceCount: Object.values(v.services).filter(Boolean).length,
         // built images (app/api/spa) + postgres + the shared seeder.
         imageCount:
-          (v.services.app ? 1 : 0) +
-          (v.services.api ? 1 : 0) +
-          (v.services.spa ? 1 : 0) +
-          2,
+          (v.services.app ? 1 : 0) + (v.services.api ? 1 : 0) + (v.services.spa ? 1 : 0) + 2,
       }),
     ),
   );
@@ -340,28 +316,22 @@ async function main(): Promise<number> {
                   mutations: {
                     counts: volumeScenario.counts,
                     pools: {
-                      updateFrom: eligibilityPools(config.fixture).updatePool
-                        .from,
+                      updateFrom: eligibilityPools(config.fixture).updatePool.from,
                       updateTo: eligibilityPools(config.fixture).updatePool.to,
-                      deleteFrom: eligibilityPools(config.fixture).deletePool
-                        .from,
+                      deleteFrom: eligibilityPools(config.fixture).deletePool.from,
                       deleteTo: eligibilityPools(config.fixture).deletePool.to,
                     },
                     readPaths: variant.load?.paths ?? [],
                   },
                 }
               : {}),
-            ...(capacityScenario
-              ? { capacity: { scenario: capacityScenario } }
-              : {}),
+            ...(capacityScenario ? { capacity: { scenario: capacityScenario } } : {}),
           }
         : undefined,
       readinessTimeoutMs: options.readinessTimeoutMs,
     });
     results.push(result);
-    console.log(
-      `  ${result.status} ${result.performanceEligible ? "(perf-eligible)" : ""}`,
-    );
+    console.log(`  ${result.status} ${result.performanceEligible ? "(perf-eligible)" : ""}`);
     for (const [name, stage] of Object.entries(result.stages)) {
       console.log(`    ${stage.ok ? "ok  " : "FAIL"} ${name} ${stage.ms}ms`);
     }
@@ -386,9 +356,7 @@ async function main(): Promise<number> {
   });
 
   const failed = results.filter((r) => r.status !== "ok");
-  console.log(
-    `\n${results.length - failed.length}/${results.length} variants ok`,
-  );
+  console.log(`\n${results.length - failed.length}/${results.length} variants ok`);
   console.log(`artefacts: ${artifacts.dir}`);
 
   // Refresh the consolidated results viewer so a bookmarked page always shows
@@ -397,7 +365,7 @@ async function main(): Promise<number> {
     const { writeViewer } = await import("../reporting/viewer-cli.js");
     const viewer = await writeViewer(path.join(rigRoot, "results"));
     console.log(
-      `results viewer: ${viewer.count} run(s) → ${viewer.file} (+ ${viewer.dataFile})`,
+      `results viewer: ${viewer.count} run(s) → ${viewer.file} (+ ${viewer.dataFile} + ${viewer.scriptFile})`,
     );
   } catch (err) {
     console.warn(
@@ -418,8 +386,6 @@ try {
     for (const issue of err.issues) console.error(`  - ${issue}`);
     exit(1);
   }
-  console.error(
-    err instanceof Error ? (err.stack ?? err.message) : String(err),
-  );
+  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
   exit(1);
 }

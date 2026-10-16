@@ -10,6 +10,7 @@ import {
   parseCompareHash,
   parseRunId,
   renderViewerData,
+  renderViewerDataJs,
   renderViewerHtml,
   type RunView,
 } from "../src/reporting/viewer.js";
@@ -41,9 +42,7 @@ function write(root: string, relative: string, contents: string): void {
   writeFileSync(file, contents);
 }
 
-const summaryResult = (
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> => ({
+const summaryResult = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: "next-actions",
   cohort: "next-fullstack",
   status: "ok",
@@ -218,9 +217,7 @@ function makeResultsRoot(): string {
           droppedIterations: 0,
           vusMax: 30,
           generatorSaturated: false,
-          thresholds: [
-            { metric: "http_req_failed", expression: "rate<0.01", ok: true },
-          ],
+          thresholds: [{ metric: "http_req_failed", expression: "rate<0.01", ok: true }],
           resources: {
             source: "api",
             services: {
@@ -257,13 +254,7 @@ function makeResultsRoot(): string {
   // The raw 1 Hz resource series — reduced to a timeline, never embedded raw.
   write(
     root,
-    path.join(
-      complete,
-      "variants",
-      "next-actions",
-      "resources",
-      "read-samples.json",
-    ),
+    path.join(complete, "variants", "next-actions", "resources", "read-samples.json"),
     JSON.stringify({
       source: "api",
       intervalMs: 1000,
@@ -351,12 +342,8 @@ function makeResultsRoot(): string {
 
 describe("parseRunId", () => {
   it("parses the ISO-timestamp run id back to a timestamp", () => {
-    expect(parseRunId("2026-10-09t17-44-06-935z")).toBe(
-      "2026-10-09T17:44:06.935Z",
-    );
-    expect(parseRunId("2026-10-09T11-49-44-744Z")).toBe(
-      "2026-10-09T11:49:44.744Z",
-    );
+    expect(parseRunId("2026-10-09t17-44-06-935z")).toBe("2026-10-09T17:44:06.935Z");
+    expect(parseRunId("2026-10-09T11-49-44-744Z")).toBe("2026-10-09T11:49:44.744Z");
     expect(parseRunId("not-a-run")).toBeNull();
   });
 });
@@ -385,9 +372,7 @@ describe("buildRunsIndex", () => {
   it("flags incomplete runs and counts ok/total variants", () => {
     const root = makeResultsRoot();
     try {
-      const byId = new Map(
-        buildRunsIndex(root, manifests).map((r) => [r.runId, r]),
-      );
+      const byId = new Map(buildRunsIndex(root, manifests).map((r) => [r.runId, r]));
       const complete = byId.get("2026-10-09t17-44-06-935z")!;
       expect(complete.incomplete).toBe(false);
       expect(complete.okCount).toBe(1);
@@ -451,9 +436,7 @@ describe("buildRunsIndex", () => {
       const run = buildRunsIndex(root, manifests).find(
         (r) => r.runId === "2026-10-09t17-44-06-935z",
       )!;
-      const mutations = run.variants.find(
-        (v) => v.id === "next-actions",
-      )!.mutations!;
+      const mutations = run.variants.find((v) => v.id === "next-actions")!.mutations!;
       expect(mutations.perOp.create).toEqual({ count: 50, rate: 5 });
       expect(mutations.perOp.delete).toEqual({ count: 50, rate: 5 });
       expect(mutations.duration!.avg).toBe(100);
@@ -471,9 +454,7 @@ describe("buildRunsIndex", () => {
       const run = buildRunsIndex(root, manifests).find(
         (r) => r.runId === "2026-10-09t17-44-06-935z",
       )!;
-      const inventory = run.variants.find(
-        (v) => v.id === "next-actions",
-      )!.inventory!;
+      const inventory = run.variants.find((v) => v.id === "next-actions")!.inventory!;
       expect(inventory.totals).toEqual({ files: 17, loc: 170, bytes: 1700 });
       // inventory.json predates V3 → no footprint field → null.
       expect(inventory.footprint).toBeNull();
@@ -495,8 +476,12 @@ describe("renderViewerHtml / renderViewerData", () => {
       for (const run of runs) {
         expect(html).not.toContain(`>${run.runId}<`);
       }
-      // The shell loads its data at runtime from the sibling JSON file.
+      // The shell loads its data at runtime from the sibling JSON file…
       expect(html).toContain('fetch("runs-data.json"');
+      // …and falls back to the sibling runs-data.js when fetch is blocked
+      // (file://), loaded via a script tag into window.__RUNS_DATA__.
+      expect(html).toContain('s.src = "runs-data.js"');
+      expect(html).toContain("window.__RUNS_DATA__");
       expect(html).toContain('id="run-select"');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -516,6 +501,20 @@ describe("renderViewerHtml / renderViewerData", () => {
       }
       // Option labels are built from this payload at runtime.
       expect(data).toContain("smoke-matrix");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ships a script-tag twin of the data as the file:// fallback", () => {
+    const root = makeResultsRoot();
+    try {
+      const runs = buildRunsIndex(root, manifests);
+      const js = renderViewerDataJs(runs);
+      expect(js.startsWith("window.__RUNS_DATA__ = ")).toBe(true);
+      expect(js.trimEnd().endsWith(";")).toBe(true);
+      // Byte-for-byte the same payload as the JSON file the shell fetches first.
+      expect(js).toContain(renderViewerData(runs));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -555,9 +554,10 @@ describe("renderViewerHtml / renderViewerData", () => {
     const root = makeResultsRoot();
     try {
       const html = renderViewerHtml();
-      // No `src=`/`href=` attributes at all, and no external resource loading.
-      expect(/\bsrc\s*=/.test(html)).toBe(false);
-      expect(/\bhref\s*=/.test(html)).toBe(false);
+      // Resource-loading attributes may only reference the relative sibling
+      // data script (the file:// fallback) — never an external resource.
+      const refs = html.match(/\b(src|href)\s*=\s*("[^"]*"|'[^']*')/g) ?? [];
+      expect(refs).toEqual(['src = "runs-data.js"']);
       expect(/\bsrc\s*=\s*["']https?:/i.test(html)).toBe(false);
       expect(/\bhref\s*=\s*["']https?:/i.test(html)).toBe(false);
       // The only fetch is the relative sibling data file, never an external URL.
@@ -566,10 +566,7 @@ describe("renderViewerHtml / renderViewerData", () => {
       expect(html).not.toContain("<link");
       // The SVG namespace URI is a W3C identifier, not a fetched resource; it is
       // the only `http://` that may appear.
-      const withoutSvgNs = html.replace(
-        /http:\/\/www\.w3\.org\/2000\/svg/g,
-        "",
-      );
+      const withoutSvgNs = html.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, "");
       expect(withoutSvgNs).not.toContain("http://");
       expect(withoutSvgNs).not.toContain("https://");
     } finally {
@@ -638,9 +635,7 @@ describe("K1/K2/K3 reductions", () => {
     const root = makeResultsRoot();
     try {
       const run = await loadRun(root, "2026-10-09t17-44-06-935z");
-      const capacity = run.variants.find(
-        (v) => v.id === "next-actions",
-      )!.capacity!;
+      const capacity = run.variants.find((v) => v.id === "next-actions")!.capacity!;
       expect(capacity.mixed).toBe(true);
       expect(capacity.steps.map((s) => s.targetRate)).toEqual([10, 20]);
       expect(capacity.steps[1]!.achievedPerSecond).toBe(19.8);
@@ -807,13 +802,7 @@ describe("compare model (V-B)", () => {
       runView({
         runId: "2026-10-10t10-00-00-000z",
         configName: "medium-load",
-        inputs: inputs(
-          10000,
-          { list: 400, create: 100 },
-          2,
-          2048,
-          [10, 20, 40],
-        ),
+        inputs: inputs(10000, { list: 400, create: 100 }, 2, 2048, [10, 20, 40]),
       }),
       runView({
         runId: "2026-10-10t09-00-00-000z",
@@ -824,25 +813,13 @@ describe("compare model (V-B)", () => {
       runView({
         runId: "2026-10-10t11-00-00-000z",
         configName: "medium-load",
-        inputs: inputs(
-          10000,
-          { list: 400, create: 100 },
-          4,
-          4096,
-          [10, 20, 40],
-        ),
+        inputs: inputs(10000, { list: 400, create: 100 }, 4, 4096, [10, 20, 40]),
       }),
       // Older run of the same config × envelope → same level, listed after.
       runView({
         runId: "2026-10-10t08-00-00-000z",
         configName: "medium-load",
-        inputs: inputs(
-          10000,
-          { list: 400, create: 100 },
-          2,
-          2048,
-          [10, 20, 40],
-        ),
+        inputs: inputs(10000, { list: 400, create: 100 }, 2, 2048, [10, 20, 40]),
       }),
     ];
     const levels = deriveLoadLevels(runs);
@@ -852,10 +829,7 @@ describe("compare model (V-B)", () => {
       "medium-load@4c/4096MB",
     ]);
     const medium2 = levels[1]!;
-    expect(medium2.runIds).toEqual([
-      "2026-10-10t10-00-00-000z",
-      "2026-10-10t08-00-00-000z",
-    ]);
+    expect(medium2.runIds).toEqual(["2026-10-10t10-00-00-000z", "2026-10-10t08-00-00-000z"]);
     expect(medium2.label).toBe("medium-load @ 2c/2048MB");
     expect(medium2.ordinal.taskCount).toBe(10000);
     expect(medium2.ordinal.maxRate).toBe(40);

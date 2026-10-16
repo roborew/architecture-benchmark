@@ -5,13 +5,13 @@ output. A report is a reproducible view over the raw data, never the only copy.
 
 ## Modules
 
-| File            | Responsibility                                                                                                                                                                                                                                                                                                                                                 |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inventory.ts`  | Static & complexity inventory (plan §6.1): source vs tests vs infrastructure, by language; direct dependency count discovered across **all** nested manifests (D3, `dependencyManifests` breakdown); service/image counts; whole-directory `footprint`. Excludes deps, build output, lockfiles, generated code, fixtures and reports for the authored buckets. |
-| `matrix.ts`     | `buildMatrix` + `toCsv` / `toMarkdown` / `toHtml`, and `percentile`. Reads `summary.json`, `inventory.json`, each `variants/<id>/render.json` and the manifests.                                                                                                                                                                                               |
-| `cli.ts`        | `pnpm report [<run-id>]` → `results/<run-id>/report/{matrix.csv,matrix.md,index.html}`.                                                                                                                                                                                                                                                                        |
-| `viewer.ts`     | `buildRunsIndex(resultsRoot, manifests)` → `RunView[]`; `renderViewerHtml()` → a data-free shell; `renderViewerData(runs)` → the trimmed `runs-data.json` the shell fetches on the fly. Reduces raw render samples to p50s; only trimmed views leave the run tree (plan §3).                                                                                   |
-| `viewer-cli.ts` | `pnpm report:all` → `results/index.html` + `results/runs-data.json` (every run). Also called by the controller after each run.                                                                                                                                                                                                                                 |
+| File            | Responsibility                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `inventory.ts`  | Static & complexity inventory (plan §6.1): source vs tests vs infrastructure, by language; direct dependency count discovered across **all** nested manifests (D3, `dependencyManifests` breakdown); service/image counts; whole-directory `footprint`. Excludes deps, build output, lockfiles, generated code, fixtures and reports for the authored buckets.                       |
+| `matrix.ts`     | `buildMatrix` + `toCsv` / `toMarkdown` / `toHtml`, and `percentile`. Reads `summary.json`, `inventory.json`, each `variants/<id>/render.json` and the manifests.                                                                                                                                                                                                                     |
+| `cli.ts`        | `pnpm report [<run-id>]` → `results/<run-id>/report/{matrix.csv,matrix.md,index.html}`.                                                                                                                                                                                                                                                                                              |
+| `viewer.ts`     | `buildRunsIndex(resultsRoot, manifests)` → `RunView[]`; `renderViewerHtml()` → a data-free shell; `renderViewerData(runs)` → the trimmed `runs-data.json` the shell fetches on the fly; `renderViewerDataJs(runs)` → the same payload as `runs-data.js`, the script-tag fallback for `file://`. Reduces raw render samples to p50s; only trimmed views leave the run tree (plan §3). |
+| `viewer-cli.ts` | `pnpm report:all` → `results/index.html` + `results/runs-data.json` + `results/runs-data.js` (every run). Also called by the controller after each run.                                                                                                                                                                                                                              |
 
 ## Matrix shape
 
@@ -43,9 +43,10 @@ capacity. The column set is fixed so the matrix shape does not churn as they lan
 
 `results/index.html` is a **data-free shell**: it carries only the chrome, styles and
 rendering code, and fetches `results/runs-data.json` (the trimmed index) on the
-fly. Serve the results directory over HTTP (`python3 -m http.server` in it, then
-open `http://localhost:8000/`); a `file://` open cannot fetch and the page says
-so. Two modes:
+fly. Served over HTTP it always reads fresh data; opened from `file://` (where
+fetch is blocked) it falls back to loading the sibling `runs-data.js` — the same
+payload as a script-tag — so the generated page works straight from disk too.
+Two modes:
 
 - **Run view** — a run selector over every directory under `results/`. Selecting a
   run swaps the provenance line, the Inputs card (the parsed `effective-config.yaml`,
@@ -72,8 +73,9 @@ run's config, the section shows a **banner with the exact re-run command** (plan
 instead of a bare empty table; a requested-but-failed stage keeps its error. House rules
 hold: a per-column leader is bolded, but there is **no composite score**; a blank cell
 means _not measured_, never zero; a generator-saturated load trial renders as "withheld".
-The controller refreshes the pair at the end of every `rig:run` (best-effort; a
+The controller refreshes the set at the end of every `rig:run` (best-effort; a
 reporting failure never fails a run). `runs-data.json` carries a trimmed index
 only (p50s, no raw sample arrays, never `capture.json` request bodies,
-`mutations.json` samples, `lifecycle.json` or logs); the shell itself embeds no
+`mutations.json` samples, `lifecycle.json` or logs); `runs-data.js` is the same
+payload wrapped as `window.__RUNS_DATA__ = …`; the shell itself embeds no
 run data at all.
